@@ -1,0 +1,4 @@
+time,vdd_avg,vdd_min,c5_mean,c5_n,c5_min,c5_max,pack_mv,level,led_pm,bkl,on_batt,charging,done,rgb_on,lights_cut,slider_usb,linked,external,flags_any,m,chg_state,chg_lost,chg_overrun,chg_handover,chg_selfcheck,c5_saturated
+2026-10-11 15:50,3874,3821,33.09,161,32,36,3451,0.5,988,5,1,0,1,1,0,0,1,0,on_batt done rgb_on linked,,none,0,0,0,0,0
+2026-10-11 16:00,3873,3821,31.04,164,29,33,3433,0.5,1000,5,1,0,1,1,0,0,1,0,on_batt done rgb_on linked,,none,0,0,0,0,0
+2026-10-11 16:10,3872,3821,28.99,167,27,31,3415,0.0,1000,5,1,0,1,1,0,0,1,0,on_batt done rgb_on linked,,none,0,0,0,0,0

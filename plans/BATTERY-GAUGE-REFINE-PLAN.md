@@ -1660,8 +1660,11 @@ Record: `history/battery-2026-10-07-partial-charge/` (`readings.csv`, and
     - That is the curve's flat top: 4003-4016 mV spans 70-85%, ~1.15 points
       per mV, against `5C`'s ~±10 mV.
     - **The ±5% target fails on that band in this run.**
-    - The drain continues to the cut (`post-soak-drain.csv`) for the lower
-      half and the total runtime. For E6's error budget.
+    - **The lower half (10-11): within ±2.5 points** of run 2's line from 52%
+      to the cut (mean −0.2, worst −2.5 at 37%); −1.0 and −3.2 against this
+      run's own runtime. **The runtime: 51.13 h** from FULL to the cut, +1.1%
+      on run 2's 50.56 h. So ±5% holds everywhere but the flat top (70-85%).
+      For E6's error budget.
 - **Flash 2b, the list so far (2026-10-10)**, to build after gate 8's soak
   (each item with its scenario and the usual codex review):
   1. **Stage the plug-in redraw.** Every USB-power arrival on flash 2 costs
@@ -1681,6 +1684,13 @@ Record: `history/battery-2026-10-07-partial-charge/` (`readings.csv`, and
   5. *Investigation, not code:* whether the CH582F accepts a level from the
      MCU, so the host's Bluetooth battery shows the gauge instead of the
      module's linear `5C` (96% against the gauge's 66% on 10-10).
+- **Flash 2c, item 1 diagnosed (10-11, the cut's relay-on on flash 2b):** a 27 ms
+  pass, 19 ms of it the `second_edge` scope. On USB power arriving,
+  `draw_battery(false)` repaints the bolt (a clear and 11 synchronous
+  `lcd_fill_rect`s), the text slot (synchronous glyphs) and the bar in one
+  pass; the next second costs 7 ms more. The fix: spread that repaint across
+  passes, and draw the text through the queue. Item 2 (the page exit) still
+  needs the per-event checks with JD.
 - **Flash 2b ON THE BOARD since 15:39 10-11** (JD's Fn+Esc), and **the jump is proven:** at 15:40 the same build was reflashed with no hands, from jump to restore in ~25 s. `flash.sh` now dumps the battery log before every flash (a retry loop lost 12:10-15:39 of the drain's RAM log), and refuses on battery once the RGB cut has fired (`--on-reserve` overrides).
 - **Flash 2b as built (10-11): the bootloader jump only.** Items 1-2 need a
   diagnosis the code alone cannot give: both stalls were marked `blit`, and the
