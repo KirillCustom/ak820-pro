@@ -25,7 +25,7 @@ submodule sits on our `ak820pro-patches` branch.
 | [docs/wireless.md](docs/wireless.md) | CH582F module, BT/2.4G, pairing UX, the `A6`/`5B` quirks, slot memory |
 | [docs/display.md](docs/display.md) | LCD panel variant, band layout, glyph queue/DMA pump, backlight, overlays, host text slot |
 | [docs/fonts-assets.md](docs/fonts-assets.md) | Font atlases, Cozette, clock crop, the flash memory map, provisioning and its traps |
-| [docs/clock.md](docs/clock.md) | The two RTCs, divider trim, persisted period, the timekeeper agent |
+| [docs/clock.md](docs/clock.md) | The two RTCs, divider trim, persisted period, host clock sync (the daemon; the Python timekeeper before it) |
 | [docs/leds.md](docs/leds.md) | **Interrupt priorities**, RGB field rate, indicator LEDs, the rainbow, effects |
 | [docs/hardware.md](docs/hardware.md) | Slider power quirk, bootloader, build/flash, watchdog+health, hang history, diagnostics |
 | [docs/battery.md](docs/battery.md) | What the board can know about the pack, the regulator hiding it, the level estimate, idle ladder, the unexplained power-off |
@@ -37,11 +37,11 @@ what to pick up next, written to be read cold. Live work:
 [`plans/`](plans/) (`BACKLOG.md`, `AK820-AGENT-CROSSPLATFORM-PLAN.md`,
 `CLOCK-FORMAT-PLAN.md`).
 
-**`ak820-agent/`** — a Rust rewrite of the two Windows host agents as one
-daemon. **Every phase met as of 2026-09-06.** Since 14:40 that day the daemon
-owns now-playing **and** the clock on this machine and the Python timekeeper
-is removed; over its first 50 syncs it beat the Python it replaced on every
-tail statistic (95th percentile residual 21.0 ms against 51.1, worst 23.8
+**`ak820-agent/`** — a Rust rewrite of the host agents as one daemon, now on
+Windows and macOS. **Windows: every phase met as of 2026-09-06.** Since 14:40
+that day the daemon owns now-playing **and** the clock on the Windows PC
+(gremlin) and the Python timekeeper is removed; over its first 50 syncs it
+beat the Python it replaced on every tail statistic (95th percentile residual 21.0 ms against 51.1, worst 23.8
 against 994.5, learned bias inside 61 ppm against 709). Phases 0–2, 3a and 4a
 were each audited by codex and every finding dispositioned. **v0.1.1 is
 published** and proven to install on a clean Windows with no Python, no MSYS2
@@ -53,6 +53,13 @@ unexplained ≥25 ms stall count, which moved from 12 to 18 across a day of
 testing; a quiet night settles it, and **do not poll the board to
 investigate** — a health read is itself board traffic, and the daemon already
 samples it into its status file every 5 minutes.
+**macOS: built and running on JD's Mac since 2026-09-16, not released.** The
+LaunchAgent `com.jdlien.ak820pro.agent` owns now-playing (MediaRemote, through
+the vendored helper in `ak820-agent/helper/`, hosted by `/usr/bin/perl`) and
+the clock; the bash now-playing agent and the Python timekeeper are disabled
+there. No macOS build is published and nothing is notarized: Phase 6 stops
+before Apple. Status, owed checks and audits:
+[`plans/AK820-AGENT-CROSSPLATFORM-PLAN.md`](plans/AK820-AGENT-CROSSPLATFORM-PLAN.md).
 305 unit tests, the 2,309-case folding fixture, a 4-test replay of the
 timekeeper's log and a 2-test health capture. Read
 [`plans/AK820-AGENT-PLAN.md`](plans/AK820-AGENT-PLAN.md)
@@ -85,13 +92,17 @@ Four things from that work that bite outside it:
   machine; that wedged a UPS on this machine
   (`../jdrgb/docs/ups-wedge-incident.md`). `ak820text.py` is fixed; the
   timekeeper and `ak820ctl` are not — see `plans/BACKLOG.md`.
-- ⚠️ The raw-HID interface is **shareable**, not exclusive — the old "VIA
-  holding it" advice describes contention over *replies*, not over the open.
+- ⚠️ **On Windows** the raw-HID interface is **shareable**, not exclusive — the
+  old "VIA holding it" advice describes contention over *replies*, not over the
+  open. ⚠️ **On macOS it is exclusive to hidapi**: `ak820ctl` and the Python
+  tools seize it, and the daemon's opens and writes fail until they close (see
+  "macOS raw HID is EXCLUSIVE" in
+  [`plans/AK820-AGENT-CROSSPLATFORM-PLAN.md`](plans/AK820-AGENT-CROSSPLATFORM-PLAN.md)).
   And that contention **breaks VIA, not you**: measured 2026-09-05, VIA
   received another process's reply, rejected it, and then stayed
   **persistently off by one** for the rest of the session. The now-playing
   agent does this every ~3 s. **Pause the host agents before using VIA**
-  (`hostagent/install-agents-windows.ps1 -Status` to see them), and read
+  (`ak820 status` shows the daemon and the older Python/bash agents), and read
   lighting values back over `[0x08, 3, 1..4]` rather than trusting VIA's UI
   after an error — the board executes the writes, VIA only loses the replies.
 
@@ -238,6 +249,21 @@ on Windows (a Scheduled Task has no MSYS2 on `PATH`), and it keys its
 calibration cache off `getenv("HOME")`, which Windows does not set — the
 timekeeper exports one agreed `HOME` so both see the same file.
 
+macOS host agents are LaunchAgents. **Since 2026-09-16 the Rust daemon owns
+now-playing and the clock** (`ak820 install --clock`, label
+`com.jdlien.ak820pro.agent`; binaries in
+`~/Library/Application Support/ak820pro/bin`, the status file one level up,
+log `~/Library/Logs/ak820pro/ak820-agent.log`). Install stops and disables
+the bash now-playing agent (`com.jdlien.ak820pro.nowplaying`) and the Python
+timekeeper (`com.jdlien.ak820pro.timekeeper`); `ak820 uninstall` re-enables
+them unless `--keep-bash-off` / `--keep-timekeeper-off`, and
+`hostagent/install-agents.sh` refuses to start either beside a daemon that owns
+its job. The MediaRemote helper is built by `scripts/build-helper-macos.sh`
+and the binaries signed by `scripts/sign-agent-macos.sh` (TCC keys Automation
+consent on the signature); `scripts/package-macos.sh` makes the release `.dmg`
+and stops before notarization. The user-facing description is
+`ak820-agent/INSTALL-macos.txt`.
+
 `build.sh` enforces the submodule pin, structural binary checks and via.json /
 enum sync; it refuses a dirty or off-pin tree. `flash.sh` preserves the VIA
 keymap **and the RGB lighting** across the flash; it refuses to flash if the
@@ -306,16 +332,19 @@ wired mode. `Fn`+`P` (pair) is unbound by default.
 - ⚠️ **Keyboard feels slow / drops keystrokes?** Read `Fn`+`D` first: `rowgap`
   (single digits = healthy) and `stall>25` (must be 0) say whether the firmware
   is even involved. If both are clean, **check the HOST** — a leftover poller
-  starves everything else. (Contention, not exclusivity: the interface is
-  shareable; replies are what collide. Measured 2026-09-05.)
-  `hostagent/install-agents.sh --status`. → [hardware.md](docs/hardware.md)
+  starves everything else. (On Windows, contention, not exclusivity: the
+  interface is shareable; replies are what collide. Measured 2026-09-05. On
+  macOS a hidapi poller seizes it outright.) `ak820 status` shows the daemon
+  and the older agents; `hostagent/install-agents.sh --status` the older
+  agents alone. → [hardware.md](docs/hardware.md)
 - ⚠️ **Drawing to the LCD can eat keystrokes.** `lcd_draw_flash_text()` is
   synchronous, one LCD operation per glyph (~1.6 ms each); a full-screen
   `lcd_clear_rect()` blocks ~43 ms. Bulk drawing goes through the glyph queue,
   and big clears go in bands. Both rules were learned the hard way on
   2026-09-03. → [display.md](docs/display.md)
 - ⚠️ **Never edit an installed LaunchAgent plist with PlistBuddy** — it silently
-  strips the XML comments. Edit `hostagent/*.plist.in` and re-run the installer.
+  strips the XML comments. Edit `hostagent/*.plist.in` and re-run the installer;
+  the daemon's plist is generated whole by `ak820 install`, so re-run that.
 - ⚠️ **Multiple sessions**: coordinate via SendMessage, claim files, flash only
   provenance-named artifacts. → [hardware.md](docs/hardware.md)
 - ⚠️ **SPI0's `DMACNT` never counts down.** It holds the programmed length;
@@ -348,10 +377,12 @@ blanking, flush lock), `quantum/rgb_matrix/rgb_matrix.c` (flush-allowed hook),
 `platforms/chibios/.../wear_leveling_efl.c` (pre-write hook) — all
 weak-hooked/no-op for other boards.
 
-**Windows daemon (in progress)** — `ak820-agent/`, Rust, one direct dependency
-(`windows` pinned `=0.62.2`; the blocking async spelling is `.join()`, not
-`.get()`). Two binaries because a PE has one subsystem: `ak820-agent.exe` is
-windows-subsystem so it can never flash a console, `ak820.exe` is a console CLI.
+**Host daemon** — `ak820-agent/`, Rust, for Windows and macOS. One direct
+dependency, Windows-only (`windows` pinned `=0.62.2`; the blocking async
+spelling is `.join()`, not `.get()`); none on macOS, where the IOKit and JSON
+code is hand-rolled. Two binaries because a PE has one subsystem:
+`ak820-agent.exe` is windows-subsystem so it can never flash a console,
+`ak820.exe` is a console CLI.
 Built test-first; `cargo test` from that directory (305 tests + 9 integration).
 `cargo build --release` gives static-CRT binaries (`.cargo/config.toml`); a
 `v*` tag builds the Releases zip in CI (`.github/workflows/release.yml`).
@@ -398,10 +429,11 @@ generator checks the table against `ak820text.py`'s own `to_ascii` across all
 1,112,064 scalar values and refuses to write if they disagree -- so a Python
 carrying a different Unicode version fails loudly instead of drifting.
 
-**Host tools** — `hostagent/` (`ak820text.py`, `nowplaying-macos.sh`,
-`ak820keymap.py`, `ak820health.py`, `ak820-timekeeper.py`, the LaunchAgent
-templates and `install-agents.sh`); `scripts/` (soak, bt_faults, consolelog,
-check_via_sync); `time-util-ak820pro/` (`ak820ctl`, `assets/mkraw.py`,
+**Host tools** — `hostagent/` (`ak820text.py`, `ak820keymap.py`,
+`ak820health.py`, `ak820lighting.py`, `ak820battery.py`; and the older agents
+the daemon replaced, kept as the fallback: `nowplaying-macos.sh`,
+`ak820-timekeeper.py`, the LaunchAgent templates and `install-agents.sh`);
+`scripts/` (soak, bt_faults, consolelog, check_via_sync); `time-util-ak820pro/` (`ak820ctl`, `assets/mkraw.py`,
 `mkanim.py`); `SonixFlasherC/` (flasher, libusb build).
 
 **Reference** — `ak820pro-builds/` (build artifacts in `out/`, the chibios patch

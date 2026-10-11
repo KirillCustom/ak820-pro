@@ -4,7 +4,11 @@
 
 .DESCRIPTION
     The Windows counterpart of install-agents.sh (which installs macOS
-    LaunchAgents). Two tasks, both running as the logged-in user:
+    LaunchAgents). These are the fallback: since 2026-09-06 the Rust daemon
+    (ak820-agent; `ak820 install --clock`, task \ak820pro\AK820Pro-agent) does
+    both jobs, and this installer refuses while it owns the clock.
+
+    Two tasks, both running as the logged-in user:
 
       timekeeper   syncs the board clock; every ~5 min, on wake, and whenever
                    the board re-enumerates. Logs to

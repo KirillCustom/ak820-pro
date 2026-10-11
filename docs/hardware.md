@@ -169,7 +169,15 @@ instead of failing through — do not probe it by trying one first).
 
 ### The host agents on Windows (Scheduled Tasks)
 
-Ported and verified 2026-09-05. Installed with PowerShell, not the MSYS2 shell:
+**Since 2026-09-06 the host agent on Windows is the Rust daemon**,
+`ak820-agent` (`ak820 install --clock`, one Scheduled Task
+`\ak820pro\AK820Pro-agent`, log and status file in `%LOCALAPPDATA%\ak820pro\`;
+see the README and `plans/AK820-AGENT-PLAN.md`). It needs neither venv nor
+`ak820ctl`. What follows is the Python agents it replaced, kept as the
+fallback; the installer below refuses while the daemon owns the clock.
+
+The Python agents were ported and verified 2026-09-05. Installed with
+PowerShell, not the MSYS2 shell:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File hostagent\install-agents-windows.ps1
@@ -229,12 +237,15 @@ silently never arrive. `run_ctl()` exports one agreed `HOME` for both.
 Windows has a real OS-level media API — `GlobalSystemMediaTransportControlsSessionManager`
 ("SMTC", Win10 1809+), the same source the volume-key flyout reads. Apps
 register a session and it is read uniformly, so there is **no per-app code**,
-unlike the mac agent's AppleScript for Spotify and Music. Browsers register
-sessions, so YouTube and web players work too.
+unlike the old bash agent's AppleScript for Spotify and Music on the Mac.
+Browsers register sessions, so YouTube and web players work too. The daemon
+and the Python agent read the same API.
 
-`--probe` lists every session and is the answer to "why doesn't X show up?":
+`ak820 probe` lists every session and is the answer to "why doesn't X show
+up?" (the Python agent's equivalent is `--probe`):
 
 ```
+ak820 probe
 venv-win\Scripts\python.exe hostagent\nowplaying-windows.py --probe
 ```
 
@@ -263,8 +274,9 @@ agent running nothing ever corrects that guess, so one media-key press leaves
 it backwards until something re-asserts the truth. The agent does that within
 one poll (3 s), and unconditionally every 30 s.
 
-**The board is only as good as this PC's clock.** `ak820ctl clock` lands the
-board within a few ms of the *host*; Windows' own w32time defaults to a
+**The board is only as good as this PC's clock.** A sync (the daemon's, or
+`ak820ctl clock`'s) lands the board within a few ms of the *host*; Windows'
+own w32time defaults to a
 32768 s (~9 h) poll and was measured 20 ms off NTP here. Check with
 `w32tm /stripchart /computer:time.windows.com /samples:5 /dataonly`, and
 measure the board itself with `hostagent/clock-phase.py`, which reports the
@@ -457,6 +469,7 @@ The suspected firmware change A/B'd perfectly clean afterwards.
 ```sh
 pgrep -fl "qmk console|ak820ctl|clock-phase"   # leftover pollers?
 launchctl list | grep ak820                    # agents running?
+ak820 status                                   # the daemon, and the older agents (either OS)
 ```
 
 Kill everything, then retest. Process lessons, both self-inflicted: never

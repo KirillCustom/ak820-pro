@@ -1,6 +1,22 @@
 # ak820-agent — one daemon for Windows and macOS — plan
 
-**Status: drafted 2026-09-10, reviewed the same day, finalized 2026-09-16, nothing built.** This plan turns the Windows-only
+**Status: drafted 2026-09-10, reviewed the same day, finalized 2026-09-16;
+built the same day and running on JD's Mac since, not released.** The daemon
+owns now-playing (Phase 4a, installed 2026-09-16 20:01) and the clock (Phase
+4b, `d548e3f`, installed 21:48) as the LaunchAgent `com.jdlien.ak820pro.agent`;
+the bash now-playing agent and the Python timekeeper are disabled there.
+Phases 0, 2 and 5a are met. 4a and 4b are installed and running, with
+logout/login and a real sleep still owed; 1 and 3 are built with hardware
+checks still owed; S1b's live half and 5b are open. Each row in
+[Phases](#phases-with-gates-that-can-actually-fail) names what it owes.
+**Phase 6 stops before Apple:** `scripts/package-macos.sh` (`e77cd15`) builds
+and signs a `.dmg`, but nothing is notarized, tagged or published; the
+Releases hold only the Windows v0.1.0/v0.1.1. The helper is vendored in `ak820-agent/helper/` (`f5121e5`), and
+the per-exchange memory growth found afterwards is fixed (`bf7b7f3`,
+[`AK820-AGENT-MACOS-LEAK-PLAN.md`](AK820-AGENT-MACOS-LEAK-PLAN.md)). Audits:
+[Phase audits](#phase-audits).
+
+This plan turns the Windows-only
 `ak820-agent/` crate into a cross-platform daemon that replaces the macOS
 Python/bash agents as well, closes one named macOS defect (G-B), and ships signed
 and notarized. Every open question that gates work is now decided — see

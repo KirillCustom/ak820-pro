@@ -5,9 +5,10 @@
 //! Windows CLI's (and so the Python's and `ak820ctl`'s) byte for byte:
 //! `ak820 info` against `ak820ctl info` is the phase gate.
 //!
-//! ⚠️ On macOS the Python agents open the interface with hidapi, which
-//! **seizes** it; while one of them is mid-push these commands see
-//! `kIOReturnExclusiveAccess`, reported as busy. Retry, or pause the agents.
+//! ⚠️ On macOS hidapi clients (`ak820ctl`, the Python tools and the older
+//! Python/bash agents) **seize** the interface; while one of them holds it
+//! these commands see `kIOReturnExclusiveAccess`, reported as busy. Retry, or
+//! stop that client.
 //!
 //! ```text
 //! ak820 --version
@@ -57,7 +58,7 @@ pub fn main() -> ExitCode {
         ["status"] => super::install::status(),
         _ => {
             eprintln!("usage: ak820 --version | list | info | health [--crash] [--stalls] [--rows] [--isr] [--json] [--raw] | lighting | selftest | clock [--raw] [--anyway] | probe [--seconds N] [--applescript] [--dylib PATH] | install [--in-place] [--clock] [--dylib PATH] | uninstall [--keep-bash-off] [--keep-timekeeper-off] | status");
-            eprintln!("(macOS: read-only commands only so far; see plans/AK820-AGENT-CROSSPLATFORM-PLAN.md)");
+            eprintln!("(install, uninstall and status change LaunchAgents and touch no board; every other command only reads the board)");
             return ExitCode::from(2);
         }
     };

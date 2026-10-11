@@ -244,7 +244,7 @@ RAM log survives).
 
 The clock is for **time-lapse video**, which stamps no time on its frames
 (JD's Pixel 8 records at 5×-120×): every frame dates itself, to the second,
-from the clock the timekeeper keeps right.
+from the clock the host agent keeps right.
 
 **Seven-segment digits drawn as rectangles**, 26×48 px with 6 px segments: no
 font asset is big enough (the clock's is cropped to 15×22 and holds only `0-9:`).
@@ -407,15 +407,21 @@ are harmless; the producer polls every 3 s.
 - No scrolling, deliberately: a marquee would keep the flash→LCD DMA busy at
   10 Hz — the same resource the eeconfig-write freeze was about.
 
-**Host side** (`hostagent/`, outside the QMK clone): `ak820text.py` (dumb
-pipe), `nowplaying-macos.sh` (polls Spotify/Music every 3 s; checks
-`is running` first so it doesn't launch the app). Installed as a LaunchAgent
-(`com.jdlien.ak820pro.nowplaying.plist`, KeepAlive + ThrottleInterval 30; log
-`~/Library/Logs/ak820pro-nowplaying.log`). AppleScript needs Automation
-permission — under launchd the consent prompt may not surface and queries
-silently return empty. AppleScript, not MediaRemote: app-specific (no
-browser/YouTube media) but stable across OS versions; a Windows producer
-could use SMTC and send the same bytes.
+**Host side** (outside the QMK clone): the producer is the Rust daemon
+`ak820-agent` on both platforms, polling every 3 s and re-pushing unchanged
+text every 30 s. On Windows it reads SMTC, the OS media-session API, so
+browsers appear too. On macOS (JD's Mac since 2026-09-16) it reads
+MediaRemote, macOS's private now-playing framework, through a helper dylib
+hosted by `/usr/bin/perl` (`ak820-agent/helper/`), so browsers appear there
+too; it falls back to AppleScript for Music and Spotify when MediaRemote
+reports nothing for a running player. Its text packets are
+byte-identical to `hostagent/ak820text.py`'s (`scripts/gen_ascii_fold.py`
+checks the folding). The older producers stay in `hostagent/` as the fallback:
+`ak820text.py` (dumb pipe) driven by `nowplaying-macos.sh` (AppleScript
+against Spotify/Music only, LaunchAgent `com.jdlien.ak820pro.nowplaying`, log
+`~/Library/Logs/ak820pro-nowplaying.log`; under launchd the Automation consent
+prompt may not surface and queries silently return empty) or by
+`nowplaying-windows.py` (SMTC).
 
 ## Clock band format: 24h / 12h / off / date (`Fn`+`C`, persisted)
 

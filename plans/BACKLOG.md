@@ -216,8 +216,8 @@ probably applied even though VIA reported an error, and VIA's displayed state
 may then disagree with the board. Read values back (lighting is
 `[0x08, 3, 1..4]`) rather than trusting the UI afterwards.
 
-**Workaround now:** stop the host agents before a VIA session —
-`hostagent/install-agents-windows.ps1 -Status` shows them.
+**Workaround now:** stop the host agents before a VIA session — `ak820
+status` shows the daemon and the older Python/bash agents, on either OS.
 
 **Fix, proposed for `ak820-agent` phase 4** and recorded in
 [AK820-AGENT-PLAN.md](AK820-AGENT-PLAN.md#️-via-coexistence-the-broadcast-is-bidirectional-and-via-is-the-victim):
@@ -386,8 +386,14 @@ the reference implementation and the rollback.
 
 Not a defect today — the timekeeper shells out per transaction, so it holds the
 interface only for the length of one call, and `install-agents.sh` refuses to
-install a second clock agent. Worth remembering before adding any third host
-tool that polls: the interface is exclusive, and the failure mode looks like a
+install a second clock agent. Neither runs unattended now: the Rust daemon
+owns the clock and runs its own transaction (on Windows since 2026-09-06, on
+the Mac since 2026-09-16), so the timekeeper is the fallback and `ak820ctl`
+runs by hand. Worth remembering before adding any third host tool that
+polls: on macOS the interface is exclusive to hidapi (see "macOS raw HID is
+EXCLUSIVE" in
+[AK820-AGENT-CROSSPLATFORM-PLAN.md](AK820-AGENT-CROSSPLATFORM-PLAN.md)), on
+Windows replies reach every open handle, and either failure looks like a
 firmware fault rather than a host one.
 
 ## Status-band text uses synchronous per-glyph blits — measured, NOT a defect
@@ -631,16 +637,16 @@ the same capture through `ak820ctl clock --read` on the pinned C.
 
 ## nowplaying-macos.sh: the measured cost of the poll loop
 
-**The macOS port is PLANNED AND REVIEWED — see
-[`AK820-AGENT-CROSSPLATFORM-PLAN.md`](AK820-AGENT-CROSSPLATFORM-PLAN.md)**
-(drafted 2026-09-10, reviewed, dispositioned in 9f5f7d3, nothing built). That
-plan already covers MediaRemote in much more depth than anything here, including
-the nuance that it is *not* purely event-driven — it carries a heartbeat, and the
-plan explicitly forbids claiming otherwise.
+**The macOS port is BUILT and replaced this agent on JD's Mac on 2026-09-16
+— see [`AK820-AGENT-CROSSPLATFORM-PLAN.md`](AK820-AGENT-CROSSPLATFORM-PLAN.md)**
+(drafted 2026-09-10, reviewed, dispositioned in 9f5f7d3; the bash agent is
+disabled there and stays as the fallback). That plan covers MediaRemote in much
+more depth than anything here, including the nuance that it is *not* purely
+event-driven — it carries a heartbeat, and the plan explicitly forbids claiming
+otherwise; its Phase 5a has the before and after.
 
-This entry exists only for the one thing the plan does not yet quantify: **what
-the current bash agent actually costs.** Verified against the script
-2026-09-16:
+This entry recorded the one thing the plan did not yet quantify: **what the
+bash agent actually costs.** Verified against the script 2026-09-16:
 
 - `INTERVAL` is 3 s (`nowplaying-macos.sh:40`), and each field is its own
   `osascript`: `running` per app (twice), `player state`, then while playing

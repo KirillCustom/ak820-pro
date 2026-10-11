@@ -2,6 +2,11 @@
 """AK820 Pro timekeeper agent (clock-sync plan 3.8). Replaces the 3-hourly
 ak820-clocksync.sh job.
 
+LEGACY: the Rust daemon (ak820-agent, `ak820 install --clock`) has kept the
+clock on Windows since 2026-09-06 and on JD's Mac since 2026-09-16, and stops
+this agent when it takes over. Kept as the fallback and as the oracle the
+daemon's scheduler and learner were replayed against.
+
 Loop every 15 s:
   * sync when the raw-HID interface (re)appears (a slider flip reboots the
     board; a replug too);

@@ -2,7 +2,7 @@
 name = "ak820-agent"
 version = "0.1.1"
 edition = "2021"
-description = "Clock sync and now-playing for the AJAZZ AK820 Pro LCD (Windows; macOS in progress)"
+description = "Clock sync and now-playing for the AJAZZ AK820 Pro LCD (Windows and macOS)"
 
 [lib]
 name = "ak820_agent"

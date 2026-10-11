@@ -6,7 +6,7 @@
 //! |---|---|
 //! | [`AGENT`] | this daemon |
 //! | [`NOWPLAYING`] | `nowplaying-macos.sh`, which the daemon replaces |
-//! | [`TIMEKEEPER`] | `ak820-timekeeper.py`, which keeps the clock until Phase 4b |
+//! | [`TIMEKEEPER`] | `ak820-timekeeper.py`, which `install --clock` retires (Phase 4b) |
 //!
 //! ⚠️ **Retiring the bash agent is `bootout` plus `disable`** (plan, Phase 4a,
 //! review finding 5). `bootout` alone leaves the plist, and `RunAtLoad` brings

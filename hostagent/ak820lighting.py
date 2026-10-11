@@ -87,7 +87,7 @@ def xfer(h, payload, read_ms=500, overall_s=5.0):
             f"no reply to {' '.join(f'{b:02X}' for b in want)} in {overall_s:g}s, "
             f"though {others} report(s) for other requests arrived.\n"
             "  Something else is talking to the board -- close usevia.app, or pause\n"
-            "  the host agents (hostagent/install-agents-windows.ps1 -Status).")
+            "  the host agents (`ak820 status` shows them).")
     raise SystemExit(
         "no reply from the board.\n"
         "  The usual cause is BLUETOOTH MODE, not a busy interface -- raw HID\n"

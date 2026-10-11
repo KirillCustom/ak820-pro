@@ -16,6 +16,9 @@
 # shared lock and exit, and KeepAlive would restart it every 30 s. The way back
 # to the bash agent is `ak820 uninstall`, which does it.
 #
+# These are the fallback. The Rust daemon (ak820-agent, `ak820 install --clock`)
+# replaced both on JD's Mac on 2026-09-16; see README.md.
+#
 # Installs TWO agents:
 #   timekeeper  -- syncs the board clock every 5 min, on re-enumeration (a
 #                  slider flip or replug reboots the board) and on wake, and

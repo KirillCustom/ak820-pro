@@ -4,6 +4,11 @@ Status: **PHASES 0–2 COMPLETE AND AUDITED; 3a (REPLAY) MET, RE-MET WITH STATE 
 against [review-codex-ak820d-2026-09-05.md](review-codex-ak820d-2026-09-05.md)
 (gpt-6-astra, xhigh), then built and gated phase by phase.
 
+**This plan is the Windows record.** The same crate has also run on JD's Mac
+since 2026-09-16, owning now-playing and the clock there, but no macOS build is
+released; that work, its status and what it still owes are in
+[AK820-AGENT-CROSSPLATFORM-PLAN.md](AK820-AGENT-CROSSPLATFORM-PLAN.md).
+
 Crate at `ak820-agent/`, **305 unit tests, a 2,309-case folding fixture, a 4-test replay of the timekeeper's log and a 2-test health capture**;
 `cargo test` from that directory.
 

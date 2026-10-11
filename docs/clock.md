@@ -1,4 +1,4 @@
-# The clock: two RTCs, sub-second sync, the divider trim, and the timekeeper
+# The clock: two RTCs, sub-second sync, the divider trim, and host sync
 
 Code: `rtc/rtc.c`, `rtc/rtc_lld` additions via the `rtc_lld` ChibiOS patch.
 
@@ -36,7 +36,7 @@ discipline + host time sync; the PCF becomes write-only), **`PCF_LEGACY`**
   period — a half step when the delta's sign disagrees with the previous
   window's (noise, or the onset of a move), a **full step once two windows
   agree** (drift: the ILRC wandering, followed within one window) — corrected
-  by the SOF bias the timekeeper **learns from the sync residual** (see "The
+  by the SOF bias the host **learns from the sync residual** (see "The
   5-minute sawtooth"; the bias is load-bearing, ~47 ms per 10 min uncorrected;
   cached in `~/.ak820ctl-cap`). Firmware `8608c4f680`, 2026-09-04: a
   fresh-seed clock went 33600 → 33520 in **90 s** and then held ±2 ticks; the
@@ -79,7 +79,7 @@ register (the ISR applies it).
 **Standalone accuracy**: ±2 s is the design bound (the snap threshold);
 ~1 s is the floor — the PCF exposes whole seconds and its own crystal
 drifts ~58 ppm (~5 s/day, measured; the trim faithfully reproduces the
-reference's error and cannot help). With the timekeeper running, none of
+reference's error and cannot help). With a host agent syncing it, none of
 this is the operative bound.
 
 **Three trim traps, all hit during development — do not re-derive:**
@@ -110,15 +110,30 @@ early on); standalone, the legacy trim gets inside the 2 s deadband in
 window halves the remaining error — which is exactly why the SOF loop
 exists). **Designed, not a fault.**
 
-## The timekeeper (host side)
+## Host sync (the host side)
 
-`hostagent/ak820-timekeeper.py` + `com.jdlien.ak820pro.timekeeper`
-LaunchAgent: syncs on device enumeration, on wake, and every 5 min; logs to
-`~/Library/Logs/ak820pro-timekeeper.log`. It replaced the retired 3-hour
-`ak820-clocksync.sh` agent (2026-09-01). `ak820ctl clock` is now an
-NTP-style calibrated-lead sync (calibration cache `~/.ak820ctl-cap`:
-`proto lead b_ppm`); `hostagent/rtc_phase0.py` reads the `HC_RTC` status
-pages 1-4 (sync/frequency/slew/PCF-writer state).
+**The Rust daemon `ak820-agent` keeps the clock** when installed with `ak820
+install --clock`: on Windows since 2026-09-06 (Scheduled Task
+`\ak820pro\AK820Pro-agent`, log `%LOCALAPPDATA%\ak820pro\ak820-agent.log`), on
+JD's Mac since 2026-09-16 (LaunchAgent `com.jdlien.ak820pro.agent`, log
+`~/Library/Logs/ak820pro/ak820-agent.log`). It syncs on device enumeration, on
+wake, and every 5 min (3 min while the last residual exceeded 60 ms). Its
+transaction, scheduler and bias learner are ports of `ak820ctl`'s and the
+Python timekeeper's, checked against both
+(`plans/AK820-AGENT-CLOCK-PARITY.md`, `plans/AK820-AGENT-CLOCK-TRANSACTION.md`),
+and it shares `ak820ctl`'s calibration cache, `~/.ak820ctl-cap` (`proto lead
+b_ppm`; under `%USERPROFILE%` on Windows). Exactly one process may own the
+clock; the daemon refuses `--clock` while the timekeeper is still set to run.
+
+The **Python timekeeper** it replaced, `hostagent/ak820-timekeeper.py`, stays
+as the fallback and the oracle (`com.jdlien.ak820pro.timekeeper` LaunchAgent on
+macOS, `\ak820pro\AK820Pro-timekeeper` Scheduled Task on Windows; log
+`~/Library/Logs/ak820pro-timekeeper.log` or
+`%LOCALAPPDATA%\ak820pro\ak820pro-timekeeper.log`). It shells out to
+`ak820ctl clock`, an NTP-style calibrated-lead sync, per transaction. It
+replaced the retired 3-hour `ak820-clocksync.sh` agent (2026-09-01).
+`hostagent/rtc_phase0.py` reads the `HC_RTC` status pages 1-4
+(sync/frequency/slew/PCF-writer state).
 
 Host sync requires the USB cable (the HID interface has to exist) but
 **the slider position does not matter** — raw-HID replies return over USB

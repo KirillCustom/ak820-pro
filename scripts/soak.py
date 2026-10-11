@@ -34,7 +34,11 @@ wired soak generates no BT traffic; judge those against the 0.042/frame
 baseline in a BT session. On failure the tail of the console log is printed
 if consolelog.sh has been writing one.
 
-Wired mode only (replies). Stop the nowplaying agent first:
+Wired mode only (replies). Stop the host agent first. On the Mac that is the
+Rust daemon (it owns the clock too, so syncs pause while it is out):
+  launchctl bootout gui/$(id -u)/com.jdlien.ak820pro.agent
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jdlien.ak820pro.agent.plist   # afterwards
+or, if the older bash agent is the one installed:
   launchctl unload ~/Library/LaunchAgents/com.jdlien.ak820pro.nowplaying.plist
 Usage: soak.py [--seconds 300]
 """

@@ -1,6 +1,7 @@
 //! The helper's messages, typed.
 //!
-//! Protocol source: `nowplaying-mediaremote.m` in ../streamdeck-now-playing.
+//! Protocol source: `nowplaying-mediaremote.m`, vendored in `ak820-agent/helper/`
+//! from ../streamdeck-now-playing (pinned in `helper/UPSTREAM`).
 //! ⚠️ **Built from captured output, not the header comment.** The header lists
 //! `now`'s fields without `playing` or `elapsedAt`, and the helper sends both
 //! (plan, Settled 2).

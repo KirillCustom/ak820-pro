@@ -128,26 +128,87 @@ prints the same version banner — then fails to flash on Tahoe.
 
 ## The host agents (clock sync + now playing)
 
-Two small background agents, on both macOS and Windows:
+One small native daemon, `ak820-agent` (Rust, in [`ak820-agent/`](ak820-agent/)),
+does both jobs, on Windows and on macOS:
 
-- **timekeeper** — keeps the LCD clock right. Syncs every 5 minutes, on wake,
+- **clock sync** — keeps the LCD clock right. Syncs every 5 minutes, on wake,
   and whenever the board re-enumerates (a slider flip or replug reboots it),
-  measuring the USB SOF bias so a sync lands within a few milliseconds.
-- **nowplaying** — pushes the currently playing track to the LCD: artist on the
+  learning the USB SOF bias so a sync lands within a few milliseconds.
+- **now playing** — pushes the currently playing track to the LCD: artist on the
   top line, title below, a play/pause icon, and a progress timer where the
   player reports one (see the Windows notes — foobar2000 does not).
 
-Run `./setup.sh` first — both agents live in the repo's venv.
+It replaced the older Python timekeeper and Python/bash now-playing agents in
+[`hostagent/`](hostagent/), which stay in the repo as the fallback; `ak820
+install` stops them and `ak820 uninstall` can put them back.
 
-> **Close usevia.app before relying on the agents, and vice versa.** Not because
-> the interface is exclusive — measured 2026-09-05, two processes *can* open and
-> write to it at once. The problem is replies: Windows delivers HID input
-> reports to **every open handle**, so with two clients talking, each can be
-> handed the other's reply. The agents log this as a failed or garbled push.
-> (Tested between two hidapi clients; VIA itself was not tested directly.)
+> **Close usevia.app before relying on the agents, and vice versa.** On
+> Windows this is not because the interface is exclusive — measured 2026-09-05,
+> two processes *can* open and write to it at once. The problem is replies:
+> Windows delivers HID input reports to **every open handle**, so with two
+> clients talking, each can be handed the other's reply. The agents log this as
+> a failed or garbled push. (Tested between two hidapi clients; VIA itself was
+> not tested directly.) **macOS differs:** a hidapi client (`ak820ctl`, the
+> Python tools) seizes the interface, and anything else's open or write fails
+> until it closes — see "macOS raw HID is EXCLUSIVE" in
+> [`plans/AK820-AGENT-CROSSPLATFORM-PLAN.md`](plans/AK820-AGENT-CROSSPLATFORM-PLAN.md).
 > Contention here has twice been mistaken for a firmware fault.
 
 ### macOS
+
+The daemon has run on JD's Mac since 2026-09-16, but **no macOS build is
+published yet**: the Releases hold the Windows zip and the firmware, and the
+signed, notarized disk image is not done. Build it from this checkout instead
+(Rust needed):
+
+```sh
+(cd ak820-agent && cargo build --release)
+scripts/build-helper-macos.sh                     # the MediaRemote helper, beside the binaries
+ak820-agent/target/release/ak820 install --clock  # copies them out, registers a LaunchAgent, starts it
+```
+
+`install` copies `ak820`, `ak820-agent` and `nowplaying-mediaremote.dylib` to
+`~/Library/Application Support/ak820pro/bin` and registers a LaunchAgent
+(`com.jdlien.ak820pro.agent`) that starts at every login. `--clock` makes it
+sync the clock as well as show the track. If the older agents below are
+installed, it stops and disables them: the daemon replaces both. JD signs his
+build with `scripts/sign-agent-macos.sh` (it needs a Developer ID); `install`
+warns when the daemon is unsigned, because macOS ties Automation consent to the
+signature and would ask again after every rebuild.
+[`ak820-agent/INSTALL-macos.txt`](ak820-agent/INSTALL-macos.txt) is the
+user-facing description.
+
+```sh
+~/Library/Application\ Support/ak820pro/bin/ak820 status     # running? last sync and push, health counters
+~/Library/Application\ Support/ak820pro/bin/ak820 probe      # what macOS says is playing; touches no keyboard
+~/Library/Application\ Support/ak820pro/bin/ak820 uninstall  # remove it, and start the older agents again
+```
+
+`uninstall` re-enables the older agents unless given `--keep-bash-off` /
+`--keep-timekeeper-off`. Log and status file:
+
+```
+~/Library/Logs/ak820pro/ak820-agent.log
+~/Library/Application Support/ak820pro/ak820-agent.status
+```
+
+Now playing comes from macOS's own now-playing service (MediaRemote), so
+browsers show up too. MediaRemote is a private framework, reached through a
+small helper hosted by `/usr/bin/perl` (source in `ak820-agent/helper/`); a
+future macOS may close that off, and the daemon then says so in its log and
+status while the clock keeps working. Normally nothing asks for permission. If
+MediaRemote reports nothing while Music or Spotify is open, the daemon asks the
+player directly over AppleScript (at most once a minute), and macOS shows
+"ak820-agent wants access to control Music". Allow it; a refusal is logged and
+shown in `ak820 status`.
+
+#### The older agents (fallback)
+
+The Python timekeeper and the bash now-playing agent, which the daemon
+replaced. They live in the repo's venv, so run `./setup.sh` first.
+`install-agents.sh` refuses to start either one beside a daemon that owns its
+job; `ak820 uninstall` is the way back (or a plain `ak820 install`, without
+`--clock`, for the clock alone).
 
 ```sh
 hostagent/install-agents.sh              # install and start
@@ -226,16 +287,16 @@ now-playing agent starts, finds the daemon holding its mutex, and exits — so
 the two never write to the board at once. Logs, all in one place:
 
 ```
-%LOCALAPPDATA%\ak820pro\ak820-agent.log          the daemon
+%LOCALAPPDATA%\ak820pro\ak820-agent.log          the daemon, its clock syncs included
 %LOCALAPPDATA%\ak820pro\ak820-agent.status       what it last did (ak820 status prints it)
-%LOCALAPPDATA%\ak820pro\ak820pro-timekeeper.log  the clock
+%LOCALAPPDATA%\ak820pro\ak820pro-timekeeper.log  the Python timekeeper, when it has the clock
 ```
 
 ### Checking it worked
 
-Both platforms: `--status` / `-Status` (and `ak820 status` on Windows) should
-show each agent running, and the timekeeper log should show a sync within a
-minute or so, like
+Both platforms: `ak820 status` should show the daemon running, and its log
+(`ak820-agent.log`, paths above; the timekeeper's log instead if the Python
+timekeeper has the clock) should show a sync within a minute or so, like
 
 ```
 sync (enumerated): clock set (sub-second): before -4.3 ms, after -4.0 ms, ...
@@ -277,11 +338,15 @@ to hand it the definition once.
   Safari do not implement.
 - **Plug the USB cable in.** The slider position does not matter — raw-HID
   replies come back over USB in every mode.
-- If you installed the host agents, **stop them first**. Not because the
-  interface is exclusive — it is not — but because Windows hands every open
-  handle every reply, so two clients talking at once can each receive the
-  other's. Symptoms are VIA misbehaving, or the agents logging failed pushes. See [the host agents](#the-host-agents-clock-sync--now-playing) for
-  the `--uninstall` / `-Uninstall` commands, or just stop the tasks temporarily.
+- If you installed the host agents, **stop them first**. On Windows that is
+  not because the interface is exclusive — it is not there — but because
+  Windows hands every open handle every reply, so two clients talking at once
+  can each receive the other's. Symptoms are VIA misbehaving, or the agents
+  logging failed pushes. `ak820 uninstall` stops the daemon and
+  `ak820 install --clock` puts it back (on macOS, `uninstall --keep-bash-off
+  --keep-timekeeper-off` keeps the older agents from starting in its place);
+  see [the host agents](#the-host-agents-clock-sync--now-playing), which also
+  has the older agents' `--uninstall` / `-Uninstall` commands.
 
 **Where the definition file is**
 
@@ -329,8 +394,8 @@ picks which base layer is active, so a per-key remap usually needs doing on
 lives in the board's EEPROM and wins over what was compiled in. Two consequences
 worth knowing:
 
-- A flash erases it. `flash.sh` backs the keymap up and restores it around the
-  flash, but **RGB settings are not restored** — see the flashing notes above.
+- A flash erases it. `flash.sh` backs up and restores both the keymap and the
+  RGB lighting around the flash — see the flashing notes above.
 - Back it up yourself after a remap you care about:
 
   ```sh
@@ -361,9 +426,9 @@ it to take effect.
 
 | Path | What |
 |---|---|
-| [`docs/`](docs/) | The six topic docs — wireless, display, fonts/assets, clock, LEDs, hardware. Read the one for what you are touching. |
-| [`hostagent/`](hostagent/) | Clock sync, now-playing, keymap backup, health counters |
-| [`ak820-agent/`](ak820-agent/) | **In progress** — Rust rewrite of the two Windows host agents as one daemon. The HID transport, the now-playing half and the clock *read* are done and audited; the clock *transaction*, the daemon and the installer are not. **Not yet shipped — use `hostagent/`** |
+| [`docs/`](docs/) | The topic docs — wireless, display, fonts/assets, clock, LEDs, hardware, battery, the test bench. Read the one for what you are touching. |
+| [`hostagent/`](hostagent/) | Host tools — keymap and lighting backup, health counters, battery log — and the older Python/bash clock-sync and now-playing agents, kept as the fallback |
+| [`ak820-agent/`](ak820-agent/) | The host agent: one Rust daemon for clock sync and now playing, on Windows (released, v0.1.1) and macOS (running on JD's Mac, not yet released) |
 | [`assets-src/`](assets-src/) | Font atlas and splash generators |
 | [`scripts/`](scripts/) | Soak harness, BT fault injection, console log, VIA sync check |
 | [`plans/`](plans/) | Live: known defects, and designed-but-unbuilt features |

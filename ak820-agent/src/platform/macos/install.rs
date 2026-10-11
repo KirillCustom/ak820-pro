@@ -123,7 +123,7 @@ pub fn install(flags: &[&str]) -> Result<(), String> {
         .unwrap_or_else(|| here_dir.join(media::DYLIB));
     let dylib_src = dylib_src.canonicalize().map_err(|e| {
         format!(
-            "the MediaRemote helper {}: {e}; pass --dylib PATH (build it from ../streamdeck-now-playing)",
+            "the MediaRemote helper {}: {e}; pass --dylib PATH (build it with scripts/build-helper-macos.sh)",
             dylib_src.display()
         )
     })?;

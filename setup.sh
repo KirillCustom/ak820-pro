@@ -11,9 +11,10 @@
 # the dependency clones' own git history.
 #
 # Scope: macOS (tested on Tahoe 26.x, Apple Silicon and Intel) and Windows
-# (tested on 11 Pro 26200, via the MSYS2 MinGW 64-bit shell). The host agents
-# are still macOS-only -- they are LaunchAgents -- but the toolchain, venv,
-# pinned clones, flasher and ak820ctl are set up on both.
+# (tested on 11 Pro 26200, via the MSYS2 MinGW 64-bit shell). The toolchain,
+# venv, pinned clones, flasher and ak820ctl are set up on both. The host agent
+# itself is the Rust daemon in ak820-agent/, built and installed separately
+# (README.md); the venvs here also run the older Python agents, its fallback.
 #
 # ⚠️ On Windows, run this from the MSYS2 MinGW 64-bit shell, not Git Bash or
 # PowerShell. qmk_cli refuses to run anywhere else, and Git Bash has no make.
@@ -405,20 +406,23 @@ EOF
 
   Windows notes:
     - Run build.sh / flash.sh from THIS shell (MSYS2 MinGW 64-bit) only.
-    - Host agents (clock sync + now-playing) install as Scheduled Tasks, and
-      that installer is PowerShell, not this shell:
+    - The host agent (clock sync + now-playing) is the Rust daemon: take the
+      zip from the Releases page (or cargo build --release in ak820-agent/)
+      and, from PowerShell or cmd, not elevated, not this shell:
 
-        powershell -ExecutionPolicy Bypass -File hostagent\install-agents-windows.ps1
-                                                            [-Status] [-Uninstall]
+        .\ak820 install --clock
 
       Which apps the now-playing agent can see is a property of Windows, not of
-      the agent -- ask it:
-        venv-win\Scripts\python.exe hostagent\nowplaying-windows.py --probe
+      the agent -- ask it:  ak820 probe
+      The older Python agents (the fallback) install with
+        powershell -ExecutionPolicy Bypass -File hostagent\install-agents-windows.ps1
 EOF
   else
     cat <<'EOF'
 
-  Host agents (clock sync + now-playing on the LCD):
+  Host agent (clock sync + now-playing on the LCD): the Rust daemon, built
+  from ak820-agent/ and installed with `ak820 install --clock` -- see README.md.
+  The older agents (the fallback):
 
     hostagent/install-agents.sh
 EOF

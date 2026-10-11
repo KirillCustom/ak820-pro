@@ -1,6 +1,10 @@
 #!/bin/bash
 # Poll macOS media state and push it to the AK820 Pro LCD.
 #
+# LEGACY: since 2026-09-16 the Rust daemon (ak820-agent, `ak820 install`) does
+# this on JD's Mac, and its install disables this agent's LaunchAgent; `ak820
+# uninstall` turns it back on. Kept as the fallback.
+#
 # Uses AppleScript against Spotify/Music rather than the private MediaRemote
 # framework: MediaRemote would also catch browser media (YouTube), but Apple has
 # progressively restricted it and third-party wrappers break between OS

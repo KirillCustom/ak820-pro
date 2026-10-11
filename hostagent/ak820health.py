@@ -78,11 +78,13 @@ SCOPES = ["ch582", "battery", "display_hk", "blit_pump", "rtc_task", "rtc_fast",
 
 
 def open_device(tries=12, delay=0.25):
-    """The raw-HID interface is EXCLUSIVE, and the host agents open it briefly
-    every few seconds (timekeeper shells out to ak820ctl; nowplaying opens per
-    push). A single attempt therefore fails often enough to make a passive
-    measurement impractical -- retry across the gaps instead of demanding the
-    agents be stopped, which would itself change what is being measured."""
+    """The raw-HID interface is EXCLUSIVE to hidapi on macOS, and the older
+    host agents open it with hidapi briefly every few seconds (timekeeper shells
+    out to ak820ctl; nowplaying opens per push). A single attempt therefore
+    fails often enough to make a passive measurement impractical -- retry
+    across the gaps instead of demanding the agents be stopped, which would
+    itself change what is being measured. (The Rust daemon's non-seizing opens
+    do not block this one: S2 in plans/AK820-AGENT-CROSSPLATFORM-PLAN.md.)"""
     import time
     last = None
     for _ in range(tries):
@@ -98,7 +100,7 @@ def open_device(tries=12, delay=0.25):
         time.sleep(delay)
     raise SystemExit(f"raw HID busy after {tries} tries: {last}\n"
                      "  something is holding it exclusively -- check "
-                     "`hostagent/install-agents.sh --status` and `pgrep -fl qmk`")
+                     "`ak820 status`, `hostagent/install-agents.sh --status` and `pgrep -fl qmk`")
 
 
 def read_health(h=None, timeout_ms=500):

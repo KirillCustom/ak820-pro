@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Windows now-playing producer for the AK820 Pro LCD.
 
+LEGACY: since 2026-09-06 the Rust daemon (ak820-agent) does this; `ak820
+install` unregisters this task. Kept as the fallback and as the reference the
+daemon's media loop was ported from.
+
 The Windows counterpart of nowplaying-macos.sh, and a simpler one: Windows has
 a real OS-level API for this. GlobalSystemMediaTransportControlsSessionManager
 ("SMTC", Win10 1809+) is public and supported, and it is what the media flyout
 on the volume keys reads. Every app that registers a session -- Spotify, the
 Store build of Apple Music, and crucially every BROWSER, so YouTube and web
-players too -- is visible through one interface. macOS has no such thing, which
-is why the mac agent carries per-app AppleScript for Spotify and Music.
+players too -- is visible through one interface. macOS has no public
+equivalent, which is why the mac bash agent carries per-app AppleScript for
+Spotify and Music (the daemon reads the private MediaRemote framework instead).
 
     An app that does not register an SMTC session is invisible here, and no
     amount of work in THIS file can change that -- the fix is a plug-in on the

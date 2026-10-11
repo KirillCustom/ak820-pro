@@ -1,11 +1,14 @@
 #!/bin/bash
 # Resync the AK820 Pro's RTC from host time. ONE-SHOT, run by hand.
 #
-# ⚠️ SUPERSEDED as a scheduled agent (2026-09-01). ak820-timekeeper.py does this
+# ⚠️ SUPERSEDED as a scheduled agent (2026-09-01). ak820-timekeeper.py did this
 # every 5 min, on wake and on re-enumeration, with SOF-bias correction; its
-# LaunchAgent replaced this one's, which was deliberately deleted. Do NOT
-# schedule both: the raw-HID interface is exclusive, so the two would take turns
-# failing. Kept because a manual one-shot sync is still occasionally useful.
+# LaunchAgent replaced this one's, which was deliberately deleted, and the Rust
+# daemon (ak820-agent, `ak820 install --clock`) has since replaced the
+# timekeeper. Do NOT schedule this beside either: the raw-HID interface is
+# exclusive on macOS, so the two would take turns failing, and two clock writers
+# corrupt each other's learning. Kept because a manual one-shot sync is still
+# occasionally useful.
 #
 # WHY THIS IS NEEDED: the SN32's internal RTC is disciplined to the on-board
 # PCF8563, which is itself an uncompensated crystal running ~58 ppm fast on this
