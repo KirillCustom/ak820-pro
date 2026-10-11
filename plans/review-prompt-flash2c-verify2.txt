@@ -1,0 +1,9 @@
+A second verification pass, read-only. Do not modify files. Short.
+
+Your verification (plans/review-codex-flash2c-verify-2026-10-11.md) left two gaps: the deferred dashboard redraw painting before the flag reset, and a shortening text's clear sharing a call with three glyphs. The fix, firmware 29a9d15d64 (`git -C qmk_firmware-ak820pro show 29a9d15d64`; tree at /Users/jdlien/.claude/jobs/dbe817d8/tmp/qmk-flash2):
+- display_pass_end() resets batt_painted_this_pass. It is the last call in housekeeping_task_kb() (ak820pro.c), after the user hook and before watchdog_kick(); the second edge no longer resets it.
+- txt_placed: the first TEXT call sets x and clears the vacated cells; if it cleared, that is the call's work and the glyphs start next call.
+
+Build: via-dev-29a9d15d64-20261011-163625.bin, clean.
+
+Are both resolved? Can anything paint a battery component after display_pass_end() in the same main-loop pass (quantum/main.c's order)? Anything new? One-line verdict at the end: "flash" or "fix N first".

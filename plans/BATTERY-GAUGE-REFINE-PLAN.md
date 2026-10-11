@@ -1684,6 +1684,37 @@ Record: `history/battery-2026-10-07-partial-charge/` (`readings.csv`, and
   5. *Investigation, not code:* whether the CH582F accepts a level from the
      MCU, so the host's Bluetooth battery shows the gauge instead of the
      module's linear `5C` (96% against the gauge's 66% on 10-10).
+- **Flash 2c ON THE BOARD since 16:45 10-11: the plug-in stall is fixed.** Firmware
+  `9816c09e79` (`phase1b-flash2`, local), `via-dev-9816c09e79-20261011-164221.bin`,
+  token `0x50aa9acf`, flashed hands-free. On the bench (relay 2, three cycles a
+  build, `plug-events.csv`): plug-in passes **24/24/26 ms on 2b, 11/11/12 ms on
+  2c**, none ≥ 25 ms.
+  - **The cause was the bolt alone, not the three components together.** 2c's
+    first build painted one component a pass and measured no better (19 ms
+    `second_edge` every time, the text and bar following at ~6 ms each). The
+    bolt was a clear and 11 `lcd_fill_rect` runs, each sending a byte-by-byte
+    window command. `draw_bolt_slot()` now sends the bolt, the cross or blank
+    as one 12×14 RAM tile with one `lcd_blit_ram`, as `draw_ampm` does.
+  - **Kept from the first build:**
+    - one battery component per main-loop pass, reset by
+      `display_pass_end()` at the pass's end;
+    - the text in 3-glyph chunks, with a shortening text's clear in its own
+      call;
+    - the bar marked by the fill it would paint, which fixes the inherited
+      "Low" sliver bug at 0%.
+  - **Codex** (`review-codex-flash2c*-2026-10-11.md`, four rounds):
+    - **Findings 1-3 and both verification gaps: fixed**, and the tile's
+      pixels were checked identical;
+    - **accepted:** QMK core calls `housekeeping_task_user()` again after the
+      reset. It is empty in this build, so a keymap hook that draws would
+      reopen the gap;
+    - **a comment nit, for the next commit:** `lcd_blit_ram` does call
+      `bus_quiesce()`, so the explicit wait is redundant.
+  - **Item 2, the page exit, is still to confirm with JD's per-event check.**
+    The restore's battery stage now paints only the outline, and a bolt is one
+    tile. The padlock in the lock band is still drawn as `lcd_fill_rect` runs,
+    and the Caps-on paint measured 20 ms: the same tile fix is the next
+    candidate if the check shows it.
 - **Flash 2c, item 1 diagnosed (10-11, the cut's relay-on on flash 2b):** a 27 ms
   pass, 19 ms of it the `second_edge` scope. On USB power arriving,
   `draw_battery(false)` repaints the bolt (a clear and 11 synchronous

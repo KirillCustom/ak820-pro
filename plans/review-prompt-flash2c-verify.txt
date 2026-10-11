@@ -1,0 +1,10 @@
+A verification pass, read-only. Do not modify files. Short.
+
+Your review of flash 2c (plans/review-codex-flash2c-2026-10-11.md) found: 1 two components in one pass, 2 components over ~10 ms (the text, the cross), 3 the bar not marked when "Low"'s sliver moves at 0%. The fix, firmware 2014ba2392 (`git -C qmk_firmware-ak820pro show 2014ba2392`; tree at /Users/jdlien/.claude/jobs/dbe817d8/tmp/qmk-flash2):
+1. batt_painted_this_pass, cleared at the top of display_second_edge_task() (the first display call of every pass in housekeeping_task_kb), allows one draw_battery component a pass.
+2. The text paints 3 glyphs a call (BATT_TXT_CHUNK, txt_done), restarting at its own x if the text changes mid-way. The cross paints 6 rows a call (bolt_step).
+3. The bar is marked when (want_fw, want_col) differs from what is painted (last_fw, last_col); last_batt is gone.
+
+Build: via-dev-2014ba2392-20261011-163215.bin, clean.
+
+Check: are 1-3 resolved? Does the chunked text leave stale cells in any sequence: a change mid-way to shorter, longer or empty; a forced repaint mid-way; "100%" -> "Charge" -> "99%"? Does the per-pass flag ever starve a component (draw_battery called only from housekeeping, which gq_pending and the gates can skip)? Anything new? One-line verdict at the end: "flash" or "fix N first".

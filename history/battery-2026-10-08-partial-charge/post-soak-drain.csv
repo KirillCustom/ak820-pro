@@ -332,3 +332,4 @@ time,epoch,phase,supply,level,pack_mv,est_c5,c5_last,vdd_mv,chrg,flags,note
 2026-10-11 16:21:23,1791757283.9,full,battery,0.0 %,3406,28,28,3901,low,on_batt charging rgb_on lights_cut linked,confirming external
 2026-10-11 16:21:33,1791757293.9,full,external,0.0 %,,,34,4196,low,charging rgb_on linked external,confirming external
 2026-10-11 16:21:33,1791757293.9,FULL-ON,,,,,,,,,charging from 1791757283.77
+2026-10-11 16:26:34,1791757594.0,full,external,0.9 %,3567,46,50,4194,low,charging rgb_on linked external,

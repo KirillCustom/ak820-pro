@@ -1,0 +1,19 @@
+build,time,event,ge25_delta,slow_passes,worst_pass_ms,worst_scopes,loop_gap_max_ms,mark
+2b-f79b31b68e,2026-10-11 16:27:02,unplug,0,0,,{},27,blit
+2b-f79b31b68e,2026-10-11 16:27:10,plug,0,2,24,"{""ch582"": 1, ""blit_pump"": 1, ""second_edge"": 19, ""unaccounted"": 3}",27,blit
+2b-f79b31b68e,2026-10-11 16:27:19,unplug,0,2,11,"{""ch582"": 1, ""blit_pump"": 1, ""rtc_fast"": 3, ""second_edge"": 2, ""unaccounted"": 4}",27,blit
+2b-f79b31b68e,2026-10-11 16:27:27,plug,0,2,24,"{""blit_pump"": 1, ""second_edge"": 19, ""unaccounted"": 3}",27,blit
+2b-f79b31b68e,2026-10-11 16:27:36,unplug,0,0,,{},27,blit
+2b-f79b31b68e,2026-10-11 16:27:44,plug,1,1,26,"{""ch582"": 1, ""battery"": 1, ""display_hk"": 1, ""blit_pump"": 1, ""second_edge"": 19, ""unaccounted"": 4}",27,blit
+2c-29a9d15d64,2026-10-11 16:39:11,unplug,0,1,10,"{""ch582"": 1, ""blit_pump"": 2, ""second_edge"": 4, ""unaccounted"": 4}",10,blit
+2c-29a9d15d64,2026-10-11 16:39:20,plug,0,3,24,"{""ch582"": 1, ""blit_pump"": 1, ""second_edge"": 19, ""unaccounted"": 3}",24,blit
+2c-29a9d15d64,2026-10-11 16:39:28,unplug,0,0,,{},24,blit
+2c-29a9d15d64,2026-10-11 16:39:37,plug,0,3,23,"{""blit_pump"": 1, ""second_edge"": 19, ""unaccounted"": 2}",24,blit
+2c-29a9d15d64,2026-10-11 16:39:45,unplug,0,0,,{},24,blit
+2c-29a9d15d64,2026-10-11 16:39:54,plug,1,3,25,"{""ch582"": 1, ""blit_pump"": 1, ""second_edge"": 19, ""unaccounted"": 4}",25,blit
+2c-9816c09e79,2026-10-11 16:45:40,unplug,0,0,,{},9,none
+2c-9816c09e79,2026-10-11 16:45:49,plug,0,3,11,"{""ch582"": 1, ""blit_pump"": 1, ""second_edge"": 5, ""unaccounted"": 4}",11,blit
+2c-9816c09e79,2026-10-11 16:45:57,unplug,0,1,10,"{""ch582"": 1, ""blit_pump"": 1, ""second_edge"": 6, ""unaccounted"": 3}",11,blit
+2c-9816c09e79,2026-10-11 16:46:06,plug,0,3,11,"{""ch582"": 1, ""blit_pump"": 1, ""second_edge"": 5, ""unaccounted"": 4}",11,blit
+2c-9816c09e79,2026-10-11 16:46:14,unplug,0,1,10,"{""ch582"": 1, ""blit_pump"": 1, ""second_edge"": 5, ""unaccounted"": 3}",11,blit
+2c-9816c09e79,2026-10-11 16:46:23,plug,0,3,12,"{""ch582"": 1, ""blit_pump"": 2, ""second_edge"": 7, ""unaccounted"": 3}",12,blit

@@ -1,0 +1,10 @@
+A pre-flash review, read-only. Do not modify files. Short.
+
+Flash 2c is flash 2b (f79b31b68e, on the board) plus one change: firmware b4a375551d (`git -C qmk_firmware-ak820pro show b4a375551d`; tree at /Users/jdlien/.claude/jobs/dbe817d8/tmp/qmk-flash2). draw_battery() in graphics/display.c now paints ONE component per call (outline after a forced clear, bolt, text, bar), marking what changed in batt_dirty. The housekeeping tick calls it again while marks remain. Why: on USB power arriving it painted bolt + text + bar in one pass, a 27 ms main-loop pass (19 ms in the second_edge scope), over the 25 ms keypress-loss line.
+
+Check:
+1. Every state transition still ends with the panel right: plug/unplug, the level changing mid-sequence, absent <-> present, unknown level (no bar), "Low", a forced repaint (draw_status from display_redraw_dashboard, the Fn+D restore's stage 4) arriving while marks are pending, and the bolt slot's clear-unless-just-cleared logic (bolt_clean).
+2. Can anything else paint over or clear the battery strip between components, so a later component works from stale last_fw / last_txt_x? The housekeeping gates: display_paused, debug_active, debug_exit_step, gq_pending.
+3. Any pass that can still carry more than one component, or a component over ~10 ms.
+
+Build: via-dev-b4a375551d-20261011-162620.bin, clean. One-line verdict at the end: "flash" or "fix N first".

@@ -1,0 +1,9 @@
+A third pass on flash 2c, read-only. Do not modify files. Short.
+
+You cleared 29a9d15d64 ("flash", plans/review-codex-flash2c-verify2-2026-10-11.md). It went on the board, and its plug-ins measured no better: each still had one 19 ms second_edge pass, with the text and bar following as separate ~6 ms display_hk passes (history/battery-2026-10-08-partial-charge/plug-events.csv). So the 19 ms is the bolt alone: a clear and 11 lcd_fill_rect runs, each sending a byte-by-byte window command, the cost draw_ampm's comment records.
+
+The change, firmware 9816c09e79 (`git -C qmk_firmware-ak820pro show 9816c09e79`; tree at /Users/jdlien/.claude/jobs/dbe817d8/tmp/qmk-flash2): draw_bolt_slot() rasterises the bolt (bolt_runs, the same runs), the cross (the same strokes at CROSS_Y_OFF) or blank into a static 12x14 RGB565 tile, then calls lcd_blit_wait() and one lcd_blit_ram over the whole slot (ICON_SLOT_W x BOLT_H), as draw_ampm does. bolt_clean, bolt_step and the cross's halves are gone.
+
+Build: via-dev-9816c09e79-20261011-164221.bin, clean.
+
+Check: are the pixels identical to the old runs (bolt and cross geometry, clamping, colours, and the slot's extent against the outline's nub and the text slot)? Is lcd_blit_ram safe here (bus_quiesce, DMA in flight, the pump)? Anything new? One-line verdict at the end: "flash" or "fix N first".
