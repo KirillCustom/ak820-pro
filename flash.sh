@@ -13,7 +13,7 @@
 # is a rule a human has to remember; this is the version the script does.
 #
 # Usage:
-#   ./flash.sh [firmware.bin] [--no-backup] [--no-lighting]
+#   ./flash.sh [firmware.bin] [--no-backup] [--no-lighting] [--no-battlog] [--on-reserve]
 #
 # Defaults to $QMK_HOME/a_jazz_ak820pro_via.bin. A failed backup of either the
 # keymap or the lighting refuses to flash: --no-backup skips both (and both
@@ -34,11 +34,13 @@ source ./env.sh                          # must be sourced from the repo root
 PY="${PY:-$AK820_VENV/bin/python}"
 [ -x "$PY" ] || PY=python3
 
-FW="" ; BACKUP=1 ; LIGHTS=1
+FW="" ; BACKUP=1 ; LIGHTS=1 ; DUMPLOG=1 ; RESERVE_OK=0
 for a in "$@"; do
     case "$a" in
         --no-backup) BACKUP=0 ;;
         --no-lighting) LIGHTS=0 ;;
+        --no-battlog) DUMPLOG=0 ;;
+        --on-reserve) RESERVE_OK=1 ;;
         -h|--help)   sed -n '2,21p' "$0"; exit 0 ;;
         *)           FW="$a" ;;
     esac
@@ -145,6 +147,40 @@ if [ "$BACKUP" = 1 ]; then
             echo
         fi
     fi
+fi
+
+# --- 1b. the battery log ----------------------------------------------------
+# The board keeps its battery log in RAM, and a flash erases it. Dump it first,
+# fatal like the backups: on 2026-10-11 a retry loop around this script flashed
+# at 15:39 with no dump since 12:10, and lost that stretch of a drain test.
+# --no-battlog is the deliberate way past it. Independent of --no-backup.
+# Power first. In the BT and 2.4G positions the board runs from its pack and
+# flashes over the data lines alone (BACKLOG.md, "USB connects with no 5 V").
+# That is fine with charge to spare, but a pack that dies mid-write leaves the
+# app half-erased: the ROM bootloader survives, yet the board looks dead until
+# it has power and a reflash. So refuse on battery once the RGB cut has fired
+# (the last ~5 h, the reserve). --on-reserve is the deliberate way past it.
+if [ "$RESERVE_OK" = 0 ] && ! usb "$BOOTLOADER"; then
+    st=$("$PY" hostagent/ak820battery.py 2>/dev/null || true)
+    if grep -q "^supply *battery" <<<"$st" && grep -q "lights_cut" <<<"$st"; then
+        echo "The board is on battery, in its reserve (the RGB cut has fired) -- not flashing."
+        echo "  Give it USB power (plug in, or the bench relay on), or re-run with --on-reserve."
+        exit 1
+    fi
+fi
+BATTLOG_DIR="${BATTLOG_DIR:-$HOME/Documents/ak820pro-battlogs}"
+if [ "$DUMPLOG" = 1 ] && ! usb "$BOOTLOADER"; then
+    mkdir -p "$BATTLOG_DIR"
+    blog="$BATTLOG_DIR/log-$(date +%Y%m%d-%H%M%S)-preflash.csv"
+    echo "== dumping the battery log =="
+    if ! "$PY" hostagent/ak820battery.py log "$blog"; then
+        echo
+        echo "Battery log dump FAILED -- not flashing."
+        echo "  Re-run with --no-battlog to flash anyway and lose the log."
+        exit 1
+    fi
+    echo "   saved: $blog  $(fstat "$blog")"
+    echo
 fi
 
 # --- 2. the bootloader -----------------------------------------------------

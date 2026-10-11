@@ -1681,6 +1681,7 @@ Record: `history/battery-2026-10-07-partial-charge/` (`readings.csv`, and
   5. *Investigation, not code:* whether the CH582F accepts a level from the
      MCU, so the host's Bluetooth battery shows the gauge instead of the
      module's linear `5C` (96% against the gauge's 66% on 10-10).
+- **Flash 2b ON THE BOARD since 15:39 10-11** (JD's Fn+Esc), and **the jump is proven:** at 15:40 the same build was reflashed with no hands, from jump to restore in ~25 s. `flash.sh` now dumps the battery log before every flash (a retry loop lost 12:10-15:39 of the drain's RAM log), and refuses on battery once the RGB cut has fired (`--on-reserve` overrides).
 - **Flash 2b as built (10-11): the bootloader jump only.** Items 1-2 need a
   diagnosis the code alone cannot give: both stalls were marked `blit`, and the
   camera page already exits through the staged restore. They move to flash 2c,

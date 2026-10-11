@@ -110,8 +110,11 @@ is at gate 8.
 - **Gate 8 is met:** the charge from 0 passed (10-09), and so did the 24 h
   battery soak (10-10). Its per-event checks move to flash 2b. The board is
   draining to the light cut (~15:44 10-11), then charges itself.
-- **Then:** flash 2b (the plan's list, including a raw-HID bootloader jump so
-  flashing needs no Fn+Esc), the E6 docs, and Phase 2 when JD says build.
+- **Flash 2b is on the board** (15:39 10-11, `f79b31b68e`, a `dev` build): the
+  raw-HID bootloader jump. **Flashing needs no hands now**: `./build.sh dev`,
+  then `./flash.sh <artifact>`, proven 15:40 10-11.
+- **Then:** flash 2c (the plug-in and page-exit stalls), the E6 docs, and
+  Phase 2 when JD says build.
 
 **The bench now runs trials without JD's hands:** a USB relay on the
 keyboard's 5 V, plus `uhubctl` on its data

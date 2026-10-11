@@ -30,7 +30,9 @@ done.
 - **Pushed:** `jdlien/ak820-pro` is pushed (JD allowed it on 10-08). The
   firmware branches are local only.
 
-**On the board: flash 2**, firmware `28f260225f` on the local branch
+**On the board since 15:39 10-11: flash 2b**, `f79b31b68e` (`via-dev-f79b31b68e-20261011-120726.bin`, token `0xd74b4857`): flash 2 plus the raw-HID bootloader jump. **Flashing needs no hands now:** `./flash.sh <artifact>` dumps the battery log, backs up, jumps, flashes and restores (proven 15:40 10-11). Build `./build.sh dev` for JD's board; `daily` and `fpb` stay jump-free for releases. ⚠️ `flash.sh` refuses on battery after the RGB cut.
+
+**Before it: flash 2**, firmware `28f260225f` on the local branch
 `phase1b-flash2`: `ak820pro-builds/out/via-daily-28f260225f-20261008-112003.bin`,
 token `0xdf1e8b99`, flashed 12:54 10-08. It holds:
 - B's charging model: `K_CC` 133, `L_KNEE` 533, `T_TAIL` 313 min;
