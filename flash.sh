@@ -147,7 +147,16 @@ if [ "$BACKUP" = 1 ]; then
     fi
 fi
 
-# --- 2. wait for the bootloader --------------------------------------------
+# --- 2. the bootloader -----------------------------------------------------
+# A dev build jumps on request (build.sh dev, hostagent/ak820bootloader.py), so
+# the flash needs no hands. Only after the backups above, and only from a board
+# running QMK. Any other build answers "unhandled", and Fn+Esc is asked for.
+if ! usb "$BOOTLOADER" && usb "$RUNNING"; then
+    echo "== asking the firmware to jump to the bootloader =="
+    if "$PY" hostagent/ak820bootloader.py; then
+        for _ in $(seq 1 30); do usb "$BOOTLOADER" && break; sleep 0.5; done
+    fi
+fi
 if ! usb "$BOOTLOADER"; then
     echo "== press Fn+Esc to enter the bootloader (waiting up to 10 min) =="
     for _ in $(seq 1 600); do usb "$BOOTLOADER" && break; sleep 1; done   # 10 min: no need to race it

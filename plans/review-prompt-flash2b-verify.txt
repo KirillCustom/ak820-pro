@@ -1,0 +1,11 @@
+A verification pass, read-only. Do not modify files.
+
+Your review of flash 2b (plans/review-codex-flash2b-2026-10-11.md) said "fix 1 first": BT key releases are queued, and the reset beats the CH582F TX pump. The fix:
+- firmware 7ed0e74c35 (`git -C qmk_firmware-ak820pro show 7ed0e74c35`; the tree is at /Users/jdlien/.claude/jobs/dbe817d8/tmp/qmk-flash2). Before the splash, HC_BOOTLOADER refuses with "BUSY" (why 1) if last_input_activity_elapsed() < 2000 ms. Otherwise clear_keyboard(), then ch582_tx_drain(500): it calls ch582_task() until the TX queue is empty and nothing is in flight. It fails on the timeout, or if tx_stat_giveup rose meanwhile, and the jump then refuses with "BUSY" (why 2).
+- host (working tree, uncommitted): hostagent/ak820bootloader.py retries BUSY once a second for a minute (exit 3 after). It now takes "unhandled" only from a 0xFF reply echoing "BOOT", and "BUSY" only from a 0x07 reply carrying "BUSY".
+
+Builds: via-dev-7ed0e74c35-20261011-115700.bin (the artifact to flash), via-daily-7ed0e74c35-20261011-115724.bin. The flavor check passes. The daily differs from flash 2's in 9 bytes. The dev ELF adds ak820_raw_bootloader, ch582_tx_drain and last_input_activity_elapsed, and the handler grows to 0x7e8. Live on flash 2: exit 2 with the strict echo check.
+
+Check: is finding 1 resolved? Is calling ch582_task() re-entrantly from inside the raw-HID handler safe: the WDT_SCOPE nesting, the RX parser, pending actions, the battery poll, loop_acct's profile? Does a release reach the host when the slider is on 2.4G, or on cable? Is there anything new?
+
+One-line verdict at the end: "flash" or "fix N first". Keep it short.

@@ -1681,6 +1681,48 @@ Record: `history/battery-2026-10-07-partial-charge/` (`readings.csv`, and
   5. *Investigation, not code:* whether the CH582F accepts a level from the
      MCU, so the host's Bluetooth battery shows the gauge instead of the
      module's linear `5C` (96% against the gauge's 66% on 10-10).
+- **Flash 2b as built (10-11): the bootloader jump only.** Items 1-2 need a
+  diagnosis the code alone cannot give: both stalls were marked `blit`, and the
+  camera page already exits through the staged restore. They move to flash 2c,
+  which 2b lets be flashed without hands: the relay recreates a plug-in at will,
+  and the page switch gets diagnosed in 2b's per-event checks.
+  - **Firmware** `f79b31b68e` on `phase1b-flash2` (local): `bb0a5817b4`
+    (amended to `512875a79e`), `7ed0e74c35`, `4239a266dc`, `f79b31b68e`.
+    `HC_BOOTLOADER` leaves `WDT_TEST_HOOKS` for `AK820_RAW_BOOTLOADER`:
+    - it needs `BOOT` after the command;
+    - it refuses with `BUSY` (why 1) within 2 s of any key activity;
+    - it releases every key, and over BT queues fresh all-released A1/A3
+      frames and drains the TX queue for up to 500 ms. A drop, a give-up or
+      the timeout gives `BUSY` (why 2);
+    - then Fn+Esc's path: the splash, 1.5 s, `reset_keyboard()`.
+  - **Host:**
+    - **`build.sh dev`** (daily plus the jump). Its flavor check fails a
+      daily or fpb build that carries the marker, and a dev build without it.
+      Releases take daily and fpb only;
+    - **`hostagent/ak820bootloader.py`**: exit 0 jumped, 2 unhandled, 3
+      busy for 60 s;
+    - **`flash.sh`** tries the jump after its backups, then falls back to
+      asking for Fn+Esc.
+  - **Proof it changes nothing else:** the daily of `f79b31b68e` differs from
+    flash 2's in 20 bytes: the token, VIA's build-date magic, and two RAM
+    veneers that swapped addresses (codex: benign). The dev build adds the
+    marker, `ch582_tx_drain`, `ch582_send_releases`, QMK's
+    `last_input_activity_elapsed`, and a larger handler. Live on flash 2: the
+    tool exits 2 and the board keeps running.
+  - **Codex** (`review-codex-flash2b*-2026-10-11.md`, four rounds):
+    - **Finding 1, a key left down at the BT host by a reset that beats the
+      TX pump.** Fixed in three rounds: refuse while typing, then drain; fresh
+      frames past QMK's duplicate suppression; a drop at enqueue. **Resolved;
+      "flash".**
+    - **Host reply classification. Fixed:** "unhandled" needs a 0xFF reply
+      echoing `BOOT`, and "busy" a 0x07 reply carrying `BUSY`.
+    - **Retries could run past a minute. Fixed:** a monotonic deadline.
+    - **Evidence correction. Accepted:** the first daily's 10 bytes included
+      VIA's build-date magic, not only the token.
+    - **Accepted as is:**
+      - the drain's time shows as unaccounted in D2's accounting;
+      - an ACK proves the module received a frame, not the host;
+      - LTO untested, because this build does not use it.
 - **Trial 2, from the lessons:** film the whole trial, start readings included.
   Start ≥ 2 h after any earlier charge, because the relaxation inflates the
   start for an hour or more. Start in the band, and keep filming to the RGB cut

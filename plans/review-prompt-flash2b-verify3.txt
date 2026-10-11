@@ -1,0 +1,7 @@
+A third verification pass, read-only. Do not modify files. Short.
+
+Your second verification (plans/review-codex-flash2b-verify2-2026-10-11.md) found the drop snapshot taken after the releases were queued. The fix, firmware f79b31b68e (`git -C qmk_firmware-ak820pro show f79b31b68e`; tree at /Users/jdlien/.claude/jobs/dbe817d8/tmp/qmk-flash2): ch582_send_releases() snapshots tx_stat_drop before its two ch582_send_command calls and returns false if either dropped. The jump does `bool queued = ch582_is_usb() || ch582_send_releases(); if (!queued || !ch582_tx_drain(500))` -> BUSY 2.
+
+Builds: via-dev-f79b31b68e-20261011-120726.bin (the artifact to flash); the daily via-daily-f79b31b68e-20261011-120749.bin differs from 4239a266dc's daily only in the 7 token bytes in health_fill6.
+
+Is finding 1 now resolved? Anything new? One-line verdict at the end: "flash" or "fix N first".

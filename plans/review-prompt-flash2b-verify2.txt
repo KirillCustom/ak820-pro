@@ -1,0 +1,16 @@
+A second verification pass, read-only. Do not modify files.
+
+Your verification (plans/review-codex-flash2b-verify-2026-10-11.md) kept finding 1 open: QMK's duplicate suppression lets a BUSY retry pass an empty drain after a given-up release. The fix:
+- firmware 4239a266dc (`git -C qmk_firmware-ak820pro show 4239a266dc`; the tree is at /Users/jdlien/.claude/jobs/dbe817d8/tmp/qmk-flash2). After clear_keyboard(), and only when !ch582_is_usb(), ch582_send_releases() queues all-released A1 (8 zero bytes) and A3 (usage 0) frames directly through ch582_send_command, on every attempt. ch582_tx_drain() now fails on a tx_stat_drop rise as well as a give-up.
+- host (working tree): ak820bootloader.py bounds its BUSY retries by a 60 s monotonic deadline.
+
+Builds: via-dev-4239a266dc-20261011-120235.bin (the artifact to flash), via-daily-4239a266dc-20261011-120258.bin. The daily now differs from flash 2's via-daily-28f260225f-20261008-112003.bin in 20 bytes:
+- the token, in health_fill6;
+- the VIA build-date magic, in 4 places;
+- references to two linker veneers in RAM, __memcpy_veneer and __flashGetSectorOffset_veneer, which swapped addresses (0x20001640 and 0x20001650).
+
+No other symbol moved. Confirm that this swap is benign, or say why it is not; the flash-write path runs from RAM (efl_ramtext).
+
+Check: finding 1 resolved? Anything new from the direct frames: the near-full coalescing path in ch582_send_command overwriting a queued frame, a 2.4G host, usb_mode's meaning at the moment of the jump?
+
+One-line verdict at the end: "flash" or "fix N first". Keep it short.

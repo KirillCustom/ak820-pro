@@ -1,7 +1,12 @@
 #!/bin/zsh
-# build.sh [daily|instrumented|fpb] — build the AK820 Pro VIA firmware with provenance.
+# build.sh [daily|dev|instrumented|fpb] — build the AK820 Pro VIA firmware with provenance.
 #
-# daily        (default): console off, probes compiled out — what lives on the board.
+# daily        (default): console off, probes compiled out — what releases ship.
+# dev:          daily plus the raw-HID bootloader jump (HC_BOOTLOADER), so
+#               flash.sh needs no Fn+Esc. What lives on JD's board while
+#               development lasts; never released (release-firmware.sh takes
+#               daily and fpb only, and the check below keeps the jump out of
+#               both).
 # instrumented: console on + LOOPGAP_INSTRUMENT — for soak runs and debugging.
 # fpb:          daily, but for the OTHER LCD panel revision — the one that comes
 #               up upside down and colour-inverted on the default build. Shipped
@@ -12,13 +17,14 @@
 # that path is shared and whoever compiles last owns it (see CLAUDE.md).
 set -euo pipefail
 
-if (( $# > 1 )); then echo "usage: build.sh [daily|instrumented|fpb]" >&2; exit 2; fi
+if (( $# > 1 )); then echo "usage: build.sh [daily|dev|instrumented|fpb]" >&2; exit 2; fi
 FLAVOR="${1:-daily}"
 case "$FLAVOR" in
   daily)        FLAGS=();                        EXTRA="" ;;
+  dev)          FLAGS=();                        EXTRA="-DAK820_RAW_BOOTLOADER" ;;
   instrumented) FLAGS=(-e CONSOLE_ENABLE=yes);   EXTRA="-DLOOPGAP_INSTRUMENT -DWDT_TEST_HOOKS" ;;
   fpb)          FLAGS=();                        EXTRA="-DAK820PRO_LCD_VARIANT_FPB" ;;
-  *) echo "usage: build.sh [daily|instrumented|fpb]" >&2; exit 2 ;;
+  *) echo "usage: build.sh [daily|dev|instrumented|fpb]" >&2; exit 2 ;;
 esac
 command -v xxd >/dev/null || { echo "ERROR: xxd not found" >&2; exit 1; }
 
@@ -115,6 +121,13 @@ hf_want=$(printf '%08x' $(( 0x${hf%% *} | 1 )))
 # handler's own address resolves to its source file and a real line (-g).
 hf_line=$(arm-none-eabi-addr2line -e "$s_elf" "0x${hf%% *}")
 [[ "$hf_line" == *fault.c:[0-9]* ]] || { echo "FAIL: no line info in the ELF (addr2line: '$hf_line')" >&2; fail=1; }
+# The bootloader jump by flavor: any process that can open raw HID can use it,
+# so a released build (daily, fpb) must not carry it, and a dev build must.
+jump=$(awk '$3 == "ak820_raw_bootloader"' <<<"$nm_out")
+case "$FLAVOR" in
+  daily|fpb) [[ -z "$jump" ]] || { echo "FAIL: a $FLAVOR build carries the raw-HID bootloader jump" >&2; fail=1; } ;;
+  dev)       [[ -n "$jump" ]] || { echo "FAIL: the dev build lacks the raw-HID bootloader jump" >&2; fail=1; } ;;
+esac
 if (( fail )); then echo "Structural checks FAILED; nothing published." >&2; exit 1; fi
 
 # The manifest scripts/symbolize.sh resolves a board-reported token through.

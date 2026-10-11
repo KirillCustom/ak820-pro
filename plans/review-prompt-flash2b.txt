@@ -1,0 +1,22 @@
+A pre-flash review, read-only. Do not modify files.
+
+Flash 2b adds exactly one thing to flash 2 (28f260225f, on the board since 10-08): a raw-HID jump to the bootloader, so later flashes need no Fn+Esc from JD. It is for JD's own board while development lasts, never for release.
+
+The change:
+- firmware 512875a79e (`git -C qmk_firmware-ak820pro show 512875a79e`; the tree is at /Users/jdlien/.claude/jobs/dbe817d8/tmp/qmk-flash2): HC_BOOTLOADER (0x79) leaves WDT_TEST_HOOKS for `#if defined(WDT_TEST_HOOKS) || defined(AK820_RAW_BOOTLOADER)`. It now requires "BOOT" after the command, and does what Fn+Esc does (ak820pro.c, QK_BOOT): display_bootloader_splash(), wait_ms(1500), reset_keyboard(). A marker, `const volatile uint8_t ak820_raw_bootloader`, is read in the case so --gc-sections keeps it.
+- host, uncommitted in the working tree (`git diff build.sh flash.sh`; new file hostagent/ak820bootloader.py):
+  - build.sh: a `dev` flavor (daily plus -DAK820_RAW_BOOTLOADER), and a check: daily and fpb fail if the marker symbol is present, dev fails if it is absent. scripts/release-firmware.sh picks daily and fpb only;
+  - flash.sh: after its backups, if the board runs QMK and is not already in the bootloader, it runs hostagent/ak820bootloader.py; on exit 0 it waits up to 15 s for 0C45:7140, then falls back to asking for Fn+Esc as before;
+  - ak820bootloader.py: writes the command and reads up to 5 reports, 2.5 s each. No reply means "jumped", exit 0. An unhandled reply (0xFF) for 0x79 means no jump in this build, exit 2.
+
+Evidence so far:
+- Builds: via-dev-512875a79e-20261011-115020.bin (the artifact to flash) and via-daily-512875a79e-20261011-115044.bin, both clean with the flavor check passing. The new daily differs from flash 2's via-daily-28f260225f-20261008-112003.bin in 10 bytes, all the build token. The dev ELF adds only ak820_raw_bootloader, and via_custom_value_command_kb grows by 0x50 bytes.
+- Live, against flash 2 (a daily build): ak820bootloader.py printed "no raw-HID bootloader jump" and exited 2, and the board kept running.
+
+Look for:
+1. Anything that can make the dev build jump when not asked: other paths into this case, a frame shorter than 7 bytes, VIA's own handlers forwarding 0x13 frames, the no-VIA branch.
+2. Whether reset_keyboard() from inside the raw-HID handler is as safe as the Fn+Esc path: the watchdog (bootloader_jump stops it), the 1.5 s wait inside a USB callback, held keys over BT (the slider is on BT; the CH582F's TX pump does not run during wait_ms), anything QMK's shutdown_quantum does that the old direct bootloader_jump() call skipped.
+3. The host side: can flash.sh jump before the backups are confirmed, or flash a board that never entered the bootloader? Does a reply from another process on the channel get mistaken for "unhandled" or for "jumped"?
+4. Whether the build.sh check can pass wrongly (awk on nm output, the volatile marker optimized away, LTO).
+
+One-line verdict at the end: "flash" or "fix N first". Keep it short.
