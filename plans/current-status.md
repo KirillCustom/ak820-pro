@@ -30,7 +30,9 @@ done.
 - **Pushed:** `jdlien/ak820-pro` is pushed (JD allowed it on 10-08). The
   firmware branches are local only.
 
-**On the board since 16:45 10-11: flash 2c**, `9816c09e79` (`via-dev-9816c09e79-20261011-164221.bin`, token `0x50aa9acf`), flashed hands-free: flash 2b plus the plug-in stall's fix (the bolt as one RAM tile; plug-ins 11-12 ms against 24-26). Left of flash 2b's list: the page exit (JD's per-event check), the provisional level (JD's call), the module level command (desk work).
+**On the board since 19:30 10-11: flash 2e**, `efd5b0f74a` (`via-dev-efd5b0f74a-20261011-192711.bin`, token `0x71163528`), hands-free: 2c plus the display probe and `HC_DEVHOOK` (2d), and the text slot's fix (the transport icon as one tile, no redundant forced clear). **Every measured event now stays under 25 ms**: plug-ins 11-12 ms, page exits and the lighting overlay 12.7 ms with a track playing. `scripts/devhook.py press|reset|read` drives the probe. Still to see: FULL (~01:30 10-12), the battery-low warning and the RGB cut, which the counters will catch on their own.
+
+**Before it: flash 2c**, `9816c09e79` (`via-dev-9816c09e79-20261011-164221.bin`, token `0x50aa9acf`), flashed hands-free: flash 2b plus the plug-in stall's fix (the bolt as one RAM tile; plug-ins 11-12 ms against 24-26). Left of flash 2b's list: the page exit (JD's per-event check), the provisional level (JD's call), the module level command (desk work).
 
 **Before it: flash 2b**, `f79b31b68e` (`via-dev-f79b31b68e-20261011-120726.bin`, token `0xd74b4857`): flash 2 plus the raw-HID bootloader jump. **Flashing needs no hands now:** `./flash.sh <artifact>` dumps the battery log, backs up, jumps, flashes and restores (proven 15:40 10-11). Build `./build.sh dev` for JD's board; `daily` and `fpb` stay jump-free for releases. ⚠️ `flash.sh` refuses on battery after the RGB cut.
 

@@ -1684,7 +1684,29 @@ Record: `history/battery-2026-10-07-partial-charge/` (`readings.csv`, and
   5. *Investigation, not code:* whether the CH582F accepts a level from the
      MCU, so the host's Bluetooth battery shows the gauge instead of the
      module's linear `5C` (96% against the gauge's 66% on 10-10).
-- **Flash 2c ON THE BOARD since 16:45 10-11: the plug-in stall is fixed.** Firmware
+- **Flash 2e ON THE BOARD since 19:30 10-11: the page-exit and overlay stalls are
+  fixed.** Firmware `efd5b0f74a` (`phase1b-flash2`, local),
+  `via-dev-efd5b0f74a-20261011-192711.bin`, token `0x71163528`, flashed
+  hands-free. **No pass ≥ 25 ms is left from any event measured.**
+  - **Flash 2d (`6e5de5bdaa`) found them:** a display probe, which is
+    max-hold times per Fn+D restore stage and per housekeeping sub-draw, plus
+    `HC_DEVHOOK` (0x76), which presses Fn+D and reads the probe over raw HID.
+    Dev builds only; its daily differs from 2c's in the token alone.
+  - **Both stalls need a track on screen.** With nothing playing, no stall.
+    With music:
+    - the restore's text-slot stage took 28.3 ms;
+    - the overlay's retirement took 23.1 ms;
+    - the play icon took 9.0 ms, as `lcd_fill_rect` runs, and could be drawn
+      twice a call;
+    - a forced repaint re-cleared a band its callers had just cleared
+      (~8 ms);
+    - and the track appearing stalled too.
+  - **The fix:** the icon is a RAM tile, and the forced repaint drops its
+    clear. Measured with music: **12.7 ms and 12.7 ms, the icon 3.4 ms, no
+    stall in three page cycles, two lighting steps, or the track starting.**
+  - **Codex:** 2d and 2e reviewed, "flash" both, with no findings (the icon
+    pixels checked identical).
+- **Flash 2c (16:45 10-11): the plug-in stall fixed.** Firmware
   `9816c09e79` (`phase1b-flash2`, local), `via-dev-9816c09e79-20261011-164221.bin`,
   token `0x50aa9acf`, flashed hands-free. On the bench (relay 2, three cycles a
   build, `plug-events.csv`): plug-in passes **24/24/26 ms on 2b, 11/11/12 ms on

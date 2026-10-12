@@ -3,7 +3,8 @@
 #
 # daily        (default): console off, probes compiled out — what releases ship.
 # dev:          daily plus the raw-HID bootloader jump (HC_BOOTLOADER), so
-#               flash.sh needs no Fn+Esc. What lives on JD's board while
+#               flash.sh needs no Fn+Esc, and the dev hooks (HC_DEVHOOK: press
+#               Fn+D, read the display probe) for unattended display tests. What lives on JD's board while
 #               development lasts; never released (release-firmware.sh takes
 #               daily and fpb only, and the check below keeps the jump out of
 #               both).
@@ -21,7 +22,7 @@ if (( $# > 1 )); then echo "usage: build.sh [daily|dev|instrumented|fpb]" >&2; e
 FLAVOR="${1:-daily}"
 case "$FLAVOR" in
   daily)        FLAGS=();                        EXTRA="" ;;
-  dev)          FLAGS=();                        EXTRA="-DAK820_RAW_BOOTLOADER" ;;
+  dev)          FLAGS=();                        EXTRA="-DAK820_RAW_BOOTLOADER -DAK820_DEV_HOOKS" ;;
   instrumented) FLAGS=(-e CONSOLE_ENABLE=yes);   EXTRA="-DLOOPGAP_INSTRUMENT -DWDT_TEST_HOOKS" ;;
   fpb)          FLAGS=();                        EXTRA="-DAK820PRO_LCD_VARIANT_FPB" ;;
   *) echo "usage: build.sh [daily|dev|instrumented|fpb]" >&2; exit 2 ;;
@@ -124,9 +125,12 @@ hf_line=$(arm-none-eabi-addr2line -e "$s_elf" "0x${hf%% *}")
 # The bootloader jump by flavor: any process that can open raw HID can use it,
 # so a released build (daily, fpb) must not carry it, and a dev build must.
 jump=$(awk '$3 == "ak820_raw_bootloader"' <<<"$nm_out")
+hooks=$(awk '$3 == "ak820_dev_hooks"' <<<"$nm_out")
 case "$FLAVOR" in
-  daily|fpb) [[ -z "$jump" ]] || { echo "FAIL: a $FLAVOR build carries the raw-HID bootloader jump" >&2; fail=1; } ;;
-  dev)       [[ -n "$jump" ]] || { echo "FAIL: the dev build lacks the raw-HID bootloader jump" >&2; fail=1; } ;;
+  daily|fpb) [[ -z "$jump" ]] || { echo "FAIL: a $FLAVOR build carries the raw-HID bootloader jump" >&2; fail=1; }
+             [[ -z "$hooks" ]] || { echo "FAIL: a $FLAVOR build carries the dev hooks" >&2; fail=1; } ;;
+  dev)       [[ -n "$jump" ]] || { echo "FAIL: the dev build lacks the raw-HID bootloader jump" >&2; fail=1; }
+             [[ -n "$hooks" ]] || { echo "FAIL: the dev build lacks the dev hooks" >&2; fail=1; } ;;
 esac
 if (( fail )); then echo "Structural checks FAILED; nothing published." >&2; exit 1; fi
 

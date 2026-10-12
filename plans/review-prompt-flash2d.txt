@@ -1,0 +1,14 @@
+A pre-flash review, read-only. Do not modify files. Short.
+
+Flash 2d is flash 2c (9816c09e79, on the board) plus a diagnostic for two stalls measured on 2c: the page exit back to the dashboard (32-33 ms, blit_pump) and the settings overlay's retirement (31 ms, display_hk). Firmware 6e5de5bdaa (`git -C qmk_firmware-ak820pro show 6e5de5bdaa`; tree at /Users/jdlien/.claude/jobs/dbe817d8/tmp/qmk-flash2):
+- graphics/display.c: DPROBE(i, stmt) keeps the worst ACCT_NOW() tick delta of each Fn+D restore stage (DP_RESTORE0 + debug_exit_step - 1, captured before the stage advances it), each housekeeping sub-draw (conn, status, text slot, locks, clock, battery), band_clear's lcd_clear_rect, draw_text_icon (now a wrapper around draw_text_icon_runs), draw_debug_page and debug_pump_glyph. Outside AK820_DEV_HOOKS it is `do { stmt; } while (0)`.
+- hid_protocol.c: HC_DEVHOOK (0x76), dev builds only. op 1 calls display_debug_toggle(); op 2 fills [4..31] with probe page arg (14 u16 microseconds, uint64 arithmetic); op 3 resets. A marker (ak820_dev_hooks, volatile, read in the case) feeds build.sh's flavor check.
+- build.sh (working tree): dev adds -DAK820_DEV_HOOKS; daily and fpb fail if the marker is present, dev fails if it is absent.
+
+Builds: via-dev-6e5de5bdaa-20261011-190653.bin (to flash). Its daily, via-daily-6e5de5bdaa-20261011-190722.bin, differs from 2c's daily (via-daily-9816c09e79-20261011-190749.bin) in 5 bytes, all the token in health_fill6.
+
+Check:
+1. Any probe index out of range, or a stage index wrong (stage 5 repeats without advancing; the heal path sets debug_exit_step = 1).
+2. Is display_debug_toggle() safe from the raw-HID handler: the main thread, display_paused, a restore in flight, the camera page?
+3. The 16-bit tick wrap (349 ms) against the longest stage.
+4. Anything new? One-line verdict at the end: "flash" or "fix N first".

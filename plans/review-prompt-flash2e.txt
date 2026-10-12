@@ -1,0 +1,15 @@
+A pre-flash review, read-only. Do not modify files. Short.
+
+Flash 2d (6e5de5bdaa, on the board) carries a display probe. With music playing it measured: the Fn+D restore's last stage, draw_text_slot(true), 28.3 ms; the settings overlay's retirement (housekeeping draw_text_slot(false)) 23.1 ms; the transport icon ~9 ms (lcd_fill_rect runs), which draw_text_slot can draw twice a call (icon_clobbered).
+
+Flash 2e, firmware efd5b0f74a (`git -C qmk_firmware-ak820pro show efd5b0f74a`; tree at /Users/jdlien/.claude/jobs/dbe817d8/tmp/qmk-flash2):
+1. draw_text_icon_runs() rasterises play, pause or stop into a static 12x12 tile (black background, the same runs and colours) and sends it with lcd_blit_wait() + one lcd_blit_ram. DISPLAY_ICON_NONE draws nothing, as before.
+2. draw_text_slot(true) no longer calls lcd_clear_rect(0, TEXT_Y, PANEL_WIDTH, TEXT_H); it only calls shadow_invalidate(). Both force callers (the restore's stage 14, display_redraw_dashboard via draw_status) follow a full-screen clear.
+
+Build: via-dev-efd5b0f74a-20261011-192711.bin, clean.
+
+Check:
+1. Can the tile's black background erase anything that should stay: line 0 or line 1 glyphs, the conn-status overlay (x 4..), the OS icon or the conn row above, in any layout (two lines, one big line, one small line) or transition (overlay entering or retiring, icon y moving)?
+2. Is the band really blank at both force calls? Anything drawn into rows TEXT_Y..TEXT_Y+TEXT_H-1 between the full clear and draw_text_slot(true): the restore's stages 9-13, display_redraw_dashboard's draws, the glyph queue, the heal path, a raw-HID text push arriving mid-restore?
+3. Pixel identity of the icons against the old runs.
+4. Anything new? One-line verdict at the end: "flash" or "fix N first".
