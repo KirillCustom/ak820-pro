@@ -57,7 +57,9 @@ USB product IDs in `ioreg` (decimal): 28992 = `0x7140` bootloader, 32777 =
 `0x8009` QMK. `system_profiler SPUSBDataType` returns empty under the agent
 sandbox — use `ioreg`.
 
-Entering the bootloader: `Fn`+`Esc`, or `ESC` while plugging in. The pin
+Entering the bootloader: `Fn`+`Esc`, or `ESC` while plugging in, or **over
+raw HID on a `dev` or instrumented build** (`HC_BOOTLOADER` `0x79`,
+`hostagent/ak820bootloader.py`; "Flashing", below). The pin
 short is no longer needed; if it ever is again (rollback to stock): it is a
 2-pin female header in the spacebar channel
 (`ajazz-ak820-pro/img/bootloader-pins.jpg`); use SIM-eject tools, not
@@ -68,8 +70,10 @@ post-flash reboot lands back in it.
 ## Building
 
 ```sh
-build.sh daily          # console off — what the board lives on
+build.sh daily          # console off — what releases ship
+build.sh dev            # daily + the raw-HID bootloader jump + the dev hooks
 build.sh instrumented   # console + LOOPGAP_INSTRUMENT + WDT_TEST_HOOKS
+build.sh fpb            # daily, for the other LCD panel revision
 ```
 
 Writes a provenance-named binary to `ak820pro-builds/out/`
@@ -77,6 +81,20 @@ Writes a provenance-named binary to `ak820pro-builds/out/`
 (SP `0x20000400`, reset vector, USB descriptor `0C45:8009`), the ChibiOS
 submodule pin, and via.json/enum sync (`scripts/check_via_sync.py`). It
 REFUSES to build if `lib/chibios-contrib` is off the pinned commit or dirty.
+
+**`dev` is what JD's board runs while development lasts** (since flash 2b,
+2026-10-11). It is daily plus two things, each on its own flag:
+- **the bootloader jump** (`AK820_RAW_BOOTLOADER`): `HC_BOOTLOADER` (`0x79`)
+  followed by `BOOT`, so `flash.sh` needs no hands;
+- **the dev hooks** (`AK820_DEV_HOOKS`): `HC_DEVHOOK` (`0x76`) presses
+  `Fn`+`D` and reads or resets the display probe (`scripts/devhook.py`;
+  [display.md](display.md)).
+
+`build.sh` checks the flavor in the ELF: it fails a daily or fpb build that
+carries either marker, and a dev build that lacks one.
+`scripts/release-firmware.sh` ships daily and fpb only. ⚠️ On a dev build
+**any process that can open raw HID can drop the board into the bootloader**,
+which looks dead. Instrumented builds carry the jump too (`WDT_TEST_HOOKS`).
 
 **The ChibiOS patches are COMMITS on the submodule branch `ak820pro-patches`**
 (jdlien/ChibiOS-Contrib fork; recovery bundle in `ak820pro-builds/`). Seven
@@ -90,11 +108,33 @@ already happened once).
 
 ## Flashing
 
-**Use `./flash.sh`** — it dumps the VIA keymap first (flashing erases the
-emulated EEPROM) and restores it after; it refuses to flash if the backup
-fails, and prints the binary's mtime so you can confirm it is YOUR build.
-Flash the per-build artifact from `ak820pro-builds/out/`, never the shared
-`$QMK_HOME/a_jazz_ak820pro_via.bin` path.
+**Use `./flash.sh`** — it prints the binary's mtime so you can confirm it is
+YOUR build. Flash the per-build artifact from `ak820pro-builds/out/`, never the
+shared `$QMK_HOME/a_jazz_ak820pro_via.bin` path. With the board running, in
+order:
+
+1. **Backs up the VIA keymap and the RGB lighting** (flashing erases the
+   emulated EEPROM) and prints each file's time and size. **Either backup
+   failing refuses the flash** (`--no-lighting` skips the lighting,
+   `--no-backup` both; the lighting failure only warned before 2026-10-05).
+2. **Refuses on battery once the RGB cut has fired**: the last ~5 h, the
+   reserve. A pack that dies mid-write leaves the app half-erased.
+   `--on-reserve` overrides.
+3. **Dumps the battery log** to `~/Documents/ak820pro-battlogs/` (fatal unless
+   `--no-battlog`). The log lives in RAM and a flash erases it: on 10-11 a
+   retry loop around this script flashed with no dump since 12:10, and lost
+   that stretch of a drain test.
+4. **Asks the firmware to jump to the bootloader**
+   (`hostagent/ak820bootloader.py`). A build with the jump refuses with `BUSY` within 2
+   s of any key activity, or if it could not deliver every key release over
+   BT; the tool retries for a minute. A daily or fpb build answers "unhandled",
+   and the script falls back to **"press Fn+Esc"**, waiting up to 10 min.
+5. Flashes, waits for `0x8009`, restores the keymap and the lighting, and
+   syncs the clock.
+
+Proven hands-free 15:40 10-11: from the jump to the restore in ~25 s. Already
+in the bootloader, it skips the dumps and restores the last backups, saying how
+old they are.
 
 - Manual fallback (no keymap preservation):
   `./SonixFlasherC/sonixflasher --vidpid 0c45/7140 --file <bin>` — a good
@@ -102,9 +142,13 @@ Flash the per-build artifact from `ak820pro-builds/out/`, never the shared
   board comes back as `0x8009` on its own.
 - Expect one benign retry (`Code Option Table ... Received: 0xFFFF` →
   succeeds on attempt 2).
-- **A flash also erases the kb-eeconfig block**: BT slot, LCD brightness and
-  the persisted RTC period reset to defaults; the clock re-converges for
+- **A flash also erases the kb-eeconfig block**: BT slot, LCD brightness,
+  clock format, the saved battery level and the persisted RTC period reset to
+  defaults; the clock re-converges for
   ~10-15 min (designed — see [clock.md](clock.md)).
+- **The battery level after a flash:** on battery it comes straight back from
+  the pack voltage. On USB power it is unknown ("Charge") until FULL, or until
+  an unplug plus 30 min ([battery.md](battery.md), "The level after a flash").
 - Rollback to stock: `StockFWBinaries/AJAZZ_AK820PRO_PID_8009_V1.13_...bin`
   — **never v1.14** (it changes the PID to 8099 and AJAZZ's own drivers stop
   seeing the board). Requires the pin short; `Fn`+`Esc` disappears with QMK.

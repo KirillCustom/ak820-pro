@@ -109,28 +109,34 @@ Four things from that work that bite outside it:
 Measured results and audit findings from completed work: [`history/`](history/).
 ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 
-## Current state (2026-10-10)
+## Current state (2026-10-11)
 
-**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-10
-— RESUME HERE"). Phase 1b ([`plans/BATTERY-GAUGE-REFINE-PLAN.md`](plans/BATTERY-GAUGE-REFINE-PLAN.md))
-is at gate 8.
-- **B3 is met:** `K_CC` 133.0 pm/h, the mean of three trials. `RELAX_S` is
-  1800 s.
-- **Flash 2** is on the board: `28f260225f`, on the local branch
-  `phase1b-flash2`, since 12:54 10-08.
-- **Gate 8 is met:** the charge from 0 passed (10-09), and so did the 24 h
-  battery soak (10-10). Its per-event checks move to flash 2b. The board is
-  draining to the light cut (~15:44 10-11), then charges itself.
-- **Flash 2b is on the board** (15:39 10-11, `f79b31b68e`, a `dev` build): the
-  raw-HID bootloader jump. **Flashing needs no hands now**: `./build.sh dev`,
-  then `./flash.sh <artifact>`, proven 15:40 10-11.
-- **Then:** flash 2c (the plug-in and page-exit stalls), the E6 docs, and
-  Phase 2 when JD says build.
+**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-11
+— RESUME HERE"). **Phase 1b ([`plans/BATTERY-GAUGE-REFINE-PLAN.md`](plans/BATTERY-GAUGE-REFINE-PLAN.md))
+is done** but for three per-event checks the board makes unattended (FULL,
+"Battery low", the RGB cut on flash 2e). Its design and measurements are in
+[docs/battery.md](docs/battery.md) ("The gauge as built, Phase 1b"); the E6
+doc updates are pushed (10-11).
+- **On the board: flash 2e**, `efd5b0f74a` (local branch `phase1b-flash2`, a
+  `dev` build, token `0x71163528`, since 19:30 10-11). **No measured event
+  reaches 25 ms**: plug-ins 11-12 ms, page exits and the lighting overlay
+  12.7 ms with a track playing.
+- **The gauge:** the charging model (`K_CC` 133.0 pm/h from three trials,
+  `RELAX_S` 1800 s), checked on a charge from 0. Over a whole cycle it held
+  ±2.5 points from 52% to the cut, but read up to 8.3 low on the curve's flat
+  top (70-85%). Runtime 51.13 h, +1.1% on run 2.
+- **Flashing needs no hands:** `./build.sh dev`, then `./flash.sh <artifact>`
+  ("Build & flash", below).
+- **Next:** merge `phase1b-flash2` into `ak820pro-jdlien` (four stale
+  comments to fix, listed in current-status), then Phase 2 when JD says build.
 
-**The bench now runs trials without JD's hands:** a USB relay on the
-keyboard's 5 V, plus `uhubctl` on its data
+**The bench runs trials without JD's hands:** a USB relay on the keyboard's
+5 V, plus `uhubctl` on its data
 ([`docs/test-bench.md`](docs/test-bench.md)). ⚠️ Keep the slider on BT or 2.4G.
 ⚠️ JD is often busy: one action per message.
+⚠️ **Test display changes with a track playing**: the page-exit and overlay
+stalls of 10-11 needed one, and every idle test missed them
+([docs/display.md](docs/display.md)).
 
 ## Earlier state (2026-10-08)
 
@@ -208,9 +214,18 @@ restructured the same day into a clone-and-build package: `setup.sh` +
 
 ```sh
 ./setup.sh                  # idempotent; re-run after changing deps.lock
-./build.sh daily            # or: instrumented (console + test hooks)
+./build.sh dev              # JD's board: daily + the raw-HID bootloader jump + dev hooks
+./build.sh daily            # what releases ship; or: instrumented, fpb
 ./flash.sh ak820pro-builds/out/<the printed artifact>
 ```
+
+**`dev` is what JD's board runs while development lasts** (since 2026-10-11).
+It adds `HC_BOOTLOADER` (`0x79` + `BOOT`), so `flash.sh` jumps to the
+bootloader with no `Fn`+`Esc`, and `HC_DEVHOOK` (`0x76`: press `Fn`+`D`, read
+the display probe, `scripts/devhook.py`). `build.sh` fails a daily or fpb
+build that carries either, and releases ship daily and fpb only. ⚠️ On a dev
+build any process that can open raw HID can drop the board into the
+bootloader, which looks dead.
 
 **Releasing:** `git tag -a vX.Y.Z` and push it; CI builds the agent zip into
 a GitHub Release, then `scripts/release-firmware.sh vX.Y.Z` (from a checkout
@@ -265,14 +280,26 @@ and stops before notarization. The user-facing description is
 `ak820-agent/INSTALL-macos.txt`.
 
 `build.sh` enforces the submodule pin, structural binary checks and via.json /
-enum sync; it refuses a dirty or off-pin tree. `flash.sh` preserves the VIA
-keymap **and the RGB lighting** across the flash; it refuses to flash if the
-keymap backup fails, and only warns if the lighting backup does. Bootloader is
-`Fn`+`Esc`. **A flash erases the emulated EEPROM**: VIA keymap and RGB
-effect/colour (both restored by flash.sh), BT slot, LCD brightness, persisted
-RTC period (re-converges in ~4 min with the host attached — designed, not a
-fault). The default keymap is JD's VIA layout, regenerated with
-`scripts/keymap_to_c.py`, never hand-edited.
+enum sync; it refuses a dirty or off-pin tree. `flash.sh`, in order:
+- backs up the VIA keymap **and the RGB lighting**, and refuses if either
+  backup fails (`--no-lighting`, `--no-backup` to override);
+- **refuses on battery once the RGB cut has fired** (the reserve; a pack that
+  dies mid-write leaves the board half-erased; `--on-reserve` overrides);
+- **dumps the battery log** to `~/Documents/ak820pro-battlogs/`, fatal unless
+  `--no-battlog` (a flash erases the RAM log; one was lost to a retry loop on
+  10-11);
+- asks the firmware to jump (`hostagent/ak820bootloader.py`); a build without
+  the jump (daily, fpb) answers "unhandled", and it falls back to asking for
+  `Fn`+`Esc`;
+- flashes, restores the keymap and lighting, and syncs the clock.
+
+Bootloader by hand is `Fn`+`Esc`. **A flash erases the emulated EEPROM**: VIA
+keymap and RGB effect/colour (both restored by flash.sh), BT slot, LCD
+brightness, clock format, the saved battery level, persisted RTC period
+(re-converges in ~4 min with the host attached — designed, not a fault). On
+USB power the battery level is then unknown ("Charge") until FULL or an
+unplug plus 30 min; on battery it comes straight back. The default keymap is
+JD's VIA layout, regenerated with `scripts/keymap_to_c.py`, never hand-edited.
 
 ⚠️ **The RGB restore is new as of 2026-09-06** —
 `hostagent/ak820lighting.py` (`show` / `dump` / `restore`), backup at

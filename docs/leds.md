@@ -152,16 +152,44 @@ tell them apart. Do not merge them.
    vs a 53 µs ISR period). Hold-to-repeat made a long-latent race visible.
 2. **A brief DARK flash:** QMK's eeconfig flush is a RATE LIMIT, not a
    debounce — it fires every `RGB_MATRIX_EEPROM_WRITE_DELAY` (750 ms)
-   *throughout* a held key, and each internal-flash write stalls the row ISR.
+   *throughout* a held key, and each internal-flash write blanks the matrix
+   (item 3's guard; the account below). This item once said the write "stalls
+   the row ISR"; it does not.
    `rgb_matrix_eeprom_flush_allowed()` now also waits for the values to stop
    moving (`RGB_SETTLE_MS` 900) — one write after you settle.
-3. **One row at ~18× brightness during masked flash-program windows (fixed
+3. **One row at ~18× brightness during a flash program (fixed
    2026-09-01, hardening):** the `EFLD1.state != FLASH_PGM` guard in the row
    ISR skipped the PWM update but left the previously-selected mux row
-   ENERGIZED for the whole masked window. The fix de-selects every row pin in
+   ENERGIZED for the whole program operation. The fix de-selects every row pin in
    that branch (ISR-safe; `sn32f2xx_blank()` is NOT ISR-safe — its
    `pwmDisableChannel` is not I-class). Verified by eye through sweeps and 15
-   forced eeconfig writes.
+   forced eeconfig writes. (This item, and the guard's comment in
+   `sn32f2xx.c`, said the row was frozen by "masked" windows: see below.)
+
+### What an internal-flash write does to the LEDs (corrected 2026-10-04)
+
+Codex caught it in the Phase 1b plan review, and `hal_efl_lld.c` confirms it:
+**interrupts are NOT masked for the whole write.**
+
+- They are masked only across each **per-line program window**, tens of µs
+  (the datasheet: 10 µs typical, 20 µs maximum per 64-bit program). The
+  vector table and every ISR live in flash and the M0 has no VTOR, so an
+  interrupt inside a program window would fetch its handler from an array
+  mid-program: that was a hang.
+- **Page erase** (1-2 ms per 1 KB page) is **not masked**: that long would
+  starve UART2, the CH582F link, where late means lost data.
+- Between those windows the row ISR keeps running. While the flash driver is
+  in its program state it **de-selects every row**: item 3's guard. That is
+  the whole-board dark blink JD sees, for as long as the write lasts. Its
+  length is unmeasured; the longest flash-marked main-loop interval on run 2
+  was 7 ms, and that includes the DMA drain before the write.
+
+⚠️ **Never mask interrupts around the whole operation** to hide the blink: the
+driver's comment says why (UART2). Make fewer writes instead. Since Phase 1b's
+C2 the board makes ~3 a day outside the battery level's milestones
+([battery.md](battery.md), "Internal-flash writes"). The LCD's one bright flash
+during a write (10-01) has a hypothesis, a page erase freezing the backlight
+PWM in its last state, which is untested; no guard is built.
 
 ## The rainbow is a GEOMETRY problem, not flicker
 

@@ -168,6 +168,67 @@ Measured after the flash, ~4 min, 682 presses, several Fn+D exits:
 `count_ge_25ms_nonflash` **0**, `blit_gap_max_ms` **20** (the unchanged Caps-on
 path). See `plans/BACKLOG.md` before touching the band further.
 
+**`draw_battery()` since flash 2c (2026-10-11): one component per main-loop
+pass.** It is still synchronous, but what changed is marked (the outline, the
+bolt slot, the text, the bar) and each call paints only the first mark. The
+text goes in 3-glyph chunks (~2.5 ms a glyph), and a shortening text's clear
+takes its own call. The bar is marked by the fill it would paint, not by the
+level, which also fixed "Low"'s sliver at 0%. A flag set by the first paint
+keeps a second call in the same pass from painting; `display_pass_end()`, the
+last thing `housekeeping_task_kb()` does, clears it. Without that flag the
+second-edge draw, the 10 Hz tick and the deferred dashboard redraw could land
+two or three components in one pass. ⚠️ QMK calls `housekeeping_task_user()`
+after it; that hook is empty here, and a keymap that draws there would reopen
+the gap (codex, flash 2c).
+
+### Small shapes go in a RAM tile, not in rectangle runs (2026-10-11)
+
+**Every `lcd_fill_rect` run pays an 11-byte window command sent byte by byte**
+(`spiSend`), and the ChibiOS call overhead per byte dwarfs the pixels. So a
+shape drawn as a dozen runs costs a dozen windows. Rasterize it into a small
+RAM tile and send it with one `lcd_blit_ram()` instead: one window, one send,
+and the tile paints its own black background, so no clear goes first. Three
+measured cases:
+
+| shape | as runs | as one tile |
+|---|---|---|
+| the 12h `A`/`M` glyph, 5×16 (`draw_ampm`, the first) | ~24 ms | the 12h transition 40 → 7 ms |
+| the battery row's bolt slot, 12×14: bolt, no-pack cross or blank (`draw_bolt_slot`, flash 2c) | a clear and 11 runs (24 for the cross): 19 ms at every plug-in | plug-in passes 24-26 → **11-12 ms** |
+| the transport icon, 12×12: play, pause, stop (`draw_text_icon_runs`, flash 2e) | ~9 ms for play, sometimes drawn twice a call | **3.4 ms** |
+
+The plug-in figures are relay-driven bench cycles, three a build
+(`history/battery-2026-10-08-partial-charge/plug-events.csv`). The padlock is
+still drawn as runs, and the Caps-on paint measured 20 ms: it is the next
+candidate if a check ever shows it over 25 ms. The SN32's DMA cannot source
+RAM, so `lcd_blit_ram()` is a CPU push: fine at this size, not for big areas.
+
+### ⚠️ A stall that needs a track on screen (2026-10-11)
+
+Two stalls hid from every idle test because both need **the host text slot
+showing a track**. With nothing playing there were none. With music, on flash
+2c and 2d:
+- **the Fn+D page exit** back to the dashboard: 32-33 ms passes. The
+  restore's text-slot stage took 28.3 ms;
+- **the settings overlay's retirement** (2-3 s after a lighting change): 31 ms
+  passes, the text slot in housekeeping 23.1 ms;
+- a track appearing stalled too.
+
+Both ended in the text slot's repaint (`draw_text_slot()`). Forced, it
+re-cleared a band its callers had just cleared (~8 ms), and it drew the play
+icon as runs (~9 ms), twice when a line clear clobbered it. **Flash 2e** sends
+the icon as one tile and drops that clear. Measured with a track playing:
+**12.7 ms for both, no pass ≥ 25 ms** in three page cycles, two lighting steps
+or the track starting. ⚠️ **Test display changes with a track playing.**
+
+### The display probe (dev builds)
+
+`./build.sh dev` compiles in `DPROBE` (`AK820_DEV_HOOKS`): the worst time of
+each of the 14 Fn+D restore stages and of each housekeeping sub-draw, held
+until reset. `HC_DEVHOOK` (raw HID `0x76`) reads it and resets it, and can
+press `Fn`+`D`, so the pages can be cycled with no hands:
+`scripts/devhook.py press | reset | read`. It is what found the stalls above.
+Daily and fpb builds carry none of it (`build.sh` fails them if they do).
+
 ### ⚠️ `lcd_draw_flash_text_staged()` is declared and does not exist
 
 `lcd_bus.h` declares it and the comments around the host-text band recommend it
@@ -224,7 +285,12 @@ Dismissing it used to cost ~30 ms (`worst 30ms blit`) because the restore
 forced every status component in one pass; since `821431e3e4` the lock band is
 restored one component per pass and no stage exceeds ~12 ms. Measured: several
 dismissals, `stall>25` stays **0**, `worst` **20 ms** — and that 20 is Caps Lock,
-not the page. While the restore runs, `display_housekeeping_task()` stands aside
+not the page. ⚠️ **That held only with no track on screen.** With music
+playing the exit was 32-33 ms on flash 2c, until flash 2e's fix (12.7 ms;
+"A stall that needs a track on screen", above). The restore's battery stage
+now paints only the outline; the rest follows one component a pass.
+
+While the restore runs, `display_housekeeping_task()` stands aside
 (it gates on `debug_exit_step`); that gate is safe only because the pump is
 called from its own site in `housekeeping_task_kb()` — the gate's comment says
 why, do not fold the pump into the housekeeping task.
@@ -237,22 +303,26 @@ battery runs (added 2026-10-02: on JD's security camera the debug page's text is
 RAM log survives).
 
 ```
- 3.712      ← the pack in volts; ---- no estimate, HI / LO at the 5C clamps
-    47      ← the level in percent; --- unknown
-14:03:27      5C 62@3 ← the board's clock, and the raw 5C @ its age
+ 3.712V     ← the pack in volts; >4.036V / <3.161V at the 5C clamps, -.---V none
+   58%      ← the level in percent; --% unknown
+14:03:27    ← the board's clock
+5C 62@3     ← the raw 5C @ its age in s (the 10×23 status face)
 ```
 
 The clock is for **time-lapse video**, which stamps no time on its frames
 (JD's Pixel 8 records at 5×-120×): every frame dates itself, to the second,
 from the clock the host agent keeps right.
 
-**Seven-segment digits drawn as rectangles**, 26×48 px with 6 px segments: no
-font asset is big enough (the clock's is cropped to 15×22 and holds only `0-9:`).
-`lcd_fill_rect()` is a CPU push at wire speed (~0.1 ms a segment), and the pump
-paints **one changed segment per main-loop pass**, so no pass nears the 10 ms
-line. It shares the debug page's banded clear and staged restore. Recomposed
-once a second, like the debug page. "HI" uses the left-hand pair of segments
-for its I, so it cannot read as "H1".
+**In the clock's font, 15×22, since 2026-10-06** (`6eadbd0e3a`, shipped in
+flash 2). The atlas, cropped for the clock, still holds all 95 ASCII glyphs;
+the crop cut only descenders, and the page draws none (digits `. : % V < > -`).
+Each line is a fixed grid of cells, so a changed character repaints only its
+own cell, and the pump paints **one changed cell per main-loop pass**. It
+shares the debug page's banded clear and staged restore, and recomposes once a
+second. Previews were rendered from the shipped atlases before any code
+(`scripts/camera_page_preview.py`). It replaced **seven-segment digits drawn as
+rectangles** (26×48 px, 6 px segments), which JD found ugly and cryptic; the
+earlier note here that the clock atlas holds only `0-9:` was wrong.
 
 ## Backlight (software PWM, dimmable, persisted)
 
@@ -317,16 +387,31 @@ The text slot holds one of:
 | text | when |
 |---|---|
 | `85%` (`85.9%` with `BATTERY_SHOW_TENTHS`, a calibration view, off by default) | the level is known |
+| `57%` with the bolt, rising | **charging from a known start: the charging model's number**, at most `99%` until the charger terminates, then `100%` |
 | `Low`, with a red sliver of fill | level under 0.5% on battery (below ~3.43 V on the fitted curve), or three `5C` reports of 0 in a row |
-| `Charge` / `USB` / blank | level not known yet: charging / on USB / on battery |
+| `Charge` | charging with the level unknown: no trusted start (a boot on USB, a reboot mid-charge), the model given up (LOST), or the first 60 s before a session qualifies |
+| `USB` | on USB, the charger idle, the level unknown (also a short pause in an unknown charge) |
+| blank | on battery, the level unknown: after a boot until the first estimate, or for 30 min after unplugging an unknown charge |
 | `No Batt`, red cross in the bolt's slot | no pack fitted (`indicators.c`) |
+
+**The charging display (Phase 1b, flash 2).** While charging, `5C` reads a
+voltage the charge current lifts, so the number is a time model of the charge,
+bounded by the voltage: linear at 13.3 points an hour to ~53%, then slowing,
+reaching 99% about when the charger terminates. It never falls, never rises
+past what the voltage allows, rises at most 0.1 point a second (so it never
+skips a value), and steps to 100 at termination (2.6 points on 10-09). The
+model, its limits and its measurements: [battery.md](battery.md), "The gauge
+as built, Phase 1b".
 
 Never VDD: it showed VDD until the gauge, and on battery VDD is a buck-boost's
 output pinned at ~3.90 V. Redraw triggers on the text, the charging state and
 presence as well as the level, and repaints only what moved — the old
-whole-strip clear plus four synchronous glyphs came to ~20 ms. Drawing
-diagonals: rasterise a polygon and emit horizontal runs — hand-placed zigzags
-read as the digit "4".
+whole-strip clear plus four synchronous glyphs came to ~20 ms. Since flash 2c
+**it paints one component per main-loop pass**, and the bolt slot is one RAM
+tile ("Not every band is queued", above): a plug-in costs 11-12 ms passes, not
+24-26. Drawing diagonals: rasterise a polygon and emit horizontal runs —
+hand-placed zigzags read as the digit "4". The bolt keeps its runs as data and
+rasterizes them into the tile.
 
 **A time-remaining readout: still not shown.** The level is a fraction of
 runtime at the load the curve was measured at (full white); hours would need
@@ -348,6 +433,9 @@ via `#define PARAM_OVERLAY` in config.h — keep it that way.
 - Effect names are a local table (10 enabled effects), not
   `rgb_matrix_get_mode_name()` — smaller, readable, band-sized.
 - Priority: pair hint > RGB readout > link state > host text.
+- ⚠️ **Its retirement repaints the host text**, and with a track showing that
+  cost 31 ms passes until flash 2e (now 12.7 ms; "A stall that needs a track
+  on screen", above). Test overlay changes with music playing.
 
 ## Wireless status overlay (words for the blinking digit)
 
@@ -395,6 +483,8 @@ are harmless; the producer polls every 3 s.
 - Single-line text keeps the adaptive size: ≤ `TEXT_BIG_MAX` (11) chars uses
   the 20px face.
 - Icons: `0 none, 1 play, 2 pause, 3 stop` — icon IDs, not "media state".
+  Each is a 12×12 RAM tile sent in one transfer since flash 2e (it was
+  `lcd_fill_rect` runs, ~9 ms for play).
 - Non-ASCII becomes `?` in firmware; the host transliterates first.
 - **Expires after 3 min** (`DISPLAY_TEXT_TIMEOUT_MS`) so a dead agent leaves
   a blank slot, not last night's track.
@@ -431,9 +521,11 @@ the fifth byte (`clock_mode+1`, block grown from 4 to 5 with a data-version
 bump, 2026-09-01; the enum is append-only because the value is persisted).
 Display-only: `rtc/` still keeps the time.
 
-- **date** is `Sep 1, 2026` in the 20px face (the 30px atlas has only
-  digits and the colon); 12 cells max, redrawn at midnight. The comma is a
-  full 10 px cell — monospace, and the band's diff scheme assumes
+- **date** is `Sep 1, 2026` in the 20px face; 12 cells max, redrawn at
+  midnight. (This note once said the 30px atlas has only digits and the colon.
+  It holds all 95 ASCII glyphs, but the crop to the clock's ink cut every
+  descender, so `Sep` would lose its `p`'s tail: `display.c`, at `CLOCK_Y`.)
+  The comma is a full 10 px cell — monospace, and the band's diff scheme assumes
   `x + i×advance`, so per-glyph kerning is deliberately not attempted. A
   two-line time+date mode was considered and **does not fit**: a 20px cell
   (23 rows) over a 13px cell (14 rows) is 37 rows in a 23-row band.

@@ -94,20 +94,48 @@ this is the operative bound.
 
 ## Persistence, and what a reflash costs
 
-The converged period is persisted (kb_eeconfig, coalesced deferred write,
-sanity 28000-40000) **after every window evaluation** once uptime ≥ 10 min
-and the value is ≥ 64 ticks from what is stored; `rtc_init()` prefers the
-stored period. (Persisting only on a *changed* proposal was a bug — a loop
-that converged cleanly never stored, and the next reboot re-seeded at
-33600 with ~12 ms/s drift.) `RTC_PERIOD_INITIAL` (33600, measured
-2026-08-30) is only the fresh-EEPROM fallback — ⚠️ **never upstream it**;
-the ILRC varies part to part and with temperature.
+**Correcting and saving are separate** (Phase 1b's C2, firmware flash 2,
+2026-10-08; `rtc/rtc_persist.c`, `rtc_persist.h`). Both correction paths, the
+SOF window and the PCF trim, correct the live period exactly as before, and
+each accepted, sane value (28000-40000) becomes the **candidate**. They never
+write. One scheduler, run once a minute from `rtc_task()`, owns every save
+(kb_eeconfig, coalesced deferred write):
+
+- **The first save:** nothing stored, and uptime ≥ 10 min. It saves whether or
+  not the candidate is still moving: a loop that converged cleanly and never
+  stored was a real bug once (the next reboot re-seeded at 33600 with ~12 ms/s
+  drift).
+- **Later saves:** the candidate ≥ 64 ticks from the stored value **and** ≥ 6 h
+  since this boot's last save (or since boot). So at most 4 a day, one budget
+  for both paths.
+- `rtc_init()` prefers the stored period. The saved value only seeds the next
+  boot, so holding a save for hours costs nothing but a slightly worse seed.
+
+**Why:** every internal-flash write blinks the LEDs dark for a few ms
+([leds.md](leds.md)). Until flash 2 each path saved whenever its value moved
+≥ 64 ticks from the stored one, and the PCF path did that **6-8 times a day on
+battery** (Phase 1b's C1, 2026-10-05/07): the 64-tick threshold did not keep
+temperature wander from causing steady rewrites, as `rtc.c`'s comment had
+claimed. Measured since: 3 saves (of 29 proposals) in a 24 h battery soak
+(10-09/10), and on the host (`scripts/diag_sim`, `persist`) 3 saves in a day
+of the worst wander on both paths, 1 in two settled days. The counts are on
+`HC_FLASHW` (`ak820health.py --stalls`): proposals and stores per path, and
+the last of each.
+
+*Superseded:* until flash 2 this section read "persisted **after every window
+evaluation** once uptime ≥ 10 min and the value is ≥ 64 ticks from what is
+stored".
+
+`RTC_PERIOD_INITIAL` (33600, measured 2026-08-30) is only the fresh-EEPROM
+fallback — ⚠️ **never upstream it**; the ILRC varies part to part and with
+temperature.
 
 **Reflashing ERASES the emulated EEPROM**, stored period included. With the
 host attached, the SOF loop re-converges in **~4 min** (7-12 ms/s drift
-early on); standalone, the legacy trim gets inside the 2 s deadband in
-~10-15 min but full half-step convergence takes **hours** (each ≥ 300 s
-window halves the remaining error — which is exactly why the SOF loop
+early on; on `8608c4f680` a fresh seed settled in 90 s), and the first save
+follows at 10 min of uptime. Standalone, the legacy trim gets inside the 2 s
+deadband in ~10-15 min but full half-step convergence takes **hours** (each
+≥ 300 s window halves the remaining error — which is exactly why the SOF loop
 exists). **Designed, not a fault.**
 
 ## Host sync (the host side)
@@ -200,15 +228,23 @@ rate is judged against distance, not time: the period write fires every
 `writes ≫ Δperiod / 64` would mean the ±2-tick dither is straddling a
 threshold — the one way a faster loop could cost flash, fixable with
 hysteresis on the persisted value rather than by slowing the loop.
+**Superseded (2026-10-08):** distance alone did not bound it. On battery the
+PCF path saved 6-8 times a day, so saves now also need 6 h since the last
+("Persistence", above).
 
 Also corrected: the "~4 min" post-flash re-convergence is ~20 min in practice,
 because the ±16-tick lock threshold (±480 ppm) switches to 128-s windows early
-and the last dozen ticks then halve once per window.
+and the last dozen ticks then halve once per window. **Superseded the next day
+by `8608c4f680`:** both windows are now 32 samples (`WIN_INITIAL` and
+`WIN_LOCKED` in `rtc.c`), so the lock threshold switches nothing and survives
+only as the console's lock indicator; a fresh seed settled in 90 s. Nothing in
+this section's 128-s figures describes the current loop.
 
 ## Timebase note
 
 QMK's millisecond timer runs ~1.2% slow under the current interrupt load
-(see [leds.md](leds.md)) — **the clock is unaffected**: the display reads
-the SN32 RTC's hardware registers, and both discipline paths use
+(see [leds.md](leds.md); *leds.md retracted this on 2026-09-03: the timer
+reads 1.0001-1.0004 of wall time*) — **the clock is unaffected**: the display
+reads the SN32 RTC's hardware registers, and both discipline paths use
 `rtc_seconds_count` / `FRMNO` / PCF absolute time, none of which touch
 `timer_read32()`.

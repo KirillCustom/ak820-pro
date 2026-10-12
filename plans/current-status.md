@@ -1,6 +1,6 @@
 # Current status
 
-Updated 2026-10-10 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
+Updated 2026-10-11 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
 [`CRASH-HUNT-PLAN.md`](CRASH-HUNT-PLAN.md). The live work is Phase 1b,
 below.
 
@@ -14,18 +14,39 @@ loop stopped next time. The crash hunt adds what they cannot say (a CPU fault
 versus a hang, the PC, stack depth, why blits time out) and tries to provoke
 the next reset instead of waiting for it.
 
-## 2026-10-10 — RESUME HERE
+## 2026-10-11 — RESUME HERE
 
-**Where things stand:** Phase 1b
-([`BATTERY-GAUGE-REFINE-PLAN.md`](BATTERY-GAUGE-REFINE-PLAN.md)) is nearly
-done.
-- **Done:** flash 2 is on the board; **B3 is met**; **gate 8 is met** for
-  the charge (10-09) and the 24 h battery soak (10-10). Its per-event checks
-  move to flash 2b.
-- **Running:** a drain to the light cut, then a charge to full, unattended
+**Where things stand: Phase 1b
+([`BATTERY-GAUGE-REFINE-PLAN.md`](BATTERY-GAUGE-REFINE-PLAN.md)) is done but
+for three per-event checks the board makes on its own.** Gates 1-7 are met,
+and gate 8 for the charge and the soak. Its per-event checks pass for every
+event measured: plug-in and unplug, the Fn+D pages, a lighting write, typed
+text under a plug-in. FULL, "Battery low" and the RGB cut on flash 2e are
+still to see (below). Gate 9, the E6 docs, is written and pushed (10-11). The design and its measurements are now in
+[`../docs/battery.md`](../docs/battery.md) ("The gauge as built, Phase 1b"),
+[`../docs/display.md`](../docs/display.md),
+[`../docs/clock.md`](../docs/clock.md) and
+[`../docs/leds.md`](../docs/leds.md).
+- **Done:** B3 (`K_CC` 133.0, `RELAX_S` 1800 s); gate 8's charge from 0
+  (10-09) and 24 h battery soak (10-10); the cycle's drain to the cut (10-11,
+  51.13 h); and the stalls gate 8's per-event checks found, fixed in flashes
+  2c and 2e: **no measured event reaches 25 ms** now.
+- **Running:** the board charges to FULL on the relay, on since 16:21 10-11. No
+  script watches it: `bench_trial.py` was stopped at 16:26 for the plug-in tests
   (below).
-- **Left:** flash 2b, the E6 docs, then Phase 2 (the power ladder), and only
-  when JD says build.
+- **Left for Phase 1b:** merge `phase1b-flash2` into `ak820pro-jdlien`; push
+  the fork and move `deps.lock` when JD says (a release step). Fix four stale
+  firmware comments at the merge:
+  - `battery_tail.h` still says "PROVISIONAL, B3 trial 1 only";
+  - `battery.h` calls `RELAX_S` provisional until trial 2, and `PAUSE_S`
+    "10 min";
+  - `draw_battery()`'s comment still calls the bolt "a clear and 11
+    synchronous rects";
+  - `lcd_bus.h` still declares `lcd_draw_flash_text_staged()`, which does not
+    exist, and the host-text band's comments still recommend it.
+- **Not built, by JD's call (10-11):** the provisional level after an UNKNOWN
+  unplug (`BACKLOG.md`, "The level after a flash").
+- **Then Phase 2** (the power ladder), note-taking only until JD says build.
 - **Parts:** the INA228 bench-logger kit is ordered (10-09, ~a week).
 - **Pushed:** `jdlien/ak820-pro` is pushed (JD allowed it on 10-08). The
   firmware branches are local only.
@@ -54,7 +75,8 @@ Codex cleared it: gate 7 plus two verification passes, all in the plan's
   session's job directory. If it is gone: `git -C qmk_firmware-ak820pro
   worktree prune`, then `worktree add <dir> phase1b-flash2`.
 - **Build:** check the commit out detached in `qmk_firmware-ak820pro`, run
-  `./build.sh daily`, then `git checkout ak820pro-jdlien`.
+  `./build.sh dev` (JD's board) or `daily` (a release), then
+  `git checkout ak820pro-jdlien`.
 - **Simulators:** they take the tree via `BATTERY_SIM_SRC=` (and
   `DIAG_SIM_SRC=`, `CH582_SIM_SRC=<...>/bluetooth`).
 
@@ -83,12 +105,12 @@ Codex cleared it: gate 7 plus two verification passes, all in the plan's
   power-off, and the RAM log is lost.
 - The HomeKit outlet "Christmas Tree" (`scripts/bench_power.py`) powers the
   Acasis hub. It is **no longer in the keyboard's path**.
-- **Now (from 13:14 10-10):** relay 2 OFF, data ON. `bench_trial.py --wait-cut
-  --poll 300 --full` reads every 5 min until the light cut (~15:44 10-11 if
-  the runtime matches run 2's). Then it dumps the log and turns the relay ON
-  to charge to full, and leaves it on (`post-soak-drain.csv`, `.log`). It runs
-  in session `dbe817d8`'s background. ⚠️ Before flashing, stop it and dump the
-  log.
+- **Now:** relay 2 ON, data ON: charging from the ~16:18 10-11 RGB cut to FULL
+  (~01:30 10-12). The post-soak drain before it (`bench_trial.py --wait-cut
+  --poll 300 --full`, from 13:14 10-10; `post-soak-drain.csv`, `.log`) reached
+  the cut after 51.13 h and turned the relay on at 16:21:23. The relay cycles
+  since (16:27-16:46, 19:00) were the per-event checks. ⚠️ Before any flash,
+  stop anything still polling; `flash.sh` dumps the log itself.
 
 ### Gate 8 ([`../history/battery-2026-10-08-partial-charge/readings.csv`](../history/battery-2026-10-08-partial-charge/readings.csv))
 
@@ -105,14 +127,21 @@ Codex cleared it: gate 7 plus two verification passes, all in the plan's
     read on battery;
   - **3 write sessions outside the milestones**, against ≤ 10. All three are
     C2's RTC-period stores; the 5 level milestones are excluded.
-- **The per-event checks move to flash 2b.** The plug-in's 33 ms blit, and
-  probably the page exit's 37-39 ms, break their ≥ 25 ms rule. They are flash
-  2b's items 1-2, and the checks (with JD typing the reference text) run on
-  flash 2b.
-- **Accuracy, which is not a gate:** the gauge agreed with the runtime line at
-  both ends of the soak (−0.1 after 24 h). It dipped 8.3 points low around
-  71% on the curve's flat top (4003-4016 mV covers 70-85%). The drain to the
-  cut checks the lower half. For E6.
+- **The per-event checks (10-11, flashes 2b-2e):**
+  - **plug-in:** the 33 ms on flash 2 was the bolt drawn as 11 rect runs
+    (19 ms); as one RAM tile (2c) plug-ins are 11-12 ms on the relay bench
+    (`plug-events.csv`);
+  - **Fn+D page exits** (32-33 ms on 2c) and **a lighting write's overlay
+    retirement** (31 ms): both needed a track playing, found by 2d's display
+    probe, fixed in 2e (12.7 ms each, no stall);
+  - one typed line under a plug-in and an unplug arrived exact;
+  - **still to see on 2e:** FULL, "Battery low" and the RGB cut. The counters
+    catch them unattended.
+- **Accuracy, which is not a gate** (now in `docs/battery.md`): the soak's
+  ends agreed with the runtime line (−0.1 after 24 h), but it dipped 8.3
+  points low around 71% on the curve's flat top (4003-4016 mV covers 70-85%).
+  **From 52% to the cut: within ±2.5 points** (mean −0.2). The cycle's
+  runtime: 51.13 h, +1.1% on run 2. So ±5% holds everywhere but 70-85%.
 
 ### Results to keep
 
@@ -125,38 +154,32 @@ Codex cleared it: gate 7 plus two verification passes, all in the plan's
   load would push both the same way.
 - **Flash 2's six stalls ≥ 25 ms all came before the soak:** 33 ms at each
   USB-power arrival (3 of 3), and 37-39 ms around JD's camera → dashboard page
-  switch. These are flash 2b's items 1-2.
+  switch. Fixed in flashes 2c and 2e (above).
+- **Small shapes go in a RAM tile:** every `lcd_fill_rect` run pays an
+  11-byte window command sent byte by byte (`docs/display.md`).
 - **macOS's Bluetooth battery is the CH582F's linear `5C`, not our gauge.** At
   03:50 10-10 macOS said 96% while our gauge read 66.4%; it says ~27% when the
   lights cut.
   - System Settings reads it live; **`system_profiler` shows a stale cached
     value.**
-  - The fix needs a module command we don't know of: task 8.7, flash 2b item 5.
+  - The fix needs a module command we don't know of: task 8.7, flash 2b item 5
+    (`BACKLOG.md`, "macOS shows the module's battery percent").
 
 ### Next, in order
 
-1. **~15:44 10-11, unattended:** the drain reaches the cut. Compare the log
-   with the runtime line below 52%, and the total runtime with run 2's
-   50.56 h. Then the charge to full.
-2. **Flash 2b** (the plan's "Flash 2b" list):
-   - stage the plug-in redraw;
-   - confirm and stage the page-exit draw;
-   - **`HC_BOOTLOADER` on its own flag in daily builds during development, with
-     `flash.sh` sending it** (JD approved 10-10). After this flash, flashing
-     needs no Fn+Esc;
-   - optionally a provisional level after an UNKNOWN unplug (JD's call);
-   - investigate a module level command.
-
-   Each item gets a scenario, then a codex review, then JD's last Fn+Esc.
-3. **E6 docs:** `docs/battery.md` gets the model, B3 and the bench. Merge
-   `phase1b-flash2` into `ak820pro-jdlien`. Push the fork when JD says, and
-   move `deps.lock`.
-4. **When the INA228 kit arrives:** walk JD through the wiring, checking the
+1. **~01:30 10-12, unattended:** FULL on flash 2e. Read the health counters
+   for its pass, and for "Battery low" and the RGB cut on the next drain.
+2. **Merge and tidy:** JD reviews and commits the E6 docs. Merge
+   `phase1b-flash2` into `ak820pro-jdlien`, fixing the four stale comments
+   listed at the top. Push the fork and move `deps.lock` when JD says.
+3. **When the INA228 kit arrives:** walk JD through the wiring, checking the
    breakout's pinout first. Write the QT Py logger. Map `K_CC` against the
    level and find the knee (task 12).
-5. **Phase 2,** note-taking until JD says build: the agreed order in
+4. **Phase 2,** note-taking until JD says build: the agreed order in
    [`BATTERY-GAUGE-PLAN.md`](BATTERY-GAUGE-PLAN.md). Step 2 is the INA228's
    per-load currents. The PPK2 is deferred to step 4.
+5. **Low priority, in `BACKLOG.md`:** the level after a flash (a seed command,
+   or the provisional level), and a module command for macOS's percent.
 
 ### Also
 
@@ -168,7 +191,7 @@ Codex cleared it: gate 7 plus two verification passes, all in the plan's
   - **quill4gen7** forked both repos on 09-24. Worth borrowing:
     - an over-the-air host-to-board channel on the Num and Scroll Lock LEDs
       (assessed: a Mac-only experiment first);
-    - a raw-HID bootloader jump;
+    - a raw-HID bootloader jump (built: flash 2b, `dev` builds only);
     - a screensaver whose waking key still types.
 - **The task list:** `.taskmaster/tasks/tasks.json` (local, untracked), tasks
   11-15.
