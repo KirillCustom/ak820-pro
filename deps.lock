@@ -17,7 +17,7 @@
 # (drivers/led/sn32f2xx.c+.h, quantum/rgb_matrix/rgb_matrix.c,
 # platforms/chibios/.../wear_leveling_efl.c) -- all weak-hooked or no-op for
 # other boards. Everything else in the tree is upstream QMK.
-qmk_firmware-ak820pro  https://github.com/jdlien/qmk_firmware.git  ak820pro-jdlien  44e7314e6584ebe36328120c2b97592603d9d9db
+qmk_firmware-ak820pro  https://github.com/jdlien/qmk_firmware.git  ak820pro-jdlien  3e18c70a74375ca9912bee607d73be0aa02fd093
 
 # ak820ctl (clock + flash provisioning) and the asset pipeline (mkraw.py,
 # mkanim.py). MUST be this fork's branch, not fpb/main: main has no --bias

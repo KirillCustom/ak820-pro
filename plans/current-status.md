@@ -36,9 +36,11 @@ still to see (below). Gate 9, the E6 docs, is written and pushed (10-11). The de
   no stall). `bench_trial.py --wait-cut --poll 300 --full`, the cut expected
   ~14:30 10-14, then a charge to FULL
   (`history/battery-2026-10-12-drain-2e/`).
-- **Left for Phase 1b:** merge `phase1b-flash2` into `ak820pro-jdlien`; push
-  the fork and move `deps.lock` when JD says (a release step). Fix four stale
-  firmware comments at the merge:
+- **Merged and pushed (10-12, JD):** `phase1b-flash2` fast-forwarded into
+  `ak820pro-jdlien` and pushed to `jdlien/qmk_firmware` (`fe191f38d1..3e18c70a74`,
+  29 commits), `deps.lock` moved to `3e18c70a74`. Its last commit fixed the four
+  stale comments (comment-only: its daily differs from 2e's in the 5 token
+  bytes):
   - `battery_tail.h` still says "PROVISIONAL, B3 trial 1 only";
   - `battery.h` calls `RELAX_S` provisional until trial 2, and `PAUSE_S`
     "10 min";
@@ -50,8 +52,9 @@ still to see (below). Gate 9, the E6 docs, is written and pushed (10-11). The de
   unplug (`BACKLOG.md`, "The level after a flash").
 - **Then Phase 2** (the power ladder), note-taking only until JD says build.
 - **Parts:** the INA228 bench-logger kit is ordered (10-09, ~a week).
-- **Pushed:** `jdlien/ak820-pro` is pushed (JD allowed it on 10-08). The
-  firmware branches are local only.
+- **Pushed:** `jdlien/ak820-pro` (notes, since 10-08) and, since 10-12, the
+  firmware (`jdlien/qmk_firmware` `ak820pro-jdlien`). Flash 2e on the board is
+  `efd5b0f74a`, functionally the pinned `3e18c70a74`.
 
 **On the board since 19:30 10-11: flash 2e**, `efd5b0f74a` (`via-dev-efd5b0f74a-20261011-192711.bin`, token `0x71163528`), hands-free: 2c plus the display probe and `HC_DEVHOOK` (2d), and the text slot's fix (the transport icon as one tile, no redundant forced clear). **Every measured event now stays under 25 ms**: plug-ins 11-12 ms, page exits and the lighting overlay 12.7 ms with a track playing. `scripts/devhook.py press|reset|read` drives the probe. Still to see: FULL (~01:30 10-12), the battery-low warning and the RGB cut, which the counters will catch on their own.
 

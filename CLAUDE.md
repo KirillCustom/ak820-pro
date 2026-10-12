@@ -127,8 +127,9 @@ doc updates are pushed (10-11).
   top (70-85%). Runtime 51.13 h, +1.1% on run 2.
 - **Flashing needs no hands:** `./build.sh dev`, then `./flash.sh <artifact>`
   ("Build & flash", below).
-- **Next:** merge `phase1b-flash2` into `ak820pro-jdlien` (four stale
-  comments to fix, listed in current-status), then Phase 2 when JD says build.
+- **Merged and pushed (10-12):** `ak820pro-jdlien` at `3e18c70a74` on
+  `jdlien/qmk_firmware`, pinned in `deps.lock`. **Next:** the drain on 2e for
+  the last two per-event checks, then Phase 2 when JD says build.
 
 **The bench runs trials without JD's hands:** a USB relay on the keyboard's
 5 V, plus `uhubctl` on its data
