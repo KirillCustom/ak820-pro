@@ -1,0 +1,12 @@
+19:00:14 unplug
+19:00:21 plug
+19:00:28 unplug
+19:00:35 plug
+19:00:42 unplug
+19:00:49 plug
+keys: ['animation_index', 'hue', 'sat', 'val', 'speed']
+19:00:56 flash write: lighting val -1
+lighting restored: effect 2, hue 181, sat 0, val 254, speed 231
+19:01:03 flash write: lighting back
+lighting restored: effect 2, hue 181, sat 0, val 255, speed 231
+19:01:03 events done (relay on)

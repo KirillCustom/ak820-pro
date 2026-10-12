@@ -1710,7 +1710,18 @@ Record: `history/battery-2026-10-07-partial-charge/` (`readings.csv`, and
       reopen the gap;
     - **a comment nit, for the next commit:** `lcd_blit_ram` does call
       `bus_quiesce()`, so the explicit wait is redundant.
-  - **Item 2, the page exit, is still to confirm with JD's per-event check.**
+  - **The per-event check on 2c (JD, 18:57-19:01 10-11):**
+    - Fn+D's page exits back to the dashboard: **32 and 33 ms**, `blit_pump`
+      28-29 ms. Item 2 is real, and not the battery code.
+    - **New: a lighting change.** Each forced write (VIA val ±1, saved) was
+      followed 2-3 s later by a **31 ms** pass, `display_hk` 26 ms: the
+      settings overlay retiring, most likely.
+    - One typed line under a plug-in and an unplug arrived exact.
+    - **Shared suspect:** the text band's forced repaint, which both paths end
+      in (`draw_text_slot`). That is band clears of 128×24 at ~8 ms each, plus
+      the play/pause icon as `lcd_fill_rect` runs. To measure before fixing:
+      flash 2d, a dev build with per-stage timing.
+  - **Item 2, the page exit (superseded by the line above).**
     The restore's battery stage now paints only the outline, and a bolt is one
     tile. The padlock in the lock band is still drawn as `lcd_fill_rect` runs,
     and the Caps-on paint measured 20 ms: the same tile fix is the next

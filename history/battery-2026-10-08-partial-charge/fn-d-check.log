@@ -1,0 +1,18 @@
+18:57:25 start: ge25 0 keys 0 gapmax 21 ge10 109
+18:57:52 ge25 0 keys 1 gapmax 21 blit | 11ms {battery 1, display_hk 6, unaccounted 3}
+18:57:57 ge25 0 keys 2 gapmax 21 blit | 
+18:57:58 ge25 0 keys 3 gapmax 21 blit | 14ms {battery 1, display_hk 7, blit_pump 3, unaccounted 3}; 13ms {ch582 1, blit_pump 1, second_edge 6, unaccounted 5}
+18:57:58 ge25 1 keys 4 gapmax 32 blit | 11ms {blit_pump 7, unaccounted 3}; 11ms {ch582 1, blit_pump 7, unaccounted 3}; 32ms {ch582 1, blit_pump 28, unaccounted 3}
+18:57:59 ge25 1 keys 4 gapmax 32 blit | 13ms {ch582 1, battery 1, display_hk 9, unaccounted 2}; 14ms {ch582 1, battery 1, display_hk 1, blit_pump 2, second_edge 7, unaccounted 3}; 11ms {ch582 1, battery 1, display_hk 6, unaccounted 3}
+18:58:02 ge25 1 keys 5 gapmax 32 blit | 11ms {ch582 1, battery 1, display_hk 6, unaccounted 4}
+18:58:03 ge25 1 keys 6 gapmax 32 blit | 
+18:58:04 ge25 1 keys 6 gapmax 32 blit | 10ms {ch582 1, battery 1, blit_pump 2, second_edge 4, unaccounted 3}
+18:58:05 ge25 1 keys 7 gapmax 32 blit | 14ms {ch582 1, battery 1, display_hk 6, blit_pump 3, unaccounted 3}; 12ms {ch582 1, blit_pump 1, second_edge 7, unaccounted 3}
+18:58:06 ge25 1 keys 7 gapmax 32 blit | 13ms {ch582 1, blit_pump 2, second_edge 7, unaccounted 4}
+18:58:07 ge25 1 keys 7 gapmax 32 blit | 11ms {ch582 1, blit_pump 2, second_edge 6, unaccounted 2}
+18:58:08 ge25 1 keys 7 gapmax 32 blit | 11ms {ch582 1, blit_pump 1, second_edge 6, unaccounted 3}
+18:58:09 ge25 1 keys 7 gapmax 32 blit | 11ms {blit_pump 1, second_edge 7, unaccounted 2}
+18:58:10 ge25 1 keys 8 gapmax 32 blit | 11ms {ch582 1, blit_pump 7, unaccounted 3}; 14ms {ch582 1, battery 1, blit_pump 8, unaccounted 4}; 10ms {ch582 1, blit_pump 5, unaccounted 4}; 33ms {blit_pump 29, unaccounted 4}
+18:58:10 ge25 2 keys 8 gapmax 33 blit | 14ms {ch582 1, battery 1, display_hk 9, unaccounted 3}; 11ms {ch582 1, battery 1, display_hk 6, unaccounted 3}; 12ms {ch582 1, battery 1, display_hk 6, unaccounted 4}
+18:58:11 ge25 2 keys 8 gapmax 33 blit | 10ms {ch582 1, battery 1, display_hk 1, blit_pump 2, second_edge 2, unaccounted 4}
+18:59:42 ge25 2 keys 8 gapmax 33 blit | 11ms {ch582 1, battery 1, display_hk 6, unaccounted 3}
