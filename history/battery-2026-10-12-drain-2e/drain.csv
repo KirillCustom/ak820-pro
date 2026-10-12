@@ -1,3 +1,7 @@
 time,epoch,phase,supply,level,pack_mv,est_c5,c5_last,vdd_mv,chrg,flags,note
 2026-10-12 11:34:16,1791826456.0,start,battery,100.0 %,,,100,3899,high,on_batt done rgb_on linked,
 2026-10-12 11:34:16,1791826456.1,wait-cut,battery,100.0 %,,,100,3899,high,on_batt done rgb_on linked,
+2026-10-12 11:39:16,1791826756.1,wait-cut,battery,99.9 %,4036,100,100,3902,high,on_batt done rgb_on linked,
+2026-10-12 11:44:16,1791827056.2,wait-cut,battery,99.7 %,4036,100,100,3904,high,on_batt done rgb_on linked,
+2026-10-12 11:49:16,1791827356.3,wait-cut,battery,99.6 %,4036,100,100,3902,high,on_batt done rgb_on linked,
+2026-10-12 11:54:16,1791827656.4,wait-cut,battery,99.4 %,4036,100,100,3901,high,on_batt done rgb_on linked,

@@ -70,8 +70,11 @@ unnoticed through nine flashes in one day.
 ## Just give me the firmware
 
 If you do not want a toolchain, take the prebuilt binaries from
-[Releases](https://github.com/jdlien/ak820-pro/releases): a `.bin` for each
-panel variant, the LCD asset image, and `via.json`.
+[Releases](https://github.com/jdlien/ak820-pro/releases): the firmware `.bin`,
+the LCD asset image, and `via.json`. ⚠️ The latest release, v0.1.1
+(2026-09-06), predates the battery gauge ([docs/battery.md](docs/battery.md))
+and carries only the common panel's binary; for the gauge, or the other panel
+(`./build.sh fpb`), build from source until the next release.
 
 ```sh
 # 1. bootloader: Fn+Esc  (or the pin short, from stock)

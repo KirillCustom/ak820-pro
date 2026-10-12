@@ -144,8 +144,9 @@ old they are.
   succeeds on attempt 2).
 - **A flash also erases the kb-eeconfig block**: BT slot, LCD brightness,
   clock format, the saved battery level and the persisted RTC period reset to
-  defaults; the clock re-converges for
-  ~10-15 min (designed — see [clock.md](clock.md)).
+  defaults; the clock re-converges in ~4 min with the host attached (a fresh
+  seed has settled in 90 s), or reaches its deadband in ~10-15 min standalone
+  (designed — see [clock.md](clock.md)).
 - **The battery level after a flash:** on battery it comes straight back from
   the pack voltage. On USB power it is unknown ("Charge") until FULL, or until
   an unplug plus 30 min ([battery.md](battery.md), "The level after a flash").

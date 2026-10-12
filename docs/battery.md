@@ -11,8 +11,10 @@ reviews and every disposition:
 [`plans/BATTERY-GAUGE-REFINE-PLAN.md`](../plans/BATTERY-GAUGE-REFINE-PLAN.md)
 ("As built" holds every measurement).
 
-> **State (2026-10-11): Phase 1b is done.** On JD's unit is flash 2e,
-> `efd5b0f74a` (branch `phase1b-flash2`, a `dev` build, token `0x71163528`).
+> **State (2026-10-12): Phase 1b is done**, but for two per-event checks a
+> drain is making ("Battery low" and the RGB cut). Merged into `ak820pro-jdlien`
+> (`3e18c70a74`, pushed and pinned). On JD's unit is flash 2e, `efd5b0f74a`
+> (the same firmware but for comments; a `dev` build, token `0x71163528`).
 > - **The curve is refitted on both drain tests**, run 1
 >   ([`history/battery-2026-09-28-drain/`](../history/battery-2026-09-28-drain/))
 >   and run 2

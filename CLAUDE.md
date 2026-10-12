@@ -109,27 +109,27 @@ Four things from that work that bite outside it:
 Measured results and audit findings from completed work: [`history/`](history/).
 ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 
-## Current state (2026-10-11)
+## Current state (2026-10-12)
 
-**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-11
+**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-12
 — RESUME HERE"). **Phase 1b ([`plans/BATTERY-GAUGE-REFINE-PLAN.md`](plans/BATTERY-GAUGE-REFINE-PLAN.md))
-is done** but for three per-event checks the board makes unattended (FULL,
-"Battery low", the RGB cut on flash 2e). Its design and measurements are in
-[docs/battery.md](docs/battery.md) ("The gauge as built, Phase 1b"); the E6
-doc updates are pushed (10-11).
-- **On the board: flash 2e**, `efd5b0f74a` (local branch `phase1b-flash2`, a
-  `dev` build, token `0x71163528`, since 19:30 10-11). **No measured event
-  reaches 25 ms**: plug-ins 11-12 ms, page exits and the lighting overlay
-  12.7 ms with a track playing.
+is done** but for two per-event checks a running drain makes unattended
+("Battery low" and the RGB cut, ~14:30 10-14). Its design and measurements are
+in [docs/battery.md](docs/battery.md) ("The gauge as built, Phase 1b").
+- **Merged and pushed (10-12):** `ak820pro-jdlien` at `3e18c70a74` on
+  `jdlien/qmk_firmware` (now the fork's default branch), pinned in `deps.lock`.
+- **On the board: flash 2e**, `efd5b0f74a` (the same firmware but for
+  comments; a `dev` build, token `0x71163528`, since 19:30 10-11). **No
+  measured event reaches 25 ms**: plug-ins 11-12 ms, page exits and the
+  lighting overlay 12.7 ms with a track playing.
 - **The gauge:** the charging model (`K_CC` 133.0 pm/h from three trials,
   `RELAX_S` 1800 s), checked on a charge from 0. Over a whole cycle it held
   ±2.5 points from 52% to the cut, but read up to 8.3 low on the curve's flat
   top (70-85%). Runtime 51.13 h, +1.1% on run 2.
 - **Flashing needs no hands:** `./build.sh dev`, then `./flash.sh <artifact>`
   ("Build & flash", below).
-- **Merged and pushed (10-12):** `ak820pro-jdlien` at `3e18c70a74` on
-  `jdlien/qmk_firmware`, pinned in `deps.lock`. **Next:** the drain on 2e for
-  the last two per-event checks, then Phase 2 when JD says build.
+- **Next:** the INA228 bench kit arrives ~10-16 (wiring with JD, then a QT Py
+  logger), then Phase 2 (the power ladder) when JD says build.
 
 **The bench runs trials without JD's hands:** a USB relay on the keyboard's
 5 V, plus `uhubctl` on its data
@@ -138,6 +138,11 @@ doc updates are pushed (10-11).
 ⚠️ **Test display changes with a track playing**: the page-exit and overlay
 stalls of 10-11 needed one, and every idle test missed them
 ([docs/display.md](docs/display.md)).
+
+## Earlier state (2026-10-11)
+
+Flashes 2b-2e went on hands-free; gate 8's per-event checks found and fixed
+the plug-in, page-exit and overlay stalls; E6 written.
 
 ## Earlier state (2026-10-08)
 
