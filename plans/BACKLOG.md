@@ -111,6 +111,25 @@ a Claude Code hook. Ideas worth taking:
 branches (created and last pushed in the same minute); `smsourov` and the older
 `ajazz-ak820-pro` forks have no commits of their own.
 
+## The level after a flash: two niceties, low priority (2026-10-11)
+
+**What:** a flash wipes the board's RAM. On battery the level comes straight back
+from the pack voltage (1.5% within seconds after the 15:39 flash on 10-11). On
+USB power the charger lifts the voltage, and the charging model has no starting
+point, so the screen says "Charge" until FULL, or until an unplug plus `RELAX_S`
+(30 min).
+
+**JD (10-11):** a nice touch at most. Owners do not flash every 30 minutes, and
+only development does.
+- **The correct one: hand the level back.** `flash.sh` already dumps the battery
+  log seconds before the flash, so the Mac knows the level. A raw-HID "seed"
+  command after the flash would let the charging model carry on. It needs a
+  firmware command and its bounds, and dev builds only would do.
+- **The cosmetic one: a provisional level** for the 30 minutes after an unplug
+  the model could not track. Show the voltage's reading at once, marked as
+  provisional; it starts a few points high and drifts down as the pack relaxes.
+  Flash 2b's item 4, not built.
+
 ## macOS shows the module's battery percent, not ours: what could change it (2026-10-10)
 
 **What:** macOS's Bluetooth battery (System Settings) is the CH582F's own

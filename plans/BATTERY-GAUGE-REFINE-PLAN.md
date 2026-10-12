@@ -1679,8 +1679,11 @@ Record: `history/battery-2026-10-07-partial-charge/` (`readings.csv`, and
      checks, so a flash needs no hands. ⚠️ Any raw-HID process can then drop
      the board into the bootloader, and a failed flash leaves it there until
      a cold power-off. Drop it again for a public release.
-  4. *Optional, JD's call:* a provisional level soon after an unplug that
-     re-seats as UNKNOWN, instead of a blank for `RELAX_S`.
+  4. ~~*Optional, JD's call:* a provisional level soon after an unplug that
+     re-seats as UNKNOWN, instead of a blank for `RELAX_S`.~~ **Not built
+     (JD, 10-11):** it only follows a flash or a boot on USB, and owners do
+     not flash every 30 minutes. Two low-priority notes in BACKLOG.md
+     ("The level after a flash").
   5. *Investigation, not code:* whether the CH582F accepts a level from the
      MCU, so the host's Bluetooth battery shows the gauge instead of the
      module's linear `5C` (96% against the gauge's 66% on 10-10).
