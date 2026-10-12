@@ -31,9 +31,11 @@ still to see (below). Gate 9, the E6 docs, is written and pushed (10-11). The de
   (10-09) and 24 h battery soak (10-10); the cycle's drain to the cut (10-11,
   51.13 h); and the stalls gate 8's per-event checks found, fixed in flashes
   2c and 2e: **no measured event reaches 25 ms** now.
-- **Running:** the board charges to FULL on the relay, on since 16:21 10-11. No
-  script watches it: `bench_trial.py` was stopped at 16:26 for the plug-in tests
-  (below).
+- **Running (from 11:34 10-12):** a drain on flash 2e for gate 8's last two
+  per-event checks, "Battery low" and the RGB cut (FULL passed at 01:41 10-12,
+  no stall). `bench_trial.py --wait-cut --poll 300 --full`, the cut expected
+  ~14:30 10-14, then a charge to FULL
+  (`history/battery-2026-10-12-drain-2e/`).
 - **Left for Phase 1b:** merge `phase1b-flash2` into `ak820pro-jdlien`; push
   the fork and move `deps.lock` when JD says (a release step). Fix four stale
   firmware comments at the merge:
