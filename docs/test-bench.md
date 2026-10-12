@@ -256,3 +256,26 @@ notes. A trial driver could:
 
 What it buys: B3-style partial-charge trials and relaxation runs whose
 unplug and replug times come from the host, not from JD's notes or the video.
+
+### On the relay: `bench_trial.py` and `trial_guard.py`
+
+The driver that replaced the notes above. `scripts/bench_trial.py` runs a
+trial on the USB relay end to end: wait for the RGB cut, charge N minutes,
+relax, charge to FULL. It confirms every switch with the board's `supply`
+line and turns the relay off on any failure. Its docstring lists the phases.
+
+⚠️ It dies with the session that launched it, and a drain runs ~2 days. With
+the relay off, a dead driver leaves the board running down through the cut
+and its reserve, and the RAM log goes with it. `scripts/trial_guard.py --pid
+<the trial's pid> --csv <its --out>` detaches itself (PPID 1) and watches the
+trial's CSV:
+- if the trial dies before the cut, it restarts it as `<name>-resumed-N.csv`;
+- if it dies after the cut, before FULL-ON, it dumps the log unless the trial
+  did, then turns relay 2 on.
+
+The guard also takes gate 8's per-event reads that the trial does not: the
+stall counters and the display probe at "Battery low" (`cfg` says `warned 1`)
+and at the cut, the latter in the 60 s between the trial's dump and its
+relay-on, so the plug-in is not in it. Each read goes right after one of the
+trial's own: raw HID is exclusive on macOS, and two readers at once fail.
+First used on the 10-12 drain (`history/battery-2026-10-12-drain-2e/`).

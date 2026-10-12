@@ -56,11 +56,23 @@ token `0x71163528`, since 19:30 10-11. A **`dev` build**:
 - The cut is expected ~14:30 10-14. At the cut it dumps the log, turns the
   relay on, charges to FULL (~9.3 h) and leaves the relay on.
 - ⚠️ **It runs in session `dbe817d8`'s background.** If that session is gone,
-  so is the script (`pgrep -fl bench_trial`). Finish by hand: a battery log
-  dump (`ak820battery.py log <file>`), then `usb_relay.py on 2`.
+  so is the script (`pgrep -fl bench_trial`). **Since 12:19 10-12
+  `scripts/trial_guard.py` guards it**, detached from every session (PPID 1;
+  `guard.log` and `guard.pid` in the run's folder; stop it with
+  `kill $(cat guard.pid)`). If the trial dies before the cut, the guard restarts
+  it as `drain-resumed-N.csv`; if it dies after the cut, the guard dumps the log
+  unless the trial did, then turns relay 2 on. By hand, if both are gone: a
+  battery log dump (`ak820battery.py log <file>`), then `usb_relay.py on 2`.
+- **The guard takes the per-event reads** (stall counters and probe, saved as
+  `guard-<tag>-<time>.txt`), each right after one of the trial's polls, since
+  raw HID is exclusive on macOS: `start`; `warned`, once `cfg` says
+  `warned 1` (it starts checking at 3720 mV and resets the probe after each poll
+  from there); and `cut`, after the trial's dump, before the relay goes on, so
+  the plug-in is not in it.
 - **At the cut, read:**
   - `count_ge_25ms` (0 since the 19:30 10-11 flash, as of 11:33 10-12) and
-    the probe, for the "Battery low" (3680 mV) and RGB-cut moments;
+    the probe, for the "Battery low" (3680 mV) and RGB-cut moments: the
+    guard's `guard-warned-*.txt` and `guard-cut-*.txt`;
   - the gauge against the runtime line: does the flat top's −8.3 repeat?
   - the runtime against the last cycle's 51.13 h.
 
