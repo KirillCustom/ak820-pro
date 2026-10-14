@@ -2,9 +2,11 @@
 """Cut and restore the keyboard's USB power from the host (docs/test-bench.md).
 
 The keyboard's port on the Acasis hub is left switched ON (the hub remembers
-it across power cycles), and the hub's brick is on the HomeKit outlet
-"Christmas Tree". Cutting the outlet cuts the keyboard's USB power, and so its
-charging. Every request is confirmed from the USB side: the keyboard leaving
+it across power cycles), and the hub's brick is on the "Christmas Tree"
+outlet, which Home Assistant switches (`switch.christmas_tree`; until
+2026-10-13 it was in Apple Home, driven by Shortcuts). Cutting the outlet
+cuts the keyboard's USB power, and so its charging. Retired for the keyboard:
+the USB relay does this now (docs/test-bench.md). Every request is confirmed from the USB side: the keyboard leaving
 or rejoining the bus in the IORegistry. That opens no device, so it is safe
 under the never-enumerate-HID rule.
 
@@ -12,9 +14,10 @@ under the never-enumerate-HID rule.
   bench_power.py off [--log CSV] [--note TEXT]
   bench_power.py on  [--log CSV] [--note TEXT]
 
-`off` and `on` exit 0 only once the bus confirms the change. The shortcut
-returning means HomeKit accepted the request, not that the outlet switched,
+`off` and `on` exit 0 only once the bus confirms the change. Home Assistant
+accepting the call means the request went out, not that the outlet switched,
 so an unconfirmed request is retried once and then reported as a failure.
+The token comes from the Keychain item `home-assistant`, or $HA_TOKEN.
 With --log, one row per action is appended: the request time, the confirmed
 time (epoch seconds, to 0.25 s), and the result.
 
@@ -23,12 +26,15 @@ the battery log in RAM is lost. ⚠️ The outlet powers the WHOLE hub.
 """
 import argparse
 import csv
+import json
 import os
 import subprocess
 import sys
 import time
+import urllib.request
 
-SHORTCUT = {"off": "Turn off Christmas Tree", "on": "Turn on Christmas Tree"}
+HA_URL = os.environ.get("HA_URL", "https://ha.jdlien.ca")
+OUTLET = "switch.christmas_tree"
 POLL_S = 0.25
 CONFIRM_S = {"off": 8.0, "on": 20.0}   # measured 10-08: gone within 1 s; all chips back in 5 s
 
@@ -42,15 +48,28 @@ def stamp(t):
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)) + f".{int(t % 1 * 100):02d}"
 
 
+def token():
+    t = os.environ.get("HA_TOKEN") or subprocess.run(
+        ["security", "find-generic-password", "-s", "home-assistant", "-w"],
+        capture_output=True, text=True, timeout=10).stdout.strip()
+    if not t:
+        sys.exit("no Home Assistant token: the Keychain item home-assistant, or $HA_TOKEN")
+    return t
+
+
 def request(action):
-    """One shortcut run. It can hang: on 10-08 a "Turn on" sat for 60 s and
-    switched nothing, and the retry returned in 2 s and worked."""
+    """One call to Home Assistant. (The Shortcuts it replaced could hang: on
+    10-08 a "Turn on" sat for 60 s and switched nothing.)"""
     t = time.time()
+    req = urllib.request.Request(
+        f"{HA_URL}/api/services/switch/turn_{action}", method="POST",
+        data=json.dumps({"entity_id": OUTLET}).encode(),
+        headers={"Authorization": f"Bearer {token()}", "Content-Type": "application/json"})
     try:
-        r = subprocess.run(["shortcuts", "run", SHORTCUT[action]], capture_output=True, text=True, timeout=30)
-    except subprocess.TimeoutExpired:
-        return t, -1, "shortcut hung for 30 s"
-    return t, r.returncode, (r.stderr or r.stdout).strip()
+        urllib.request.urlopen(req, timeout=10).read()
+    except OSError as e:   # URLError, HTTPError and timeouts
+        return t, -1, str(e)
+    return t, 0, ""
 
 
 def wait_for(want_present, limit):
@@ -69,7 +88,7 @@ def switch(action):
     for attempt in (1, 2):
         t_req, rc, err = request(action)
         if rc != 0:
-            note = f"shortcut exit {rc}: {err[:120]}"
+            note = f"Home Assistant: {err[:120]}"
             if attempt == 2:
                 return t_req, None, note
             continue

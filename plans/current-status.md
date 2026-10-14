@@ -137,8 +137,9 @@ token `0x71163528`, since 19:30 10-11. A **`dev` build**:
   them.
 - ⚠️ **The slider must stay on BT or 2.4G.** On cable, a cut is a cold
   power-off, and the RAM log is lost.
-- The HomeKit outlet "Christmas Tree" (`scripts/bench_power.py`) powers the
-  Acasis hub. It is no longer in the keyboard's path.
+- The "Christmas Tree" outlet (`scripts/bench_power.py`, through Home
+  Assistant since 10-13) powers the Acasis hub. It is no longer in the
+  keyboard's path.
 
 ### Results to keep
 

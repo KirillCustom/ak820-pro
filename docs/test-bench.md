@@ -11,19 +11,20 @@ both from the USB side. Set up and measured 2026-10-08 on JD's Mac.
   10-08). It cuts only the keyboard's 5 V, the keyboard stays on USB, and the
   host switches it. The outlet is for cutting the whole hub.
 - The keyboard goes on JD's **Acasis 16-port hub**. The hub's power brick is
-  plugged into a **HomeKit smart outlet named "Christmas Tree"**. Without its
-  brick the hub has no USB at all, so cutting the outlet cuts every port.
-- Two Shortcuts in JD's Shortcuts app switch the outlet, and they run from a
-  terminal:
+  plugged into a **smart outlet named "Christmas Tree"**. Without its brick
+  the hub has no USB at all, so cutting the outlet cuts every port.
+- **Home Assistant switches the outlet** (`switch.christmas_tree`, since
+  2026-10-13; before that it was in Apple Home, and two Shortcuts switched it,
+  one of which once hung for 60 s). From a terminal:
 
   ```sh
-  shortcuts run "Turn off Christmas Tree"   # the hub and everything on it lose power
-  shortcuts run "Turn on Christmas Tree"
+  scripts/bench_power.py off   # the hub and everything on it lose power
+  scripts/bench_power.py on    # both confirm on the bus (below)
   ```
 
-  Each returns in about 1 s. Measured: the hub was gone from USB within 1 s
-  of "off". After "on", its first chip was back in 3 s and all six main chips
-  in 5 s.
+  HA accepts the call in about 0.2 s. Measured (with the Shortcuts, 10-08):
+  the hub was gone from USB within 1 s of "off". After "on", its first chip
+  was back in 3 s and all six main chips in 5 s.
 - ⚠️ **It cuts the whole hub.** Anything else plugged into it goes down too.
 - ⚠️ **The slider must be on BT or 2.4G, never cable, during a cut.** On
   cable, a cut is a cold power-off ([hardware.md](hardware.md), the slider
@@ -34,7 +35,7 @@ both from the USB side. Set up and measured 2026-10-08 on JD's Mac.
   5 V. A bus-powered device then drops off USB, but **the keyboard stays on USB
   over data alone** and simply stops charging (next section).
 - ⚠️ The outlet is named for what it powers in December. Check nothing else
-  is plugged into it before running the shortcuts.
+  is plugged into it before cutting it.
 
 ## The USB relay: the keyboard's charging, from the host
 
@@ -150,9 +151,8 @@ uhubctl -l 0-1.4 -p 2 -a on  -e
 
 ## Confirm every cut from the USB side
 
-`shortcuts run` returns 0 once HomeKit accepts the request, not once the
-outlet has switched. Treat the shortcut as a request, and confirm it by
-watching the keyboard leave and rejoin the bus:
+Home Assistant accepts the call before the outlet has switched. Treat it as
+a request, and confirm it by watching the keyboard leave and rejoin the bus:
 
 ```sh
 ioreg -p IOUSB -w0 | grep -c 'AK820 PRO@'    # 1 = present, 0 = gone
@@ -240,16 +240,16 @@ set them up, so they sat in the hub's reset state.
 ## An automated trial
 
 `scripts/bench_power.py on|off|status [--log CSV]` does steps 2 and 3:
-it runs the shortcut, confirms on the bus, retries once (a shortcut can hang:
-one 'Turn on' sat 60 s and did nothing), and logs both times. The rest is
+it asks Home Assistant, confirms on the bus, retries once, and logs both
+times. The rest is
 notes. A trial driver could:
 
 1. Start once JD has set the slider to BT and confirmed the outlet carries
    only the hub.
-2. **Cut:** run "Turn off Christmas Tree", poll `ioreg` until `AK820 PRO@` is
+2. **Cut:** switch the outlet off, poll `ioreg` until `AK820 PRO@` is
    gone, and log that time. If it has not gone within ~5 s, retry once, then
    abort and say so.
-3. **Restore** at the planned time: "Turn on Christmas Tree", poll until the
+3. **Restore** at the planned time: switch it on, poll until the
    keyboard re-enumerates, and log that time.
 4. Leave board traffic to whatever the trial already does. The cut and the
    check above touch no HID.
