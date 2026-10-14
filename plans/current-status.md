@@ -80,17 +80,36 @@ token `0x71163528`, since 19:30 10-11. A **`dev` build**:
 
 1. **~14:30 10-14, unattended: the cut.** Record gate 8's last two checks in
    the plan's "As built", and close Phase 1b.
-2. **~Thursday 10-16: the INA228 kit** (INA228, QT Py RP2040, 3× MAX17048,
-   STEMMA QT cables; `BATTERY-GAUGE-PLAN.md`, "If the hardware arrives").
-   - **Walk JD through the wiring,** one hands-on step per message, checking
-     each breakout's pinout before he solders:
-     - the series breakout on the pack lead: + through the INA228, −
-       straight through, made from JD's 1.25 mm pack connectors;
-     - the MAX17048 on the Y tap.
-     - ⚠️ Inserting either disconnects the pack and reboots the board, so
-       only between runs (dump first).
-   - **Write the QT Py logger:** current and pack voltage, continuously, to
-     the Mac.
+2. **The INA228 kit arrived 10-13, three days early; the harness is built
+   and the logger runs. Only the swap onto the pack is left**
+   (`BATTERY-GAUGE-PLAN.md`, "If the hardware arrives"; `docs/test-bench.md`,
+   "The power logger").
+   - **The harness (JD, 10-13/14):** made from a 1.25 mm extension whose wire
+     colours do NOT match the pack's. By position, against the pack's red +,
+     black −, white NTC: the extension's **black is +**, **yellow is −**, **red
+     is NTC** (JD's reading; the swap confirms it). Black is cut, with the
+     battery side to Vin+ and the keyboard side to Vin−. Both yellows go into
+     the INA228's GND hole (the ground tap), and red is spliced straight
+     through. VBUS is bridged to V+, and the MAX17048's Bat is wired to V+.
+     JD's resistance check: no short + to −, continuity where expected.
+   - **The swap, one step per message, after the cut** (or after the
+     recharge, if JD is not at the bench):
+     1. the drain has dumped the log;
+     2. unplug the pack (the board goes off);
+     3. with the pack out, the harness's keyboard plug must put **red on the
+        header's `NTC` pin**; if not, − and NTC are swapped, so move the GND tap
+        to the other wire (no smoke either way: + is the middle pin);
+     4. harness onto the pack only, keyboard plug free, QT Py unplugged:
+        the keyboard plug's + to − must read **about +3.4 V**; negative
+        means stop;
+     5. keyboard plug into the board, then the QT Py in.
+     - ⚠️ Inserting it disconnects the pack and reboots the board, so only
+       between runs (dump first).
+   - **The logger runs** (`scripts/qtpy/`, `scripts/power_log.py`, detached,
+     into `history/power-bench-2026-10-13/power.csv`). Its zero with the
+     finished harness, 01:11-01:33 10-14: **−0.064 mA** (−0.97 µV), sd 0.016
+     mA per 1 s row, and the charge register agrees. The MAX17048 is untested
+     until a pack powers it.
    - **Then:**
      - map `K_CC` against the level and find the real knee (task 12);
      - check `5C`'s line against the pack under charge;

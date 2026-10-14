@@ -279,3 +279,40 @@ and at the cut, the latter in the 60 s between the trial's dump and its
 relay-on, so the plug-in is not in it. Each read goes right after one of the
 trial's own: raw HID is exclusive on macOS, and two readers at once fail.
 First used on the 10-12 drain (`history/battery-2026-10-12-drain-2e/`).
+
+## The power logger: an INA228 and a MAX17048 on the pack (10-13)
+
+The bench measures the pack directly, beside the board's own `5C`. A QT Py
+RP2040 running CircuitPython 10.3.1 reads two breakouts over STEMMA QT:
+- an **INA228** (Adafruit 5832, 0x40) in series on the pack's + lead;
+- a **MAX17048** (Adafruit 5580, 0x36) across the pack.
+
+`scripts/qtpy/code.py` and `boot.py` live on the QT Py's `CIRCUITPY` drive.
+`boot.py` turns off CircuitPython's USB keyboard and mouse, so the board is
+serial only, never HID. The QT Py streams one line of raw integers a second.
+`scripts/power_log.py --out <csv> --detach` timestamps them on the Mac and
+converts them, finding the QT Py by its USB ids (Adafruit `239a`).
+
+- **INA228 settings:** the ±40.96 mV range; 15 mΩ shunt (`R015` on the part,
+  and Adafruit's driver default); `CURRENT_LSB` 5 µA; continuous bus + shunt,
+  1052 µs each, 64× averaging (a result every ~135 ms). Its **charge register
+  integrates without gaps between rows**: use it, not the 1 s samples, for
+  mAh. It clears only when the QT Py loses power; the script never resets it.
+- **Its zero with the harness on and nothing flowing:** −0.064 mA (−0.97 µV),
+  sd 0.016 mA per row, and the charge register agrees (10-14). That is
+  nothing over a charge (~0.6 mAh in 9 h) and matters only for standby floors.
+- **Sign:** + while the board runs on the pack (out of the pack), − while
+  charging.
+- **The MAX17048 runs from the cell it measures,** so it is absent until a
+  pack is on it. The script rewrites `HIBRT` = 0 every read, so it never
+  hibernates and `VCELL` stays fresh.
+- ⚠️ **High-side needs VBUS tied to V+.** The board ships low-side, with the
+  jumper open; JD's unit has V+ and VBus bridged.
+- ⚠️ **The harness's wire colours are not the pack's.** Cheap 1.25 mm
+  extensions are wired straight through by position, in whatever colours were
+  on the spool. Identify the pins against the pack (red +, black −, white NTC)
+  and the header's `NTC` label, never by colour. Only + goes through the
+  INA228 (Vin+ battery side, Vin− keyboard side). − and NTC run straight
+  through, and both − ends share the INA228's GND hole, which is the ground
+  tap. Without it, both chips would measure against the Mac's ground through
+  the USB cables, which charging shifts by tens of mV (an estimate).
