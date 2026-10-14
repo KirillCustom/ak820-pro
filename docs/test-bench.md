@@ -308,8 +308,11 @@ converts them, finding the QT Py by its USB ids (Adafruit `239a`).
   hibernates and `VCELL` stays fresh.
 - ⚠️ **High-side needs VBUS tied to V+.** The board ships low-side, with the
   jumper open; JD's unit has V+ and VBus bridged.
-- ⚠️ **The harness's wire colours are not the pack's.** Cheap 1.25 mm
-  extensions are wired straight through by position, in whatever colours were
+- ⚠️ **The harness must be 1.0 mm (JST SH), not 1.25.** The first one was
+  built on a 1.25 mm extension and did not fit the pack (10-14); its ends are
+  being replaced (`docs/battery.md`, "The pack connector").
+- ⚠️ **The harness's wire colours are not the pack's.** Cheap pre-crimped
+  leads are wired straight through by position, in whatever colours were
   on the spool. Identify the pins against the pack (red +, black −, white NTC)
   and the header's `NTC` label, never by colour. Only + goes through the
   INA228 (Vin+ battery side, Vin− keyboard side). − and NTC run straight

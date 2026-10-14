@@ -1,2 +1,4 @@
 2026-10-12 12:19:17 guarding pid 28174, /Users/jdlien/code/ak820-pro/history/battery-2026-10-12-drain-2e/drain.csv; trial args --wait-cut --poll 300 --full
 2026-10-12 12:24:18 start: count_ge_25ms 0 (rc 0), probe rc 0; /Users/jdlien/code/ak820-pro/history/battery-2026-10-12-drain-2e/guard-start-20261012-122418.txt
+2026-10-14 08:40:13 warned: count_ge_25ms 0 (rc 0), probe rc 0; /Users/jdlien/code/ak820-pro/history/battery-2026-10-12-drain-2e/guard-warned-20261014-084013.txt
+2026-10-14 09:55:13 probe reset failed (rc 1): raw HID interface not found (board unplugged?)

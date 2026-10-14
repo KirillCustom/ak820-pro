@@ -865,24 +865,30 @@ What the board actually shows:
   **Superseded:** the model has been on the board since flash 2 (10-08), and
   gate 8's charge from 0 passed on it ("The gauge as built, Phase 1b").
 
-## The pack connector, and tapping it (2026-09-26)
+## The pack connector, and tapping it (2026-09-26; corrected 2026-10-14)
 
-**3-pin, 1.25 mm pitch, almost certainly Molex PicoBlade** (or a clone; the
-Chinese "JST 1.25mm" listings are the same family). The housing measured
-**5.45 mm** across on calipers, which is what settles it:
+**3-pin, 1.0 mm pitch, most likely JST SH** (or a clone). ⚠️ **This section
+said 1.25 mm (Molex PicoBlade) until 10-14, and that was wrong.** A 1.25 mm
+extension built into the INA228 harness did not mate with the pack's plug.
+On calipers the pack's plug read **~0.94 mm** pin to pin, and the extension
+1.25 mm (JD, 10-14). The 09-26 reading of 5.45 mm across the housing was
+wrong, and it is what the 1.25 mm order came from. **SH is unconfirmed until
+an SH plug fits the header** (a kit is ordered, 10-14).
 
 | family | pitch | 3-pin housing |
 |---|---|---|
-| JST SH | 1.0 mm | ~4.6 mm |
-| **PicoBlade / JST GH** | **1.25 mm** | **~5.5 mm** |
+| **JST SH** | **1.0 mm** | ~4.6 mm |
+| PicoBlade / JST GH | 1.25 mm | ~5.5 mm |
 
-⚠️ PicoBlade and JST GH differ only in the latch; GH leads mate with PicoBlade
-headers, so a mistake there costs retention, not function. The decisive check is
-pin 1 to pin 3 centres: **2.5 mm = 1.25 mm pitch**. Part numbers to match a
-listing against: header `53261-0371`, pack plug `51021-0300`, in-line mate
-`51047-0300`. Search "1.25mm 3 pin male to female extension cable"; they come in
-cheap 10-packs, and crimping this pitch by hand needs a fine crimper (Engineer
-PA-09 or similar) for no good reason.
+⚠️ Other 1.0 mm families (JST SR, Molex Pico-Lock) look alike and do not
+mate with each other; compare the latch with the pack's plug before buying. JST
+part numbers, if it is SH: plug housing `SHR-03V-S`, side-entry header
+`SM03B-SRSS-TB`. ⚠️ **SH is wire-to-board: there is no ready-made 3-pin
+male-to-female SH extension.** Kits sold as "male and female" pair wired plugs
+(the same part as the pack's plug, which goes into the keyboard) with loose
+board headers; the in-line socket the pack's plug goes into is one of those
+headers with three wires soldered to its legs. The contacts are too small to
+crimp by hand for no good reason; buy them pre-crimped.
 
 **The pinout, from JD's unit:** red **+**, black **−**, white **NTC**. The
 silkscreen beside the header says `NTC`. ⚠️ The black wire is nearly invisible
@@ -897,7 +903,8 @@ multi-day run on a desk sees several degrees.
 
 ### The tap
 
-A **3-pin male-to-female extension** in line with the pack, with the conductors
+A **3-pin extension** in line with the pack (a wired SH plug at the keyboard
+end, a hand-wired SH header at the pack end, above), with the conductors
 brought out to a logger. Nothing is soldered to the pack, and no pack terminal is
 ever exposed — which is the safety argument as much as the convenience one: the
 09-25 run had **three accidental probe shorts**, one of which rebooted the board.

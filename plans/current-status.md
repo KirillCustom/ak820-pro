@@ -69,10 +69,23 @@ token `0x71163528`, since 19:30 10-11. A **`dev` build**:
   `warned 1` (it starts checking at 3720 mV and resets the probe after each poll
   from there); and `cut`, after the trial's dump, before the relay goes on, so
   the plug-in is not in it.
+- **10-14 so far:**
+  - **"Battery low" fired between 08:35 and 08:40** (gauge 10.0 → 9.8%,
+    pack 3679 → 3676 mV). Its check passed: `count_ge_25ms` 0 at 08:40:13
+    (uptime 220,089,370 ms, no reboot since the flash), probe worst 12.45 ms
+    (the text slot) over the 5 minutes holding the warning
+    (`guard-warned-20261014-084013.txt`).
+  - **The board was off twice, for a harness swap that did not fit** (below;
+    the log was dumped first, `log-20261014-0950-preswap.csv`): from ~09:52
+    (JD; the 09:55:13 read failed) to before the 10:00:12 read, and again for
+    part of 10:00:12-10:04:53, when it booted (uptime 930,341 ms at 10:20:23;
+    the 10:05 read had no `5C` yet). So the runtime has a gap of under ~13
+    minutes, its exact length unknown. The trial logged a failed read and
+    carried on, and the gauge came straight back on battery. The stall
+    counters restart from 10:04:53: 0 at 10:20, loop gap max 18 ms (blit).
 - **At the cut, read:**
-  - `count_ge_25ms` (0 since the 19:30 10-11 flash, as of 11:33 10-12) and
-    the probe, for the "Battery low" (3680 mV) and RGB-cut moments: the
-    guard's `guard-warned-*.txt` and `guard-cut-*.txt`;
+  - `count_ge_25ms` and the probe for the RGB cut: the guard's
+    `guard-cut-*.txt` (counting from the 10-14 reboot);
   - the gauge against the runtime line: does the flat top's −8.3 repeat?
   - the runtime against the last cycle's 51.13 h.
 
@@ -84,6 +97,14 @@ token `0x71163528`, since 19:30 10-11. A **`dev` build**:
    and the logger runs. Only the swap onto the pack is left**
    (`BATTERY-GAUGE-PLAN.md`, "If the hardware arrives"; `docs/test-bench.md`,
    "The power logger").
+   - ⚠️ **The harness's ends are the wrong size (10-14).** The pack's
+     connector is **1.0 mm** (calipers ~0.94 mm), most likely JST SH, not the
+     1.25 mm `docs/battery.md` said until 10-14. JD ordered a JST SH 1.0 mm
+     3-pin kit (Ulifebet, ASIN `B0F32RWDC6`, wired plugs plus loose board
+     headers), due 10-15. The rework: cut the 1.25 mm plugs off; splice a wired
+     SH plug on the keyboard end; solder the pack end's three wires to an SH
+     header's legs (the in-line socket). The INA228 wiring stays. Then map the
+     pins by position with the meter again, as below.
    - **The harness (JD, 10-13/14):** made from a 1.25 mm extension whose wire
      colours do NOT match the pack's. By position, against the pack's red +,
      black −, white NTC: the extension's **black is +**, **yellow is −**, **red
@@ -100,8 +121,8 @@ token `0x71163528`, since 19:30 10-11. A **`dev` build**:
         header's `NTC` pin**; if not, − and NTC are swapped, so move the GND tap
         to the other wire (no smoke either way: + is the middle pin);
      4. harness onto the pack only, keyboard plug free, QT Py unplugged:
-        the keyboard plug's + to − must read **about +3.4 V**; negative
-        means stop;
+        the keyboard plug's + to − must read **the pack's voltage, positive**
+        (~3.4 V after the cut, ~4.1-4.2 V after FULL); negative means stop;
      5. keyboard plug into the board, then the QT Py in.
      - ⚠️ Inserting it disconnects the pack and reboots the board, so only
        between runs (dump first).
@@ -486,8 +507,9 @@ keyboard.
 
 - ✅ **MAX17048 fuel gauge** — DigiKey `1528-5580-ND` (Adafruit 5580). The
   retrofit. ModelGauge, no sense resistor, ±1-2%.
-- ✅ **1.25 mm 3-pin male+female pigtails**, Amazon ~$15/20 sets, for the pack
-  tap. ⚠️ Digi-Key's ready-made PicoBlade assemblies are **female-to-female**
+- ❌ **1.25 mm 3-pin male+female pigtails**, Amazon ~$15/20 sets, for the pack
+  tap: **the wrong size** (10-14). The pack is 1.0 mm, most likely JST SH;
+  a JST SH kit replaces them (above). ⚠️ Digi-Key's ready-made PicoBlade assemblies are **female-to-female**
   and cannot make a passthrough alone.
 - ✅ Keep the **JST SH 4-pin Qwiic cables** already in the cart — they mate
   with the MAX17048's STEMMA QT, so no soldering to the module.
