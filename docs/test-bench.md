@@ -308,6 +308,11 @@ converts them, finding the QT Py by its USB ids (Adafruit `239a`).
   cell.** It reads the room near the board (23.2 °C at 15:55 10-15, nothing
   flowing). It is there for context, since capacity and the voltage curve
   move with temperature; nothing uses it yet.
+- **The QT Py's LED says whether the run is being recorded (10-15):** dim
+  green while the Mac has its serial port open and the INA228 answers; amber
+  while no one reads it (the recorder stopped, or the Mac asleep), so rows go
+  nowhere; red while the INA228 does not answer. Amber is expected between
+  runs, when nothing records.
 - **The header repeats every minute, and the recorder checks each one** (the
   `current` LSB and the `temp` scale it converts with; a mismatch stops it).
   Until 10-15 the QT Py sent one header, at start, and the check never ran:

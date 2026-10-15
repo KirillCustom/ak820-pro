@@ -10,10 +10,16 @@
 #   D,ms,vbus,vshunt,current,charge,temp,vcell,soc,crate
 #   E,<where>,<error>
 #
+# The NeoPixel: dim green while the Mac has the serial port open and the
+# INA228 answers; amber while no one reads it (the recorder stopped, or the
+# Mac asleep), so rows are going nowhere; red while the INA228 does not answer.
+#
 # The INA228 is never reset here, so its charge register keeps counting across
 # a restart of this script; it clears only when the QT Py loses power.
 import time
 import board
+import digitalio
+import neopixel_write
 import supervisor
 
 supervisor.runtime.autoreload = False  # a stray write to CIRCUITPY must not restart a run
@@ -24,6 +30,22 @@ INA, MAX = 0x40, 0x36
 R_SHUNT = 0.015      # Adafruit 5832's shunt (its driver's default)
 CURRENT_LSB = 5e-6   # A per count: 2^19 counts = 2.62 A, the +-40.96 mV range at 15 mohm
 SHUNT_CAL = round(13107.2e6 * CURRENT_LSB * R_SHUNT * 4)  # x4 for ADCRANGE=1
+
+# GRB byte order. Green is dim to sit among the desk's other LEDs.
+GREEN, AMBER, RED = bytes((6, 0, 0)), bytes((10, 30, 0)), bytes((0, 30, 0))
+pixel_power = digitalio.DigitalInOut(board.NEOPIXEL_POWER)
+pixel_power.switch_to_output(value=True)
+pixel = digitalio.DigitalInOut(board.NEOPIXEL)
+pixel.switch_to_output()
+shown = None
+
+
+def show(colour):
+    global shown
+    if colour != shown:
+        neopixel_write.neopixel_write(pixel, colour)
+        shown = colour
+
 
 i2c = board.STEMMA_I2C()
 while not i2c.try_lock():
@@ -105,6 +127,7 @@ while True:
     except OSError:
         pass
     print("D,%d,%s,%s,%s,%s,%s,%s,%s,%s" % ((ms,) + ina + mx))
+    show(RED if not ina_ok else GREEN if supervisor.runtime.serial_connected else AMBER)
     d = t_next - time.monotonic()
     if d > 0:
         time.sleep(d)
