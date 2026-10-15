@@ -8,13 +8,20 @@ MAX17048 across the pack, one row per second, timestamped by the Mac.
 Columns: time, epoch, qt_ms (the QT Py's clock), vbus_mv (the pack, at the
 INA228), vshunt_uv, current_ma (+ out of the pack, - into it), charge_mah (the
 INA228's own count, gap-free between rows; it restarts at 0 only when the QT
-Py loses power), vcell_mv, soc_pct and crate_pct_h (the MAX17048; empty until
-a pack powers it).
+Py loses power), temp_c (the INA228's die: the logger board, not the cell; from
+10-15), vcell_mv, soc_pct and crate_pct_h (the MAX17048; empty until a pack
+powers it).
 
 The INA228 reads -0.064 mA (-0.97 uV) with the harness on and nothing
 flowing (10-14); subtract it when the floor matters. The shunt is taken as
 15 mohm (marked R015; Adafruit's driver default), unchecked against a known
 load yet.
+
+The QT Py repeats its H line every minute, and each one is checked. Until
+10-15 it sent one, at start, and the check never ran: that line comes behind
+CircuitPython's title-bar escape codes (seen 10-15), which are now stripped,
+and it may also go out before the Mac opens the port. A D line of the wrong
+length is reported (once a minute), not dropped silently.
 
 Serial only, never HID: the QT Py's boot.py turns its HID off. The port is
 found by USB ids, so it survives a replug onto another port. With --detach
@@ -24,6 +31,7 @@ its notes (start, H and E lines, reconnects) in <csv>.log.
 import argparse
 import csv
 import os
+import re
 import sys
 import time
 
@@ -32,8 +40,11 @@ from serial.tools import list_ports
 
 ADAFRUIT = 0x239A
 FIELDS = ["time", "epoch", "qt_ms", "vbus_mv", "vshunt_uv", "current_ma", "charge_mah",
-          "vcell_mv", "soc_pct", "crate_pct_h"]
+          "temp_c", "vcell_mv", "soc_pct", "crate_pct_h"]
 CURRENT_LSB = 5e-6   # must match code.py; checked against its H line
+# CircuitPython's status bar: OSC title sequences, and the CSI clears around them
+ESCAPES = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]")
+H_MUST = [f"current {CURRENT_LSB:g}A", "temp 7.8125mdegC"]  # what this parser assumes
 
 
 def say(msg):
@@ -48,12 +59,13 @@ def find_port(uid):
 
 
 def conv(f):
-    """A D line's fields (ms, vbus, vshunt, current, charge, vcell, soc, crate)."""
+    """A D line's fields (ms, vbus, vshunt, current, charge, temp, vcell, soc, crate)."""
     def scale(s, k, nd):
         return f"{int(s) * k:.{nd}f}" if s != "" else ""
     return [f[0], scale(f[1], 195.3125e-3, 3), scale(f[2], 78.125e-3, 3),
             scale(f[3], CURRENT_LSB * 1e3, 3), scale(f[4], CURRENT_LSB / 3.6, 6),
-            scale(f[5], 78.125e-3, 3), scale(f[6], 1 / 256, 3), scale(f[7], 0.208, 3)]
+            scale(f[5], 7.8125e-3, 2),
+            scale(f[6], 78.125e-3, 3), scale(f[7], 1 / 256, 3), scale(f[8], 0.208, 3)]
 
 
 def detach(note_path):
@@ -77,12 +89,18 @@ def main():
     a = ap.parse_args()
     out = os.path.abspath(a.out)
     base = out[:-4] if out.endswith(".csv") else out
+    new = not os.path.exists(out)
+    if not new:
+        with open(out, newline="") as f:
+            have = next(csv.reader(f), None)
+        if have != FIELDS:
+            say(f"{out} has other columns ({have}); start a new file")
+            sys.exit(1)
     if a.detach:
         print(f"detaching; pid in {base}.pid, notes in {base}.log", flush=True)
         detach(base + ".log")
     with open(base + ".pid", "w") as f:
         f.write(f"{os.getpid()}\n")
-    new = not os.path.exists(out)
     f = open(out, "a", newline="", buffering=1)
     w = csv.writer(f)
     if new:
@@ -97,21 +115,31 @@ def main():
         try:
             s = serial.Serial(dev, 115200, timeout=5)
             say(f"connected {dev}")
+            header, bad, bad_said = None, 0, 0.0
             while True:
-                line = s.readline().decode(errors="replace").strip()
+                line = ESCAPES.sub("", s.readline().decode(errors="replace")).strip()
                 if not line:
                     continue
                 kind, _, rest = line.partition(",")
                 if kind == "D":
                     t = time.time()
                     fields = rest.split(",")
-                    if len(fields) == 8:
+                    if len(fields) == len(FIELDS) - 2:
                         w.writerow([time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)),
                                     f"{t:.2f}"] + conv(fields))
+                    else:
+                        bad += 1
+                        if t - bad_said >= 60:
+                            say(f"dropped {bad} D line(s) of {len(fields)} fields, not "
+                                f"{len(FIELDS) - 2}: code.py and this script disagree: {line}")
+                            bad, bad_said = 0, t
                 elif kind == "H":
-                    say(f"header: {rest}")
-                    if f"current {CURRENT_LSB:g}A" not in rest:
-                        say("current LSB differs from code.py's: the conversions are wrong; stopping")
+                    if rest != header:
+                        say(f"header: {rest}")
+                        header = rest
+                    if not all(m in rest for m in H_MUST):
+                        say(f"header lacks {[m for m in H_MUST if m not in rest]}: code.py "
+                            "and this script disagree, the conversions are wrong; stopping")
                         sys.exit(1)
                 elif kind == "E":
                     say(f"logger error: {rest}")

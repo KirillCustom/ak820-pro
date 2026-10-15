@@ -294,10 +294,28 @@ serial only, never HID. The QT Py streams one line of raw integers a second.
 converts them, finding the QT Py by its USB ids (Adafruit `239a`).
 
 - **INA228 settings:** the ±40.96 mV range; 15 mΩ shunt (`R015` on the part,
-  and Adafruit's driver default); `CURRENT_LSB` 5 µA; continuous bus + shunt,
-  1052 µs each, 64× averaging (a result every ~135 ms). Its **charge register
-  integrates without gaps between rows**: use it, not the 1 s samples, for
-  mAh. It clears only when the QT Py loses power; the script never resets it.
+  and Adafruit's driver default); `CURRENT_LSB` 5 µA; continuous bus, shunt
+  and die temperature, 1052 µs each, 64× averaging (a result every ~200 ms;
+  bus + shunt only, ~135 ms, until 10-15). Its **charge register integrates
+  without gaps between rows**: use it, not the 1 s samples, for mAh. It
+  clears only when the QT Py loses power; the script never resets it, and a
+  soft reload of `code.py` does not clear it. Rechecked with the
+  temperature on (10-15, nothing on the harness, 15.8 min): the register
+  averaged 0.0258 mA against the 1 s samples' 0.0261 mA (ratio 0.990, about
+  ±2% at this current; 0.998 in the old mode just before). So it still
+  covers the whole cycle; a gap would read well below 1.
+- **`temp_c` is the INA228's die (since 10-15): the logger board, not the
+  cell.** It reads the room near the board (23.2 °C at 15:55 10-15, nothing
+  flowing). It is there for context, since capacity and the voltage curve
+  move with temperature; nothing uses it yet.
+- **The header repeats every minute, and the recorder checks each one** (the
+  `current` LSB and the `temp` scale it converts with; a mismatch stops it).
+  Until 10-15 the QT Py sent one header, at start, and the check never ran:
+  CircuitPython's status bar puts its title-bar escape codes
+  (`ESC ] 0; … ESC \`) in front of that line, so it never parsed as `H`. The
+  recorder strips them now. It also reports a row of the wrong length
+  (once a minute) instead of dropping it silently, and refuses to append to a
+  CSV with other columns, so a column change means a new file.
 - **Its zero with the harness on and nothing flowing:** −0.064 mA (−0.97 µV),
   sd 0.016 mA per row, and the charge register agrees (10-14). That is
   nothing over a charge (~0.6 mAh in 9 h) and matters only for standby floors.

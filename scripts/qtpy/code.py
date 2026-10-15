@@ -4,8 +4,10 @@
 # scripts/power_log.py timestamps and converts them. Copy this and boot.py to
 # CIRCUITPY.
 #
-#   H,<fields>   once at start: what the D fields are and how to scale them
-#   D,ms,vbus,vshunt,current,charge,vcell,soc,crate
+#   H,<fields>   at start and every HEADER_S: what the D fields are and how
+#                to scale them (repeated: the first comes behind the status
+#                bar's escape codes, or before the Mac opens the port)
+#   D,ms,vbus,vshunt,current,charge,temp,vcell,soc,crate
 #   E,<where>,<error>
 #
 # The INA228 is never reset here, so its charge register keeps counting across
@@ -17,6 +19,7 @@ import supervisor
 supervisor.runtime.autoreload = False  # a stray write to CIRCUITPY must not restart a run
 
 PERIOD_S = 1.0
+HEADER_S = 60.0
 INA, MAX = 0x40, 0x36
 R_SHUNT = 0.015      # Adafruit 5832's shunt (its driver's default)
 CURRENT_LSB = 5e-6   # A per count: 2^19 counts = 2.62 A, the +-40.96 mV range at 15 mohm
@@ -49,8 +52,9 @@ def ina_init():
     if dev != 0x228:
         raise RuntimeError("device id 0x%x" % dev)
     wr16(INA, 0x00, 1 << 4)  # CONFIG: ADCRANGE=1 (+-40.96 mV); RST and RSTACC clear
-    # ADC_CONFIG: continuous bus + shunt, 1052 us each, 64 averages: a result every ~135 ms
-    wr16(INA, 0x01, (0xB << 12) | (5 << 9) | (5 << 6) | (5 << 3) | 3)
+    # ADC_CONFIG: continuous bus, shunt and die temperature, 1052 us each, 64
+    # averages: a result every ~200 ms
+    wr16(INA, 0x01, (0xF << 12) | (5 << 9) | (5 << 6) | (5 << 3) | 3)
     wr16(INA, 0x02, SHUNT_CAL)
 
 
@@ -59,7 +63,8 @@ def ina_read():
     vshunt = signed(rd(INA, 0x04, 3), 24) >> 4  # 78.125 nV per count at ADCRANGE=1
     current = signed(rd(INA, 0x07, 3), 24) >> 4  # CURRENT_LSB per count
     charge = signed(rd(INA, 0x0A, 5), 40)       # CURRENT_LSB coulombs per count
-    return vbus, vshunt, current, charge
+    temp = signed(rd(INA, 0x06, 2), 16)         # 7.8125 m degC per count: the board, not the cell
+    return vbus, vshunt, current, charge, temp
 
 
 def max_read():
@@ -73,15 +78,19 @@ def max_read():
     return vcell, soc, crate
 
 
-print("H,ms,vbus 195.3125uV,vshunt 78.125nV,current %gA,charge %gC,vcell 78.125uV,"
-      "soc 1/256%%,crate 0.208%%/h,r_shunt %g,shunt_cal %d,period %g"
-      % (CURRENT_LSB, CURRENT_LSB, R_SHUNT, SHUNT_CAL, PERIOD_S))
+HEADER = ("H,ms,vbus 195.3125uV,vshunt 78.125nV,current %gA,charge %gC,temp 7.8125mdegC,"
+          "vcell 78.125uV,soc 1/256%%,crate 0.208%%/h,r_shunt %g,shunt_cal %d,period %g"
+          % (CURRENT_LSB, CURRENT_LSB, R_SHUNT, SHUNT_CAL, PERIOD_S))
 ina_ok = False
 t_next = time.monotonic()
+t_header = t_next
 while True:
+    if time.monotonic() >= t_header:
+        print(HEADER)
+        t_header += HEADER_S
     t_next += PERIOD_S
     ms = time.monotonic_ns() // 1000000
-    ina = ("", "", "", "")
+    ina = ("", "", "", "", "")
     mx = ("", "", "")
     try:
         if not ina_ok:
@@ -95,7 +104,7 @@ while True:
         mx = max_read()
     except OSError:
         pass
-    print("D,%d,%s,%s,%s,%s,%s,%s,%s" % ((ms,) + ina + mx))
+    print("D,%d,%s,%s,%s,%s,%s,%s,%s,%s" % ((ms,) + ina + mx))
     d = t_next - time.monotonic()
     if d > 0:
         time.sleep(d)

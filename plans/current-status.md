@@ -59,10 +59,12 @@ token `0x71163528`, since 19:30 10-11. A **`dev` build**:
 
 **On the bench now (as of 23:26 10-14):** nothing running against the board.
 **Relay 2 is ON** (the trial leaves it on after FULL), so the pack is full
-and the board runs on USB; data on. The INA228 recorder (`power_log.py`,
-detached, PID in `history/power-bench-2026-10-13/power.pid`) is still
-running but **the QT Py has been unplugged since 10:12:06 10-14**; it
-reconnects by itself when the QT Py is plugged back in.
+and the board runs on USB; data on. The QT Py is on USB again (since 15:37
+10-15) with **nothing on the harness**. Its code changed 10-15: a temperature
+column, and a header repeated every minute (see "The logger runs", below). The
+first recorder (`power.csv`) was stopped at 15:54 10-15, and a check run
+(`power-v2-check.csv`, 15:57-16:13) confirmed the charge register in the new
+mode. **Nothing records until the swap.**
 
 ### Next, in order
 
@@ -98,14 +100,23 @@ reconnects by itself when the QT Py is plugged back in.
      4. harness onto the pack only, keyboard plug free, QT Py unplugged:
         the keyboard plug's + to − must read **the pack's voltage, positive**
         (~3.4 V after the cut, ~4.1-4.2 V after FULL); negative means stop;
-     5. keyboard plug into the board, then the QT Py in.
+     5. keyboard plug into the board, then the QT Py in. Before it, start
+        the recorder into a new file (`power_log.py --out <dir>/power.csv
+        --detach`, a new dated `history/` directory), so it catches the
+        first rows.
      - ⚠️ Inserting it disconnects the pack and reboots the board, so only
        between runs (dump first).
-   - **The logger runs** (`scripts/qtpy/`, `scripts/power_log.py`, detached,
-     into `history/power-bench-2026-10-13/power.csv`). Its zero with the
-     finished harness, 01:11-01:33 10-14: **−0.064 mA** (−0.97 µV), sd 0.016
-     mA per 1 s row, and the charge register agrees. The MAX17048 is untested
-     until a pack powers it.
+   - **The logger runs** (`scripts/qtpy/`, `scripts/power_log.py`, detached).
+     Its zero with the finished harness, 01:11-01:33 10-14: **−0.064 mA**
+     (−0.97 µV), sd 0.016 mA per 1 s row, and the charge register agrees. The
+     MAX17048 is untested until a pack powers it.
+   - **Changed 10-15** (`docs/test-bench.md`, "The power logger"): a `temp_c`
+     column (the INA228's die, so the logger board, not the cell), and the
+     header now repeats every minute. The recorder's unit check had never
+     run: the only header came behind CircuitPython's title-bar escape codes,
+     so it never parsed as one. The recorder now strips them, reports
+     wrong-length rows instead of dropping them, and refuses a CSV with other
+     columns. `power.csv` (10-13 to 10-15) has the old columns.
    - **Then:**
      - map `K_CC` against the level and find the real knee (task 12);
      - check `5C`'s line against the pack under charge;

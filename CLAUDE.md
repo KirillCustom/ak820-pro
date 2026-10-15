@@ -129,7 +129,8 @@ are in [docs/battery.md](docs/battery.md) ("The gauge as built, Phase 1b").
   50.35-50.43 h.
 - **Flashing needs no hands:** `./build.sh dev`, then `./flash.sh <artifact>`
   ("Build & flash", below).
-- **Next:** the INA228 bench logger (arrived 10-13, logger running). ⚠️ The
+- **Next:** the INA228 bench logger (arrived 10-13; ready, recording stopped
+  until the swap; a temperature column since 10-15). ⚠️ The
   pack's connector is **1.0 mm (JST SH, most likely), not 1.25**, so the
   harness gets new ends (an SH kit due 10-15), then the swap onto the pack.
   Then Phase 2 (the power ladder) when JD says build.
