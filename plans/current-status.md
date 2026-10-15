@@ -1,8 +1,8 @@
 # Current status
 
-Updated 2026-10-12 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
-[`CRASH-HUNT-PLAN.md`](CRASH-HUNT-PLAN.md). The live work is Phase 1b,
-below.
+Updated 2026-10-14 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
+[`CRASH-HUNT-PLAN.md`](CRASH-HUNT-PLAN.md). **Phase 1b is closed (10-14)**; the
+live work is the INA228 bench logger, below.
 
 ## Why
 
@@ -14,32 +14,39 @@ loop stopped next time. The crash hunt adds what they cannot say (a CPU fault
 versus a hang, the PC, stack depth, why blits time out) and tries to provoke
 the next reset instead of waiting for it.
 
-## 2026-10-12 — RESUME HERE
+## 2026-10-14 — RESUME HERE
 
 **Where things stand: Phase 1b
-([`BATTERY-GAUGE-REFINE-PLAN.md`](BATTERY-GAUGE-REFINE-PLAN.md)) is done but
-for two per-event checks the board makes unattended**: "Battery low" and the
-RGB cut, in the drain running now. Everything else is met, merged, pushed and
-written up. The design and its measurements: [`../docs/battery.md`](../docs/battery.md)
-("The gauge as built, Phase 1b"), [`../docs/display.md`](../docs/display.md),
+([`BATTERY-GAUGE-REFINE-PLAN.md`](BATTERY-GAUGE-REFINE-PLAN.md)) is CLOSED.**
+Every gate is met, merged, pushed and written up. The design and its
+measurements: [`../docs/battery.md`](../docs/battery.md) ("The gauge as built,
+Phase 1b"), [`../docs/display.md`](../docs/display.md),
 [`../docs/clock.md`](../docs/clock.md), [`../docs/leds.md`](../docs/leds.md).
-- **Gates 1-7 met.** Gate 8:
-  - the charge from 0 (10-09) and the 24 h battery soak (10-10) passed;
-  - every per-event check so far passed, **no measured event reaching 25 ms**:
-    - plug-in and unplug;
-    - the Fn+D page exits and a lighting write, with a track playing;
-    - a track appearing;
-    - typed text under a plug-in;
-    - FULL on flash 2e (01:41 10-12).
+- **Gate 8 met (10-14).** The charge from 0 (10-09), the 24 h battery soak
+  (10-10), and every per-event check, **no measured event reaching 25 ms**:
+  - plug-in and unplug;
+  - the Fn+D page exits and a lighting write, with a track playing;
+  - a track appearing;
+  - typed text under a plug-in;
+  - FULL on flash 2e (01:41 10-12);
+  - **"Battery low"** (between 08:35 and 08:40 10-14) and **the RGB cut**
+    (between 13:55:17 and 14:00:17 10-14), on the drain below.
+- **The drain on flash 2e (11:34:16 10-12 to the cut,
+  [`history/battery-2026-10-12-drain-2e/`](../history/battery-2026-10-12-drain-2e/README.md)):**
+  - **runtime 50.35-50.43 h** wall clock (51.13 h last cycle, run 2 50.56 h);
+  - **accuracy** against run 2's line: below 52% −0.2 to −4.6 points (within
+    −2.0 below 30%); the flat top (70-85%) down to −7.2 (−8.3 last cycle);
+    never above +0.4;
+  - **the board was off twice on 10-14, under ~13 minutes in all,** for a
+    harness swap that did not fit (below). The log was dumped first;
+  - the recharge from the cut: relay on 14:01:17, the charger done between
+    23:06:39 and 23:11:39 (~9.1 h), FULL a 2.6-point step, LOST/OVERRUN/
+    self-check never set. The trial ended `done` at 23:26:39 and the guard
+    with it.
 - **Firmware merged and pushed (10-12, JD):** `ak820pro-jdlien` at `3e18c70a74`
   on `jdlien/qmk_firmware` (29 commits; the fork's default branch is now
   `ak820pro-jdlien`), pinned in `deps.lock`. The board's flash 2e
   (`efd5b0f74a`) is the same firmware but for comments.
-- **Docs current (10-11/12):**
-  - E6;
-  - the Rust daemon as the host agent on both platforms;
-  - the `time-util-ak820pro` README's notice of what the daemon supersedes.
-- **Parts:** the INA228 kit arrives ~Thursday 10-16 (below).
 
 **On the board: flash 2e**, `efd5b0f74a`, `via-dev-efd5b0f74a-20261011-192711.bin`,
 token `0x71163528`, since 19:30 10-11. A **`dev` build**:
@@ -50,51 +57,17 @@ token `0x71163528`, since 19:30 10-11. A **`dev` build**:
   reads or resets the display probe;
 - `daily` and `fpb` carry neither, and `build.sh` checks that.
 
-**Running now (from 11:34 10-12): a drain on flash 2e**, relay 2 off, data on.
-`bench_trial.py --wait-cut --poll 300 --full`
-(`history/battery-2026-10-12-drain-2e/`, `drain.csv`, `drain.log`).
-- The cut is expected ~14:30 10-14. At the cut it dumps the log, turns the
-  relay on, charges to FULL (~9.3 h) and leaves the relay on.
-- ⚠️ **It runs in session `dbe817d8`'s background.** If that session is gone,
-  so is the script (`pgrep -fl bench_trial`). **Since 12:19 10-12
-  `scripts/trial_guard.py` guards it**, detached from every session (PPID 1;
-  `guard.log` and `guard.pid` in the run's folder; stop it with
-  `kill $(cat guard.pid)`). If the trial dies before the cut, the guard restarts
-  it as `drain-resumed-N.csv`; if it dies after the cut, the guard dumps the log
-  unless the trial did, then turns relay 2 on. By hand, if both are gone: a
-  battery log dump (`ak820battery.py log <file>`), then `usb_relay.py on 2`.
-- **The guard takes the per-event reads** (stall counters and probe, saved as
-  `guard-<tag>-<time>.txt`), each right after one of the trial's polls, since
-  raw HID is exclusive on macOS: `start`; `warned`, once `cfg` says
-  `warned 1` (it starts checking at 3720 mV and resets the probe after each poll
-  from there); and `cut`, after the trial's dump, before the relay goes on, so
-  the plug-in is not in it.
-- **10-14 so far:**
-  - **"Battery low" fired between 08:35 and 08:40** (gauge 10.0 → 9.8%,
-    pack 3679 → 3676 mV). Its check passed: `count_ge_25ms` 0 at 08:40:13
-    (uptime 220,089,370 ms, no reboot since the flash), probe worst 12.45 ms
-    (the text slot) over the 5 minutes holding the warning
-    (`guard-warned-20261014-084013.txt`).
-  - **The board was off twice, for a harness swap that did not fit** (below;
-    the log was dumped first, `log-20261014-0950-preswap.csv`): from ~09:52
-    (JD; the 09:55:13 read failed) to before the 10:00:12 read, and again for
-    part of 10:00:12-10:04:53, when it booted (uptime 930,341 ms at 10:20:23;
-    the 10:05 read had no `5C` yet). So the runtime has a gap of under ~13
-    minutes, its exact length unknown. The trial logged a failed read and
-    carried on, and the gauge came straight back on battery. The stall
-    counters restart from 10:04:53: 0 at 10:20, loop gap max 18 ms (blit).
-- **At the cut, read:**
-  - `count_ge_25ms` and the probe for the RGB cut: the guard's
-    `guard-cut-*.txt` (counting from the 10-14 reboot);
-  - the gauge against the runtime line: does the flat top's −8.3 repeat?
-  - the runtime against the last cycle's 51.13 h.
+**On the bench now (as of 23:26 10-14):** nothing running against the board.
+**Relay 2 is ON** (the trial leaves it on after FULL), so the pack is full
+and the board runs on USB; data on. The INA228 recorder (`power_log.py`,
+detached, PID in `history/power-bench-2026-10-13/power.pid`) is still
+running but **the QT Py has been unplugged since 10:12:06 10-14**; it
+reconnects by itself when the QT Py is plugged back in.
 
 ### Next, in order
 
-1. **~14:30 10-14, unattended: the cut.** Record gate 8's last two checks in
-   the plan's "As built", and close Phase 1b.
-2. **The INA228 kit arrived 10-13, three days early; the harness is built
-   and the logger runs. Only the swap onto the pack is left**
+1. **The INA228 kit arrived 10-13, three days early; the logger runs. The
+   harness needs new ends, then the swap onto the pack**
    (`BATTERY-GAUGE-PLAN.md`, "If the hardware arrives"; `docs/test-bench.md`,
    "The power logger").
    - ⚠️ **The harness's ends are the wrong size (10-14).** The pack's
@@ -113,13 +86,15 @@ token `0x71163528`, since 19:30 10-11. A **`dev` build**:
      the INA228's GND hole (the ground tap), and red is spliced straight
      through. VBUS is bridged to V+, and the MAX17048's Bat is wired to V+.
      JD's resistance check: no short + to −, continuity where expected.
-   - **The swap, one step per message, after the cut** (or after the
-     recharge, if JD is not at the bench):
-     1. the drain has dumped the log;
+   - **The swap, one step per message, once the rework is done.** Relay 2 is
+     ON now (pack full), so first:
+     1. `usb_relay.py off 2`, confirmed by `ak820battery.py`'s `supply
+        battery`; then dump the log (`ak820battery.py log <file>`);
      2. unplug the pack (the board goes off);
-     3. with the pack out, the harness's keyboard plug must put **red on the
-        header's `NTC` pin**; if not, − and NTC are swapped, so move the GND tap
-        to the other wire (no smoke either way: + is the middle pin);
+     3. with the pack out, the harness's keyboard plug must put the pack's
+        NTC wire (the old 1.25 mm harness: red) **on the header's `NTC` pin**;
+        if not, − and NTC are swapped, so move the GND tap to the other wire
+        (no smoke either way: + is the middle pin);
      4. harness onto the pack only, keyboard plug free, QT Py unplugged:
         the keyboard plug's + to − must read **the pack's voltage, positive**
         (~3.4 V after the cut, ~4.1-4.2 V after FULL); negative means stop;
@@ -136,17 +111,17 @@ token `0x71163528`, since 19:30 10-11. A **`dev` build**:
      - check `5C`'s line against the pack under charge;
      - Phase 2's step 2, the per-load currents: RGB full and off, the screen
        full, dim and off, BT linked and idle, and a light-sleep build.
-3. **Phase 2, the power ladder:** note-taking until JD says build (the agreed
+2. **Phase 2, the power ladder:** note-taking until JD says build (the agreed
    order in [`BATTERY-GAUGE-PLAN.md`](BATTERY-GAUGE-PLAN.md); the PPK2 is
    deferred to step 4).
-4. **A release, JD's call when.** The current v0.1.1 (09-06) predates the
+3. **A release, JD's call when.** The current v0.1.1 (09-06) predates the
    gauge and has no `fpb` binary.
    - Tag `vX.Y.Z`; CI builds the agent zip.
    - `scripts/release-firmware.sh` uploads a clean `daily` and `fpb` of the
      pinned commit.
    - `scripts/sandbox-6b.ps1` checks the install on a clean Windows.
    - A macOS build is not released yet (no notarization).
-5. **Low priority (`BACKLOG.md`):**
+4. **Low priority (`BACKLOG.md`):**
    - the level after a flash (a seed from `flash.sh`, or the provisional
      level);
    - a module command for macOS's percent;

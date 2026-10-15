@@ -1,23 +1,23 @@
 # Battery gauge, Phase 1b: the curve, charging, the blinks, the stalls — plan
 
-**Status (2026-10-10, ~13:30): gate 8 met for the charge and the soak; flash 2b
-next.** Flash 2 (`28f260225f`, token `0xdf1e8b99`) has been on the board since
-12:54 10-08.
-- **B3 is met:** three trials give a mean `K_CC` of 133.0, the value flash 2
-  carries, and `RELAX_S` 1800 s is confirmed three times.
-- **Gate 8:** the charge from 0 passed (10-09), and so did the 24 h battery
-  soak (10-10): 3 write sessions outside the exclusions, no ≥ 25 ms gap, and
-  ≥ 10 ms gaps at 47.5/h against D2's ≤ 50.
-- **Gate 8's per-event checks are carried to flash 2b.** The plug-in (33 ms)
-  and probably the page exit (37-39 ms) break the ≥ 25 ms rule; they are
-  flash 2b's items 1-2.
+**Status (2026-10-14): Phase 1b is CLOSED. Every gate is met.** Flash 2e
+(`efd5b0f74a`, token `0x71163528`) has been on the board since 19:30 10-11,
+merged into `ak820pro-jdlien` as `3e18c70a74` (10-12).
+- **B3 is met:** three trials give a mean `K_CC` of 133.0, and `RELAX_S`
+  1800 s is confirmed three times.
+- **Gate 8 is met:** the charge from 0 (10-09), the 24 h battery soak (10-10),
+  and every per-event check, the last two ("Battery low" and the RGB cut) on
+  the 10-12/14 drain, with no pass ≥ 25 ms at any event measured ("As built",
+  "Gate 8 MET").
+- **Accuracy, not a gate:** over the 10-12/14 cycle, −0.2 to −4.6 points from
+  52% to the cut, up to −7.2 on the flat top (70-85%), never above +0.4.
 
 Gates 1-7 are met:
 - gate 3 passed on flash 1b, after flash 1's 2.5% failure and a trim;
 - the soaks named C1's writer (the RTC period's PCF path) and D2's stall
   (`battery_5c_report`'s sort; flash 1c's profile).
 
-Resume from `current-status.md`, "2026-10-10". See "As
+Resume from `current-status.md`. See "As
 built", just before the review dispositions. Revision 7 came after codex's sixth review
 ([every round verbatim](review-codex-battery-refine-plan-2026-10-04.md);
 dispositions at the end). Phase 1 (the gauge) is built, flashed, and checked on
@@ -1687,6 +1687,44 @@ Record: `history/battery-2026-10-07-partial-charge/` (`readings.csv`, and
   5. *Investigation, not code:* whether the CH582F accepts a level from the
      MCU, so the host's Bluetooth battery shows the gauge instead of the
      module's linear `5C` (96% against the gauge's 66% on 10-10).
+- **Gate 8 MET; Phase 1b CLOSED (10-14), on flash 2e's drain**
+  (`history/battery-2026-10-12-drain-2e/`, `README.md`). Unattended on the
+  relay: unplugged 11:34:16 10-12, `bench_trial.py --wait-cut --poll 300
+  --full`, with `trial_guard.py` taking the per-event reads right after the
+  trial's polls.
+  - **"Battery low": PASS.** It fired between the 08:35 and 08:40 reads 10-14
+    (gauge 10.0 → 9.8%, pack 3679 → 3676 mV, against the 3680 mV threshold).
+    At 08:40:13 `count_ge_25ms` 0 since the flash (uptime 220,089,370 ms),
+    loop gap max 21 ms (blit); the probe's worst 12.45 ms (the text slot) over
+    the 5 minutes holding the warning (`guard-warned-20261014-084013.txt`).
+  - **The RGB cut: PASS.** It fired between the 13:55:17 read (3399 mV, lights
+    on) and the 14:00:17 read (`lights_cut`). At 14:00:20, before the relay
+    went on: `count_ge_25ms` 0 (non-flash 0), loop gap max 18 ms (blit); the
+    probe's worst 12.28 ms (the text slot) over the ~5 minutes holding the cut
+    (`guard-cut-20261014-140020.txt`). These counters run from a reboot at
+    10:04:53 (below), ~3.9 h before the cut.
+  - **The board was off twice on 10-14, for under ~13 minutes in all,** for a
+    harness swap that did not fit (the pack's connector is 1.0 mm, not
+    1.25; `docs/battery.md`, "The pack connector"): from ~09:52 to before the
+    10:00:12 read, and part of 10:00:12-10:04:53. The log was dumped first
+    (`log-20261014-0950-preswap.csv`); the trial logged one failed read and
+    carried on, and the gauge came straight back on battery.
+  - **The runtime: 50.35-50.43 h** from the unplug to the cut, wall clock
+    (50.1-50.4 h under load, taking out the gap), against 51.13 h last cycle
+    and run 2's 50.56 h.
+  - **Accuracy against run 2's line** (100% less 1.978%/h; 603 reads):
+    above 85% mean −0.6 (worst −2.8); **the flat top 70-85% mean −5.1, worst
+    −7.2** at 79.7%; 52-70% mean −2.4 (worst −5.1, at 69.7%); **below 52% mean
+    −1.6, worst −4.6** at 41.6%, within −2.0 below 30%. Never above +0.4. So
+    the flat top's dip repeats (−8.3 last cycle), and the lower half was wider
+    than last cycle's ±2.5. Against this run's own line, much the same.
+  - **The recharge from the cut, a second charge from 0:** relay on 14:01:17;
+    the charger stopped between the 23:06:39 read (97.4%, charging) and the
+    23:11:39 read (100%), ~9.1 h. FULL was a 2.6-point step, as on 10-09.
+    LOST, OVERRUN and self-check are 0 in all 80 entries of
+    `log-20261014-2326-full.csv`. The trial logged FULL at 23:16:39 (CHRG high
+    on USB, two reads 5 min apart), dumped the log and left the relay on; the
+    guard stopped at 23:26:41 with the trial `done`.
 - **Flash 2e ON THE BOARD since 19:30 10-11: the page-exit and overlay stalls are
   fixed.** Firmware `efd5b0f74a` (`phase1b-flash2`, local),
   `via-dev-efd5b0f74a-20261011-192711.bin`, token `0x71163528`, flashed

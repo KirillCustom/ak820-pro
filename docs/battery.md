@@ -11,8 +11,9 @@ reviews and every disposition:
 [`plans/BATTERY-GAUGE-REFINE-PLAN.md`](../plans/BATTERY-GAUGE-REFINE-PLAN.md)
 ("As built" holds every measurement).
 
-> **State (2026-10-12): Phase 1b is done**, but for two per-event checks a
-> drain is making ("Battery low" and the RGB cut). Merged into `ak820pro-jdlien`
+> **State (2026-10-14): Phase 1b is closed.** Its last two per-event checks,
+> "Battery low" and the RGB cut, passed on the 10-12/14 drain (no pass ≥ 25 ms
+> at either). Merged into `ak820pro-jdlien`
 > (`3e18c70a74`, pushed and pinned). On JD's unit is flash 2e, `efd5b0f74a`
 > (the same firmware but for comments; a `dev` build, token `0x71163528`).
 > - **The curve is refitted on both drain tests**, run 1
@@ -24,8 +25,11 @@ reviews and every disposition:
 > - **Internal-flash writes** are down to 3 a day outside the level's
 >   milestones, and the battery-only stalls are fixed (≥ 10 ms passes at
 >   47.5/h on battery, against ~287/h before).
-> - **Measured over a whole cycle** (10-09 to 10-11): within ±2.5 points from
+> - **Measured over two whole cycles.** 10-09 to 10-11: within ±2.5 points from
 >   52% to the cut, but up to 8.3 points low on the curve's flat top (70-85%).
+>   10-12 to 10-14: up to 4.6 points low from 52% to the cut (2.0 below 30%),
+>   and up to 7.2 low on the flat top; that cycle it erred low throughout,
+>   never more than 0.4 high.
 >
 > Resume from [`plans/current-status.md`](../plans/current-status.md).
 > Phase 2, the power ladder, is next and is note-taking until JD says build.
@@ -48,7 +52,10 @@ reviews and every disposition:
   3.95-4.036 V plateau. That is one unit, one load, a fresh pack.
 - **Over a whole cycle (2026-10-09 to 10-11)** it stayed within ±2.5 points
   from 52% to the cut, but dipped up to **8.3 points low** on the curve's flat
-  top (4003-4016 mV spans 70-85%). So ±5% holds everywhere but 70-85%.
+  top (4003-4016 mV spans 70-85%). **The next cycle (10-12 to 10-14)** was
+  within 4.6 points low from 52% to the cut and up to **7.2 low** on the flat
+  top, erring low throughout (never more than 0.4 high). So ±5% holds
+  everywhere but 70-85%.
 - **It is blind at both ends:** above ~4.036 V (the top ~10% of runtime) and
   below ~3.161 V. While charging, the charge current inflates the reading, so
   **the charging display is a model** of the charge, bounded by the voltage,
@@ -255,13 +262,14 @@ and ~11% on the 4.00-4.02 V plateau**, where ~20% of the runtime passes in
 | one `5C` count | 8.75 mV | the raw step; the mean resolves ~0.1 count |
 | the curve | refitted on both runs; **leave-one-out: 0.54-0.59 points rms below 3.95 V, 3.1-3.2 rms (worst ±8.9) on the plateau** | **the dominant term**, and the plateau is its weak part |
 | the curve over a third cycle (10-09 to 10-11) | **within ±2.5 points from 52% to the cut (mean −0.2); up to −8.3 on the flat top (70-85%), mean −2.2 over the soak** | measured: Phase 1b's accuracy, below |
+| the curve over a fourth cycle (10-12 to 10-14) | **−0.2 to −4.6 points from 52% to the cut (mean −1.6; −0.2 to −2.0 below 30%); up to −7.2 on the flat top (mean −5.1); never above +0.4** | measured: the second whole cycle, below |
 | temperature, 10 °C swing | ±1.5-3%, from generic NMC figures | unmeasured here |
 | cell ageing, a year | ±5%, drifting | unmeasured |
 | another unit's module | unknown | one unit fitted |
 
 **±5% fresh holds everywhere but the flat top (70-85%)**, where the gauge read
-up to 8.3 points low on 10-10. That is three cycles of one pack at one load: a
-consistency check, not a validation of the method. (Before the refit this
+up to 8.3 points low on 10-10 and 7.2 low on 10-12. That is four cycles of
+one pack at one load: a consistency check, not a validation of the method. (Before the refit this
 paragraph read: "±5% fresh now holds on one out-of-sample run (2.2 points rms
 overall) — except on the plateau, where the worst error is −8.5 points".)
 
@@ -662,6 +670,38 @@ white, against the runtime line (100% less 1.978% an hour: run 2's 50.56 h).
 - **The runtime: 51.13 h** from FULL to the cut, +1.1% on run 2's 50.56 h.
 
 So **±5% holds everywhere but the flat top (70-85%).**
+
+### Accuracy over a second whole cycle (10-12 to 10-14)
+
+Flash 2e, full white, unattended on the relay
+([`history/battery-2026-10-12-drain-2e/`](../history/battery-2026-10-12-drain-2e/)):
+unplugged at 11:34:16 10-12, ~10 h after FULL on USB; the RGB cut between
+the 13:55:17 and 14:00:17 reads 10-14. Against the same line (100% less
+1.978% an hour), 603 reads 5 min apart:
+
+| band (line) | reads | mean | range |
+|---|---|---|---|
+| above 85% | 91 | −0.6 | −2.8 to +0.4 |
+| **70-85% (the flat top)** | 91 | **−5.1** | **−7.2** to −1.3 |
+| 52-70% | 110 | −2.4 | −5.1 to −1.0 |
+| below 52% | 311 | −1.6 | −4.6 to −0.2 |
+
+- **The flat top's dip repeats:** worst −7.2 at 79.7% (21:49 10-12, 10.3 h
+  in), against −8.3 at 71.5% (10.2 h in) last cycle. The one read beyond
+  −5 outside the band is at its edge (−5.1 at 69.7%).
+- **The lower half was wider than last cycle:** −4.6 at 41.6% against −2.5. It
+  narrows toward the cut: 30-40% within −4.0, 10-30% within −2.0, the last
+  10% within −1.3.
+- **It erred low everywhere** this cycle (never more than 0.4 above the
+  line), so it understated what was left rather than promising runtime that
+  was not there.
+- **Against this cycle's own runtime** (50.39 h to the cut's midpoint), much
+  the same: flat top −7.2, below 52% worst −4.4.
+- **The runtime: 50.35-50.43 h** from the unplug to the cut, wall clock,
+  against 51.13 h last cycle (FULL to the cut) and run 2's 50.56 h. It
+  includes the board being off for under ~13 minutes on 10-14 (a harness
+  swap that did not fit; the exact length is unknown), so the time under
+  load is 50.1-50.4 h; the late reads carry ≤ 0.4 points from that gap.
 
 ### The reserve below 0%
 
