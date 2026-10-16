@@ -110,6 +110,13 @@ not fitted on, and it shows how the voltage curve moves with load.
   run) still measures it after. The 1-minute dim rung needs finer data: a
   battery-log column of key presses per interval would give it, in a later
   flash.
+  - **Gaps by length, per day** (for "Two kinds of away" in
+    `BATTERY-GAUGE-PLAN.md`, whose ~2 h deep-standby line is open): how many
+    idle gaps of 1-3 h and of over 3 h there are, and how many of each end in
+    typing rather than in the end of the record or a reboot. Each one that
+    ends in typing is a waking key that deep standby could cost, so the count
+    above a candidate threshold is the price of putting the line there. At 5
+    min resolution a gap's length is known to ±5 min.
 
 ## What follows in firmware (each a flash, codex first)
 
