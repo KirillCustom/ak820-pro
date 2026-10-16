@@ -341,10 +341,13 @@ converts them, finding the QT Py by its USB ids (Adafruit `239a`).
   **middle position of the screw terminal** (VIN−, VBUS, VIN+ in order). The
   INA228's VBUS input is ~1 MΩ (0.8-1.2, TI's datasheet), so reading 5.1% low
   takes ~54 kΩ in series, which a solid solder bridge cannot be; a joint
-  that never wetted one pad could. The test needs no iron: a short wire from
-  the VIN+ screw to the middle (VBUS) screw bypasses `SJ1` (all three screws
-  are the + rail, within mV of each other). Until then, **take the pack's
-  voltage from `vcell_mv`**, and check it against `5C` below the clamp.
+  that never wetted one pad could. **Not `SJ1`:** JD wired the VIN+ screw
+  to the middle (VBUS) screw (~21:31-21:32 10-15), bypassing it, and VBUS
+  stayed 214.5 mV below VCELL. So the INA228 itself reads VBUS ~5.1% (or
+  ~214 mV) low; the current channel looks right (74 mA on battery, as the
+  board's ~50 h runtime implies). **Take the pack's voltage from
+  `vcell_mv`**; the next drain, checked against `5C` below the clamp, says
+  whether VBUS is off by a ratio or a fixed amount.
 - **The shunt is a 1% part** per the schematic (`HoLLR2512-2W-15mR-1%`),
   though Adafruit's README says 0.1%. So the mA scale is good to ~1% unless
   checked against a known load.
