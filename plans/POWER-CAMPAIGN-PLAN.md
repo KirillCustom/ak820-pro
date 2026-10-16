@@ -89,8 +89,9 @@ today, ~380 with the lights out, single to tens of mAh in a real standby).
     time), since key scanning lives in the row ISR (design question 2);
   - the CH582F's commands (`CH582F_PROTOCOL.md`): a sleep or slower
     connection timing, or only a dropped link (a reconnect of 1-15 s);
-  - **a wake rig:** a spare channel of the USB relay (relays 1, 3 and 4 are
-    unused) wired across one key's switch contacts, so the Mac presses a key
+  - **a wake rig:** the USB relay's spare, relay 1 (it has two relays,
+    whatever its "USBRelay4" name says), wired across one key's switch
+    contacts, so the Mac presses a key
     at a stamped moment and times its arrival over BT. Unattended, it
     counts lag and lost wake keys over hundreds of sleeps. JD's hands: one
     small wiring job.
