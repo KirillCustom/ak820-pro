@@ -1,8 +1,9 @@
 # Current status
 
-Updated 2026-10-14 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
-[`CRASH-HUNT-PLAN.md`](CRASH-HUNT-PLAN.md). **Phase 1b is closed (10-14)**; the
-live work is the INA228 bench logger, below.
+Updated 2026-10-15 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
+[`CRASH-HUNT-PLAN.md`](CRASH-HUNT-PLAN.md). **Phase 1b is closed (10-14). The
+INA228 power logger is on the pack and recording (10-15)**; next is using it,
+below.
 
 ## Why
 
@@ -14,7 +15,122 @@ loop stopped next time. The crash hunt adds what they cannot say (a CPU fault
 versus a hang, the PC, stack depth, why blits time out) and tries to provoke
 the next reset instead of waiting for it.
 
-## 2026-10-14 — RESUME HERE
+## 2026-10-15 — RESUME HERE
+
+**Where things stand: the INA228 power logger is on the pack and recording,
+and the keyboard is back in JD's daily use with it attached.** Phase 1b stays
+closed (the 10-14 block below). The board is unchanged: flash 2e
+(`efd5b0f74a`, a `dev` build). The logger's design and every caveat:
+[`../docs/test-bench.md`](../docs/test-bench.md), "The power logger".
+
+**The rig (JD, 10-15): three USB ports for a keyboard built to need none.**
+- the keyboard, through the relay's cable (its 5 V on relay 2), on the dock
+  hub `0-1.4` port 2 (`ioreg`: `AK820 PRO@00142000`);
+- the relay (`USBRelay4`) on port 3;
+- the QT Py on `0-1.4.1` port 4 (`QT Py RP2040@00141400`).
+
+The keyboard is reassembled with the pack's lead brought out of the case:
+pack → in-line SH socket → INA228 (the pack on Vin+, the keyboard on Vin−,
+VBUS bridged to V+) → SH plug → board. − runs into the INA228's GND hole (the
+ground tap) and on to the board; NTC runs straight through; the MAX17048's
+Bat is on V+. JD re-pinned the new SH ends to the standard colours (red +,
+black −, yellow for the pack's white NTC). Still, identify wires by position
+anywhere on this harness, never by colour.
+
+**Recording:** `history/power-bench-2026-10-15/power.csv` since 21:01:13
+10-15 (the recorder's PID in `power.pid`, its notes in `power.log`). The
+swap's first 20 minutes are in `power-unflipped.csv` and `power-flipped.csv`,
+with the sign wrong in places (`power.log` says where). The QT Py's LED:
+dim green = recording, amber = nothing reads it, red = the INA228 does not
+answer.
+
+**Checked 10-15:**
+- the board runs and charges through the harness, and draws **74 mA on
+  battery** (RGB on, BT linked);
+- the relay still switches it (20:53-21:01);
+- the MAX17048 answers;
+- the charge register matches the mean current with the temperature
+  conversion on (ratio 0.990 over 15.8 min).
+
+**Found 10-15:**
+- **The shunt was wired backwards.** JD swapped the two + wires at the
+  terminal block (~20:59); checked +74 mA on battery and −136 mA charging.
+- ⚠️ **The INA228's VBUS reads ~5.1% (~214 mV) low** against both the
+  MAX17048 and the board's `5C` clamp. It held at every current, with VBUS on
+  either side of the shunt, and with the solder jumper bypassed by a wire. So
+  it is not the harness, the jumper or the MAX17048's wiring. **Take the pack
+  voltage from `vcell_mv`.** The next drain shows whether the error is a
+  ratio or an offset.
+- ⚠️ **Unexplained: the LCD read 22% at 20:47:34**, after the swap's power
+  cycles, with the pack full (JD's photo); it said FULL, 100%, by 20:51. The
+  saved level is written at FULL (100% on 10-14 23:16), so a restore should
+  not give 22%. Read the restore path before trusting the level after a pack
+  swap.
+- The MAX17048's own SOC read 186-203%: its model, on an unknown cell, is
+  meaningless here. Its `VCELL` is what counts.
+- `uhubctl`: the keyboard is still on `0-1.4` port 2, where the bench doc puts
+  it, so the data cut should still reach it. But `uhubctl -l 0-1.4` printed
+  nothing within a 10 s limit (10-15). Recheck before relying on it.
+- The logger's code changed 10-15 (all in `docs/test-bench.md`): a `temp_c`
+  column; the header repeated every minute, since the recorder's unit check
+  had never run; the status LED; and in the recorder, escape-code stripping,
+  a report of wrong-length rows, a refusal to append to a CSV with other
+  columns, and `SHUNT_SIGN`.
+
+### Next, in order (10-15)
+
+1. **The per-load current map** (Phase 2's step 2, the "afternoon with the
+   meter", now logged, and hands-free for the lighting). On battery (relay
+   off), hold each state ~2 min and take its mean from the charge register
+   (Δcharge/Δt, gap-free), each state twice in ABBA order:
+   - **RGB:** off, JD's effect, static white at full, and a few brightness
+     steps. All of them go over VIA's lighting channel (`ak820lighting.py`'s
+     wire format) without its SAVE, so RAM only: no flash write, and a reboot
+     restores JD's setting. Restore it at the end anyway
+     (`ak820lighting.py restore`).
+   - **The screen:** no host command sets it. Full, dim and off are
+     `Fn`+`PgUp`/`PgDn`/`Home` by JD, and each writes the saved brightness. A
+     dev hook (`HC_DEVHOOK`, a new op) would make it hands-free, but that is a
+     flash: JD's call, with a codex review first.
+   - **BT** linked against idle. The MCU's share needs the light-sleep build
+     (Phase 2 step 4), later.
+   - **Repeat near the bottom of a drain:** the buck-boost draws more current
+     as the pack falls.
+   - Measurement only: Phase 2 stays note-taking until JD says build.
+2. **A whole cycle with the logger**, the plan's "calibration run"
+   ([`BATTERY-GAUGE-PLAN.md`](BATTERY-GAUGE-PLAN.md)): a drain to the cut and
+   a charge to FULL, run by `bench_trial.py` and `trial_guard.py` as before,
+   with the logger alongside. It gives the pack's mAh (the charge register);
+   its voltage curve under a known load (`vcell_mv`); `5C` against the pack
+   across the range; the VBUS error's shape; the charge's CC-to-CV knee seen
+   directly in the current (task 12, `K_CC` against the level); and
+   `CHARGE_IR_MV` and relaxation at unplug. Before it:
+   - decide RGB through the cut as before, or a lowered cut (RAM-only `cfg`);
+   - fix `bench_trial.py`'s pack regex (about two lines): it matches only
+     the `(estimate 5C …)` form, so some rows have an empty `pack_mv`.
+3. **The 22% after the swap** (above): read the saved-level restore path. No
+   flash without a codex review.
+4. **Phase 2, the power ladder:** note-taking until JD says build (the agreed
+   order in [`BATTERY-GAUGE-PLAN.md`](BATTERY-GAUGE-PLAN.md); the PPK2 is
+   deferred to step 4). Item 1's numbers say what step 3 is worth.
+5. **A release, JD's call when.** The current v0.1.1 (09-06) predates the
+   gauge and has no `fpb` binary.
+   - Tag `vX.Y.Z`; CI builds the agent zip.
+   - `scripts/release-firmware.sh` uploads a clean `daily` and `fpb` of the
+     pinned commit.
+   - `scripts/sandbox-6b.ps1` checks the install on a clean Windows.
+   - A macOS build is not released yet (no notarization).
+6. **Low priority (`BACKLOG.md`):**
+   - the level after a flash (a seed from `flash.sh`, or the provisional
+     level);
+   - a module command for macOS's percent;
+   - quill4gen7's two channels, one Mac evening;
+   - the CH582F firmware question, after Phase 2's numbers;
+   - the firmware as a standalone repo (someday);
+   - whether to commit the logger's CSVs (~6 MB a day at 1 Hz: gzip or
+     decimate them first).
+
+## 2026-10-14 (Phase 1b closed; superseded by the block above for what is next)
 
 **Where things stand: Phase 1b
 ([`BATTERY-GAUGE-REFINE-PLAN.md`](BATTERY-GAUGE-REFINE-PLAN.md)) is CLOSED.**
@@ -66,100 +182,10 @@ first recorder (`power.csv`) was stopped at 15:54 10-15, and a check run
 (`power-v2-check.csv`, 15:57-16:13) confirmed the charge register in the new
 mode. **Nothing records until the swap.**
 
-### Next, in order
+### Next, in order (10-14; superseded)
 
-1. **The INA228 kit arrived 10-13, three days early; the logger runs. The
-   harness needs new ends, then the swap onto the pack**
-   (`BATTERY-GAUGE-PLAN.md`, "If the hardware arrives"; `docs/test-bench.md`,
-   "The power logger").
-   - ⚠️ **The harness's ends are the wrong size (10-14).** The pack's
-     connector is **1.0 mm** (calipers ~0.94 mm), most likely JST SH, not the
-     1.25 mm `docs/battery.md` said until 10-14. JD ordered a JST SH 1.0 mm
-     3-pin kit (Ulifebet, ASIN `B0F32RWDC6`, wired plugs plus loose board
-     headers), due 10-15. The rework: cut the 1.25 mm plugs off; splice a wired
-     SH plug on the keyboard end; solder the pack end's three wires to an SH
-     header's legs (the in-line socket). The INA228 wiring stays. Then map the
-     pins by position with the meter again, as below.
-   - **The harness (JD, 10-13/14):** made from a 1.25 mm extension whose wire
-     colours do NOT match the pack's. By position, against the pack's red +,
-     black −, white NTC: the extension's **black is +**, **yellow is −**, **red
-     is NTC** (JD's reading; the swap confirms it). Black is cut, with the
-     battery side to Vin+ and the keyboard side to Vin−. Both yellows go into
-     the INA228's GND hole (the ground tap), and red is spliced straight
-     through. VBUS is bridged to V+, and the MAX17048's Bat is wired to V+.
-     JD's resistance check: no short + to −, continuity where expected.
-   - **The swap, one step per message, once the rework is done.** Relay 2 is
-     ON now (pack full), so first:
-     1. `usb_relay.py off 2`, confirmed by `ak820battery.py`'s `supply
-        battery`; then dump the log (`ak820battery.py log <file>`);
-     2. unplug the pack (the board goes off);
-     3. with the pack out, the harness's keyboard plug must put the pack's
-        NTC wire (the old 1.25 mm harness: red) **on the header's `NTC` pin**;
-        if not, − and NTC are swapped, so move the GND tap to the other wire
-        (no smoke either way: + is the middle pin);
-     4. harness onto the pack only, keyboard plug free, QT Py unplugged:
-        the keyboard plug's + to − must read **the pack's voltage, positive**
-        (~3.4 V after the cut, ~4.1-4.2 V after FULL); negative means stop;
-     5. keyboard plug into the board, then the QT Py in. Before it, start
-        the recorder into a new file (`power_log.py --out <dir>/power.csv
-        --detach`, a new dated `history/` directory), so it catches the
-        first rows.
-     - ⚠️ Inserting it disconnects the pack and reboots the board, so only
-       between runs (dump first).
-   - **The swap is done (JD, 10-15 ~20:38-20:46).** The keyboard is
-     reassembled with the harness led out of the case; the QT Py and the
-     keyboard both sit on the Thunderbolt dock's hub now, and relay 2 still
-     cuts the keyboard's 5 V (checked 20:53-20:54: battery, then external).
-     ⚠️ So `uhubctl -l 0-1.4 -p 2` probably no longer reaches it (unchecked).
-     Checked: the board runs and charges; on battery it draws 74 mA (RGB on,
-     BT linked); the MAX17048 answers. Found: **the shunt was reversed**
-     (the pack on Vin−), so JD swapped the + wires at ~20:59 (checked 21:01:
-     +74 mA on battery, −136 mA charging); and **VBUS reads ~213-215 mV
-     low** either way (`docs/test-bench.md`, "The power logger"). Recording
-     since 21:01:13 into `history/power-bench-2026-10-15/power.csv`, signs
-     right. Before it: `power-unflipped.csv` (raw, wrong sign) and
-     `power-flipped.csv` (right until 20:58:14, wrong from 21:00:40).
-     - ⚠️ **Unexplained:** JD's photo shows the LCD at **22%** at 20:47:34,
-       after the swap's power cycles, with the pack full; by 20:51 the board
-       said FULL, 100%. The saved level is written at FULL (100% on 10-14
-       23:16), so a restore should not give 22%. The RAM log had 0 entries
-       (dumped 20:52, `log-20261015-2052-after-swap.csv`). Look at it before
-       trusting the level after a pack swap.
-     - The MAX17048's own SOC read 186-203% and falling: its model, on an
-       unknown cell, never used. Its `VCELL` is what counts.
-   - **The logger runs** (`scripts/qtpy/`, `scripts/power_log.py`, detached).
-     Its zero with the finished harness, 01:11-01:33 10-14: **−0.064 mA**
-     (−0.97 µV), sd 0.016 mA per 1 s row, and the charge register agrees. The
-     MAX17048 is untested until a pack powers it.
-   - **Changed 10-15** (`docs/test-bench.md`, "The power logger"): a `temp_c`
-     column (the INA228's die, so the logger board, not the cell), and the
-     header now repeats every minute. The recorder's unit check had never
-     run: the only header came behind CircuitPython's title-bar escape codes,
-     so it never parsed as one. The recorder now strips them, reports
-     wrong-length rows instead of dropping them, and refuses a CSV with other
-     columns. `power.csv` (10-13 to 10-15) has the old columns.
-   - **Then:**
-     - map `K_CC` against the level and find the real knee (task 12);
-     - check `5C`'s line against the pack under charge;
-     - Phase 2's step 2, the per-load currents: RGB full and off, the screen
-       full, dim and off, BT linked and idle, and a light-sleep build.
-2. **Phase 2, the power ladder:** note-taking until JD says build (the agreed
-   order in [`BATTERY-GAUGE-PLAN.md`](BATTERY-GAUGE-PLAN.md); the PPK2 is
-   deferred to step 4).
-3. **A release, JD's call when.** The current v0.1.1 (09-06) predates the
-   gauge and has no `fpb` binary.
-   - Tag `vX.Y.Z`; CI builds the agent zip.
-   - `scripts/release-firmware.sh` uploads a clean `daily` and `fpb` of the
-     pinned commit.
-   - `scripts/sandbox-6b.ps1` checks the install on a clean Windows.
-   - A macOS build is not released yet (no notarization).
-4. **Low priority (`BACKLOG.md`):**
-   - the level after a flash (a seed from `flash.sh`, or the provisional
-     level);
-   - a module command for macOS's percent;
-   - quill4gen7's two channels, one Mac evening;
-   - the CH582F firmware question, after Phase 2's numbers;
-   - the firmware as a standalone repo (someday).
+The INA228 harness was rebuilt with 1.0 mm SH ends and swapped onto the pack
+on 10-15: see the 10-15 block above for what came of it and what is next.
 
 ### The bench: tests without JD's hands ([`../docs/test-bench.md`](../docs/test-bench.md))
 
@@ -171,7 +197,11 @@ mode. **Nothing records until the swap.**
 - **Data:** `uhubctl -l 0-1.4 -p 2 -a off|on -e` cuts or restores the
   keyboard's data on port 2. Always pass `-l 0-1.4 -p 2 -e`: port 3 is the
   relay itself, port 4 JD's Stream Deck. Check `uhubctl -l 0-1.4` after any
-  re-cabling, and run it under a timeout.
+  re-cabling, and run it under a timeout (macOS has no `timeout`:
+  `perl -e 'alarm 10; exec @ARGV' uhubctl …`). ⚠️ On 10-15 that status call
+  printed nothing within 10 s: recheck before a trial relies on it.
+- **The power logger:** the INA228 and MAX17048 on the pack, read by the QT
+  Py and recorded by `scripts/power_log.py` (10-15 block above).
 - **The states:** relay off and data on reads the board on battery without
   charging it (QMK connects USB without VBUS); both off is truly unplugged
   (~0.2 mA left on D+); both on is charging and readable.

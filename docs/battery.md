@@ -905,15 +905,17 @@ What the board actually shows:
   **Superseded:** the model has been on the board since flash 2 (10-08), and
   gate 8's charge from 0 passed on it ("The gauge as built, Phase 1b").
 
-## The pack connector, and tapping it (2026-09-26; corrected 2026-10-14)
+## The pack connector, and tapping it (2026-09-26; corrected 2026-10-14; confirmed 2026-10-15)
 
-**3-pin, 1.0 mm pitch, most likely JST SH** (or a clone). ⚠️ **This section
+**3-pin, 1.0 mm pitch, JST SH or compatible.** **Confirmed 10-15:** a kit's
+SH plug mates with the board's header, and the pack's plug with the kit's SH
+header (Ulifebet "Mini Micro JST SH 1.0mm Pitch 3-Pin", 20 sets of wired
+plugs and loose board headers, Amazon ASIN `B0F32RWDC6`). ⚠️ **This section
 said 1.25 mm (Molex PicoBlade) until 10-14, and that was wrong.** A 1.25 mm
 extension built into the INA228 harness did not mate with the pack's plug.
 On calipers the pack's plug read **~0.94 mm** pin to pin, and the extension
 1.25 mm (JD, 10-14). The 09-26 reading of 5.45 mm across the housing was
-wrong, and it is what the 1.25 mm order came from. **SH is unconfirmed until
-an SH plug fits the header** (a kit is ordered, 10-14).
+wrong, and it is what the 1.25 mm order came from.
 
 | family | pitch | 3-pin housing |
 |---|---|---|

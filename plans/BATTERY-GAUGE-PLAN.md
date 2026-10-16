@@ -326,6 +326,11 @@ mid-charge cannot satisfy.
 
 ## The calibration run — after Phase 1, once the pack tap is wired
 
+**The tap is wired (10-15):** the MAX17048 and the INA228 on the pack, logged
+at 1 Hz (`docs/test-bench.md`, "The power logger"). Take the voltage from the
+MAX17048: the INA228's VBUS reads ~5% low. The run is item 2 of
+`current-status.md`'s 10-15 list.
+
 Not a Phase 1 gate: the firmware stands on the provisional constants. When the
 pack tap (ADS1115 or MAX17048 on the 1.25 mm extension, `docs/battery.md`) can
 log the pack continuously:
@@ -503,8 +508,14 @@ is built until JD says so.**
      stall on battery.
    - And no ladder while B3's drain or a soak runs: each needs a constant
      full-white load.
-2. **An afternoon with the meter (2.6).** A meter in series with the pack's +
-   lead, on the 1.25 mm extension. Read in turn, at a fixed pack voltage:
+2. **An afternoon with the meter (2.6).** **Now the INA228 logger (10-15),**
+   not a meter: it sits in the pack's + lead for good, logs every state as a
+   timestamped step, and the lighting can be stepped from the Mac over VIA's
+   channel, so most of this needs no hands (`current-status.md`, the 10-15
+   block, item 1). The screen has no host command: JD's keys, or a dev hook.
+   (The connector is 1.0 mm SH, not the 1.25 mm below.) Originally: a meter
+   in series with the pack's + lead, on the 1.25 mm extension. Read in turn,
+   at a fixed pack voltage:
    - RGB full and off;
    - the screen full, dim and off;
    - BT linked and idle;
@@ -985,6 +996,16 @@ With it, a B3 trial becomes a script: log V and I at 1 Hz (INA228 on the
 pack's + lead, read by the QT Py over USB serial), cut the hub port at a
 stamped time, log the relaxation, done. The INA228's bus voltage (~2 mV) also
 gives the start and 60-min readings without the board's `5C` at all.
+
+**ARRIVED 10-13; ON THE PACK 10-15.** The 1.25 mm extensions did not fit (the
+connector is 1.0 mm SH), so JD rebuilt the harness's ends from an SH kit. In
+service, with the keyboard in daily use: current and mAh from the INA228,
+the pack's voltage from one MAX17048 (`docs/test-bench.md`, "The power
+logger"). Two findings change the text above: the shunt was first wired
+backwards (fixed at the terminal block), and **the INA228's bus voltage
+reads ~5% (~214 mV) low**, cause unknown, so it does not give the start and
+60-min readings until corrected. The MAX17048 does. The other two MAX17048s
+and the coulomb-counting gauge (item 5) are untouched.
 
 ---
 

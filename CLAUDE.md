@@ -109,31 +109,28 @@ Four things from that work that bite outside it:
 Measured results and audit findings from completed work: [`history/`](history/).
 ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 
-## Current state (2026-10-14)
+## Current state (2026-10-15)
 
-**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-14
-— RESUME HERE"). **Phase 1b ([`plans/BATTERY-GAUGE-REFINE-PLAN.md`](plans/BATTERY-GAUGE-REFINE-PLAN.md))
-is closed (10-14):** "Battery low" and the RGB cut, its last per-event checks,
-passed on the 10-12/14 drain with no pass ≥ 25 ms. Its design and measurements
-are in [docs/battery.md](docs/battery.md) ("The gauge as built, Phase 1b").
-- **Merged and pushed (10-12):** `ak820pro-jdlien` at `3e18c70a74` on
-  `jdlien/qmk_firmware` (now the fork's default branch), pinned in `deps.lock`.
-- **On the board: flash 2e**, `efd5b0f74a` (the same firmware but for
-  comments; a `dev` build, token `0x71163528`, since 19:30 10-11). **No
-  measured event reaches 25 ms**: plug-ins 11-12 ms, page exits and the
-  lighting overlay 12.7 ms with a track playing.
-- **The gauge:** the charging model (`K_CC` 133.0 pm/h from three trials,
-  `RELAX_S` 1800 s), checked on two charges from 0. Over two whole cycles it
-  held within 2.5 and then 4.6 points from 52% to the cut, but read up to 8.3
-  and 7.2 low on the curve's flat top (70-85%). Runtimes 51.13 h and
-  50.35-50.43 h.
-- **Flashing needs no hands:** `./build.sh dev`, then `./flash.sh <artifact>`
-  ("Build & flash", below).
-- **Next:** the INA228 bench logger (arrived 10-13; ready, recording stopped
-  until the swap; a temperature column since 10-15). ⚠️ The
-  pack's connector is **1.0 mm (JST SH, most likely), not 1.25**, so the
-  harness gets new ends (an SH kit due 10-15), then the swap onto the pack.
-  Then Phase 2 (the power ladder) when JD says build.
+**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-15
+— RESUME HERE"). **The INA228 power logger is on the pack and recording
+(10-15),** with the keyboard back in daily use, the harness led out of its
+case ([docs/test-bench.md](docs/test-bench.md), "The power logger"):
+- **current and charge** from the INA228 on the pack's + lead (the charge
+  register is gap-free; use it for mAh); **pack voltage from the MAX17048**
+  (`vcell_mv`). ⚠️ The INA228's own VBUS reads ~5% (~214 mV) low, cause
+  unknown: not the harness, the jumper or the wiring.
+- ⚠️ The shunt was first wired backwards; fixed at the terminal block (10-15).
+  `power_log.py`'s `SHUNT_SIGN` exists if it is ever reversed again.
+- **Next:** the per-load current map (Phase 2's step 2: the lighting is
+  hands-free over VIA's channel, the screen needs JD's keys or a dev hook),
+  then a whole cycle with the logger (the plan's calibration run). Phase 2
+  itself stays note-taking until JD says build.
+- **Phase 1b is closed (10-14)**: design and measurements in
+  [docs/battery.md](docs/battery.md) ("The gauge as built, Phase 1b").
+- **On the board: flash 2e**, `efd5b0f74a` (a `dev` build, token
+  `0x71163528`, since 19:30 10-11); firmware merged and pushed at
+  `3e18c70a74`, pinned in `deps.lock`. **Flashing needs no hands:**
+  `./build.sh dev`, then `./flash.sh <artifact>` ("Build & flash", below).
 
 **The bench runs trials without JD's hands:** a USB relay on the keyboard's
 5 V, plus `uhubctl` on its data
@@ -142,6 +139,13 @@ are in [docs/battery.md](docs/battery.md) ("The gauge as built, Phase 1b").
 ⚠️ **Test display changes with a track playing**: the page-exit and overlay
 stalls of 10-11 needed one, and every idle test missed them
 ([docs/display.md](docs/display.md)).
+
+## Earlier state (2026-10-14)
+
+Phase 1b closed: "Battery low" and the RGB cut passed on the 10-12/14 drain
+with no pass ≥ 25 ms; runtimes 51.13 h and 50.35-50.43 h; the gauge within
+2.5 and then 4.6 points from 52% to the cut, up to 8.3 and 7.2 low on the
+flat top (70-85%). The pack connector turned out to be 1.0 mm, not 1.25.
 
 ## Earlier state (2026-10-12)
 

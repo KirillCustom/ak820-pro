@@ -146,6 +146,10 @@ uhubctl -l 0-1.4 -p 2 -a on  -e
   - the board stayed on battery and linked throughout.
 - **Check the port map first** (`uhubctl -l 0-1.4`, status only) after any
   re-cabling, and run it under a timeout: an `-a on` once hung on macOS.
+  macOS has no `timeout`; `perl -e 'alarm 10; exec @ARGV' uhubctl …` works.
+  ⚠️ On 10-15 that status call printed nothing within 10 s, with the keyboard
+  still on port 2 (`ioreg`: `AK820 PRO@00142000`). Recheck before a trial
+  relies on the data cut.
 - **In software, the keyboard can now be:** unplugged (both off), data-only
   (relay off, port on), or charging and readable (both on).
 
@@ -280,7 +284,7 @@ relay-on, so the plug-in is not in it. Each read goes right after one of the
 trial's own: raw HID is exclusive on macOS, and two readers at once fail.
 First used on the 10-12 drain (`history/battery-2026-10-12-drain-2e/`).
 
-## The power logger: an INA228 and a MAX17048 on the pack (10-13)
+## The power logger: an INA228 and a MAX17048 on the pack (10-13; on the pack since 10-15)
 
 The bench measures the pack directly, beside the board's own `5C`. A QT Py
 RP2040 running CircuitPython 10.3.1 reads two breakouts over STEMMA QT:
@@ -292,6 +296,16 @@ RP2040 running CircuitPython 10.3.1 reads two breakouts over STEMMA QT:
 serial only, never HID. The QT Py streams one line of raw integers a second.
 `scripts/power_log.py --out <csv> --detach` timestamps them on the Mac and
 converts them, finding the QT Py by its USB ids (Adafruit `239a`).
+
+**In service since 10-15**, with the keyboard back in JD's daily use: the
+pack's lead comes out of the reassembled case to the harness, and the board
+runs as it always does. That makes three USB ports for a keyboard built to
+need none: the keyboard on its relay cable (dock hub `0-1.4` port 2), the
+relay (port 3) and the QT Py (`0-1.4.1` port 4).
+
+**What to read for what:** current and mAh from the INA228 (`current_ma`,
+`charge_mah`); the pack's voltage from the MAX17048 (`vcell_mv`), not the
+INA228's `vbus_mv` (below).
 
 - **INA228 settings:** the ±40.96 mV range; 15 mΩ shunt (`R015` on the part,
   and Adafruit's driver default); `CURRENT_LSB` 5 µA; continuous bus, shunt
@@ -356,14 +370,19 @@ converts them, finding the QT Py by its USB ids (Adafruit `239a`).
   hibernates and `VCELL` stays fresh.
 - ⚠️ **High-side needs VBUS tied to V+.** The board ships low-side, with the
   jumper open; JD's unit has V+ and VBus bridged.
-- ⚠️ **The harness must be 1.0 mm (JST SH), not 1.25.** The first one was
-  built on a 1.25 mm extension and did not fit the pack (10-14); its ends are
-  being replaced (`docs/battery.md`, "The pack connector").
-- ⚠️ **The harness's wire colours are not the pack's.** Cheap pre-crimped
-  leads are wired straight through by position, in whatever colours were
-  on the spool. Identify the pins against the pack (red +, black −, white NTC)
-  and the header's `NTC` label, never by colour. Only + goes through the
-  INA228 (Vin+ battery side, Vin− keyboard side). − and NTC run straight
+- **The harness is 1.0 mm SH (10-15).** The first one was built on a 1.25 mm
+  extension and did not fit the pack (10-14). JD rebuilt its ends from an SH
+  kit: an in-line socket (a board header with the wires soldered to its legs)
+  for the pack's plug, and a wired SH plug into the board
+  (`docs/battery.md`, "The pack connector").
+- ⚠️ **Identify the harness's wires by position, never by colour.** Cheap
+  pre-crimped leads come in whatever colours were on the spool. JD re-pinned
+  the new SH ends to the standard colours (red +, black −, yellow for the
+  pack's white NTC), but the first build's leads did not match, and the
+  stubs between may still not. Check against the pack (red +, black −, white
+  NTC) and the header's `NTC` label. Only + goes through the INA228 (Vin+
+  battery side, Vin− keyboard side; it was first wired the other way round,
+  under "Sign" above). − and NTC run straight
   through, and both − ends share the INA228's GND hole, which is the ground
   tap. Without it, both chips would measure against the Mac's ground through
   the USB cables, which charging shifts by tens of mV (an estimate).
