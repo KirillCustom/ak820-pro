@@ -336,10 +336,18 @@ converts them, finding the QT Py by its USB ids (Adafruit `239a`).
   alike, so it is not a drop in the harness, and still ~213 mV low with VBUS
   on the pack side after the + swap. The board agrees with the
   MAX17048: its `5C` sat at the clamp (≥ 4036 mV) while VBUS said 3947.
-  Suspect the VBUS-to-V+ bridge (a resistive joint would read low by a fixed
-  fraction); a meter on V+ and on the VBUS pin, each to GND, would tell. Until
-  then, **take the pack's voltage from `vcell_mv`**, and check it against
-  `5C` below the clamp.
+  Adafruit's schematic (`Adafruit-INA228-PCB`, the `.sch`) puts nothing else
+  on VBUS: the chip's pin, header pin 5, the jumper `SJ1` to VIN+, and the
+  **middle position of the screw terminal** (VIN−, VBUS, VIN+ in order). The
+  INA228's VBUS input is ~1 MΩ (0.8-1.2, TI's datasheet), so reading 5.1% low
+  takes ~54 kΩ in series, which a solid solder bridge cannot be; a joint
+  that never wetted one pad could. The test needs no iron: a short wire from
+  the VIN+ screw to the middle (VBUS) screw bypasses `SJ1` (all three screws
+  are the + rail, within mV of each other). Until then, **take the pack's
+  voltage from `vcell_mv`**, and check it against `5C` below the clamp.
+- **The shunt is a 1% part** per the schematic (`HoLLR2512-2W-15mR-1%`),
+  though Adafruit's README says 0.1%. So the mA scale is good to ~1% unless
+  checked against a known load.
 - **The MAX17048 runs from the cell it measures,** so it is absent until a
   pack is on it. The script rewrites `HIBRT` = 0 every read, so it never
   hibernates and `VCELL` stays fresh.
