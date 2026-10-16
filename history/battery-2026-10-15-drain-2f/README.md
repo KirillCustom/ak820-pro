@@ -18,7 +18,8 @@ data attached (R2: +1.7 mA); JD using the keyboard as usual.
 **Running:** `bench_trial.py --wait-cut --poll 300 --full` (pid in
 `trial.pid`; `drain.csv`, `drain.log`), guarded by `trial_guard.py` (pid in
 `guard.pid`; `guard.log`, and `guard-activity.csv`: key presses and stalls
-after every poll), with `caffeinate -i -s -w <guard>`. The 1 Hz pack log is
+after every poll; its `loop_gap_max_ms` column stays empty, since the light
+read, `read_stalls()`, does not carry that field), with `caffeinate -i -s -w <guard>`. The 1 Hz pack log is
 `../power-bench-2026-10-15/power.csv` (recorder pid in its `power.pid`).
 
 **Expected:** the RGB cut around 02:00 10-18 (drain 2e: 50.35-50.43 h), then
