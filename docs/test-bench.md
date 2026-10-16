@@ -484,7 +484,8 @@ other event untouched, never stored. Keep it that way.
   under ~10 ms, and releases that short, are rejected, as designed. 15 ms
   and up: 10/10.
 - **One key, reliably, to ~24 presses/s** (25 ms held, 10 ms open); at that
-  edge the debounce rejected 0 then 10 of 100 in two runs.
+  edge the debounce rejected none of 10 in the sweep, then 10 of 100 in the
+  drop test: marginal.
 - **End to end at typing speed: 200 of 200** reached the Mac, down and up
   (9/s, 40 ms held). **Latency, relay command to the Mac's key-down: median
   33.5 ms, p95 45, max 108** (relay, debounce, firmware, CH582F, BT link,
