@@ -42,6 +42,10 @@ ADAFRUIT = 0x239A
 FIELDS = ["time", "epoch", "qt_ms", "vbus_mv", "vshunt_uv", "current_ma", "charge_mah",
           "temp_c", "vcell_mv", "soc_pct", "crate_pct_h"]
 CURRENT_LSB = 5e-6   # must match code.py; checked against its H line
+# The harness of 10-15 has the pack on the INA228's Vin- and the keyboard on
+# Vin+, the reverse of the plan (on battery it read -74 mA, 20:53 10-15).
+# Flipped here so + stays out of the pack; the QT Py's D lines stay raw.
+SHUNT_SIGN = -1
 # CircuitPython's status bar: OSC title sequences, and the CSI clears around them
 ESCAPES = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]")
 H_MUST = [f"current {CURRENT_LSB:g}A", "temp 7.8125mdegC"]  # what this parser assumes
@@ -62,8 +66,9 @@ def conv(f):
     """A D line's fields (ms, vbus, vshunt, current, charge, temp, vcell, soc, crate)."""
     def scale(s, k, nd):
         return f"{int(s) * k:.{nd}f}" if s != "" else ""
-    return [f[0], scale(f[1], 195.3125e-3, 3), scale(f[2], 78.125e-3, 3),
-            scale(f[3], CURRENT_LSB * 1e3, 3), scale(f[4], CURRENT_LSB / 3.6, 6),
+    return [f[0], scale(f[1], 195.3125e-3, 3), scale(f[2], SHUNT_SIGN * 78.125e-3, 3),
+            scale(f[3], SHUNT_SIGN * CURRENT_LSB * 1e3, 3),
+            scale(f[4], SHUNT_SIGN * CURRENT_LSB / 3.6, 6),
             scale(f[5], 7.8125e-3, 2),
             scale(f[6], 78.125e-3, 3), scale(f[7], 1 / 256, 3), scale(f[8], 0.208, 3)]
 

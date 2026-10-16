@@ -106,6 +106,25 @@ mode. **Nothing records until the swap.**
         first rows.
      - ⚠️ Inserting it disconnects the pack and reboots the board, so only
        between runs (dump first).
+   - **The swap is done (JD, 10-15 ~20:38-20:46).** The keyboard is
+     reassembled with the harness led out of the case; the QT Py and the
+     keyboard both sit on the Thunderbolt dock's hub now, and relay 2 still
+     cuts the keyboard's 5 V (checked 20:53-20:54: battery, then external).
+     ⚠️ So `uhubctl -l 0-1.4 -p 2` probably no longer reaches it (unchecked).
+     Checked: the board runs and charges; on battery it draws 74 mA (RGB on,
+     BT linked); the MAX17048 answers. Found: **the shunt is reversed** (the
+     pack on Vin−; flipped in `power_log.py`), and **VBUS reads ~215 mV
+     low** (`docs/test-bench.md`, "The power logger"). Recording since
+     20:54:52 into `history/power-bench-2026-10-15/power.csv`
+     (`power-unflipped.csv` before that, raw sign).
+     - ⚠️ **Unexplained:** JD's photo shows the LCD at **22%** at 20:47:34,
+       after the swap's power cycles, with the pack full; by 20:51 the board
+       said FULL, 100%. The saved level is written at FULL (100% on 10-14
+       23:16), so a restore should not give 22%. The RAM log had 0 entries
+       (dumped 20:52, `log-20261015-2052-after-swap.csv`). Look at it before
+       trusting the level after a pack swap.
+     - The MAX17048's own SOC read 186-203% and falling: its model, on an
+       unknown cell, never used. Its `VCELL` is what counts.
    - **The logger runs** (`scripts/qtpy/`, `scripts/power_log.py`, detached).
      Its zero with the finished harness, 01:11-01:33 10-14: **−0.064 mA**
      (−0.97 µV), sd 0.016 mA per 1 s row, and the charge register agrees. The
