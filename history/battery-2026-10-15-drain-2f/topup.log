@@ -1,0 +1,16 @@
+2026-10-15 22:57:09 start battery 98.6 % 4036 on_batt done rgb_on linked 
+2026-10-15 22:57:09 relay     on 2 requested 1792126629.21: rc 0 relay 1 off, relay 2 ON
+2026-10-15 22:57:09 full battery 98.6 % 4036 on_batt charging rgb_on linked confirming external
+2026-10-15 22:57:19 full external 98.6 % 4036 charging rgb_on linked external confirming external
+2026-10-15 22:57:19 FULL-ON     charging from 1792126629.21
+2026-10-15 23:02:19 full external 99.0 % 4036 charging rgb_on linked external 
+2026-10-15 23:07:19 full external 99.0 % 4036 charging rgb_on linked external 
+2026-10-15 23:12:19 full external 99.0 % 4036 charging rgb_on linked external 
+2026-10-15 23:17:19 full external 99.0 % 4036 charging rgb_on linked external 
+2026-10-15 23:22:19 full external 100.0 % 4036 rgb_on linked external 
+2026-10-15 23:27:19 full external 100.0 % 4036 rgb_on linked external 
+2026-10-15 23:27:19 FULL external 100.0 % 4036 rgb_on linked external CHRG high on USB, two reads 5 min apart
+2026-10-15 23:37:20 full-end external 100.0 % 4036 rgb_on linked external 
+2026-10-15 23:37:20 dump     /Users/jdlien/code/ak820-pro/history/battery-2026-10-15-drain-2f/log-20261015-2337-full.csv: rc 0 # 8 entries (log v5, one per 600 s), newest 493 s ago
+2026-10-15 23:37:20 done     
+exit 0

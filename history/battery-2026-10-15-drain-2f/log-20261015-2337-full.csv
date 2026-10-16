@@ -1,0 +1,9 @@
+time,vdd_avg,vdd_min,c5_mean,c5_n,c5_min,c5_max,pack_mv,level,led_pm,bkl,on_batt,charging,done,rgb_on,lights_cut,slider_usb,linked,external,flags_any,m,chg_state,chg_lost,chg_overrun,chg_handover,chg_selfcheck,c5_saturated
+2026-10-15 22:19,3958,3879,100.00,174,100,100,,99.5,443,23,1,0,1,0,0,0,1,0,on_batt done rgb_on linked external,,none,0,0,0,0,0
+2026-10-15 22:29,3902,3888,100.00,168,100,100,,99.5,0,4,1,0,1,0,0,0,1,0,on_batt done linked,,none,0,0,0,0,0
+2026-10-15 22:39,3901,3877,100.00,166,100,100,,99.0,218,5,1,0,1,1,0,0,1,0,on_batt done rgb_on linked,,none,0,0,0,0,0
+2026-10-15 22:49,3931,3879,100.00,182,100,100,,98.5,1000,5,1,0,1,1,0,0,1,0,on_batt charging done rgb_on linked external,,none,0,0,0,0,0
+2026-10-15 22:59,3988,3879,100.00,192,100,100,,98.5,1000,5,0,1,0,1,0,0,1,1,on_batt charging done rgb_on linked external,98.5,model,0,0,0,0,0
+2026-10-15 23:09,4363,4303,100.00,160,100,100,,99.0,1000,5,0,1,0,1,0,0,1,1,charging rgb_on linked external,99.0,model,0,0,0,0,0
+2026-10-15 23:19,4381,4318,100.00,172,100,100,,100.0,1000,5,0,0,0,1,0,0,1,1,charging rgb_on linked external,,full,0,0,0,0,0
+2026-10-15 23:29,4411,4355,100.00,169,100,100,,100.0,1000,5,0,0,0,1,0,0,1,1,rgb_on linked external,,full,0,0,0,0,0

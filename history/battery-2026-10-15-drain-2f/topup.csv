@@ -1,0 +1,16 @@
+time,epoch,phase,supply,level,pack_mv,est_c5,c5_last,vdd_mv,chrg,flags,note
+2026-10-15 22:57:09,1792126629.2,start,battery,98.6 %,4036,100,100,3902,high,on_batt done rgb_on linked,
+2026-10-15 22:57:09,1792126629.3,relay,,,,,,,,,"on 2 requested 1792126629.21: rc 0 relay 1 off, relay 2 ON"
+2026-10-15 22:57:09,1792126629.4,full,battery,98.6 %,4036,100,100,3929,low,on_batt charging rgb_on linked,confirming external
+2026-10-15 22:57:19,1792126639.5,full,external,98.6 %,4036,100,100,4349,low,charging rgb_on linked external,confirming external
+2026-10-15 22:57:19,1792126639.5,FULL-ON,,,,,,,,,charging from 1792126629.21
+2026-10-15 23:02:19,1792126939.6,full,external,99.0 %,4036,100,100,4353,low,charging rgb_on linked external,
+2026-10-15 23:07:19,1792127239.6,full,external,99.0 %,4036,100,100,4371,low,charging rgb_on linked external,
+2026-10-15 23:12:19,1792127539.7,full,external,99.0 %,4036,100,100,4382,low,charging rgb_on linked external,
+2026-10-15 23:17:19,1792127839.8,full,external,99.0 %,4036,100,100,4380,low,charging rgb_on linked external,
+2026-10-15 23:22:19,1792128139.9,full,external,100.0 %,4036,100,100,4408,high,rgb_on linked external,
+2026-10-15 23:27:19,1792128440.0,full,external,100.0 %,4036,100,100,4410,high,rgb_on linked external,
+2026-10-15 23:27:19,1792128440.0,FULL,external,100.0 %,4036,100,100,4410,high,rgb_on linked external,"CHRG high on USB, two reads 5 min apart"
+2026-10-15 23:37:20,1792129040.1,full-end,external,100.0 %,4036,100,100,4408,high,rgb_on linked external,
+2026-10-15 23:37:20,1792129040.1,dump,,,,,,,,,"/Users/jdlien/code/ak820-pro/history/battery-2026-10-15-drain-2f/log-20261015-2337-full.csv: rc 0 # 8 entries (log v5, one per 600 s), newest 493 s ago"
+2026-10-15 23:37:20,1792129040.1,done,,,,,,,,,

@@ -101,6 +101,17 @@ finding.
 | 6 | should fix: `devhook.py` accepted a reply to another op, crashed on a short report, and let bad arguments through | **Fixed (host only):** a whole 32-byte report with the echoed op, or nothing; usage checked before the device is opened. `current_map.py` checks the echoed op too. |
 | 7 | for the map: the PWM is nonlinear (`bkl_duty[]`, ~417 Hz); VIA RGB changes trigger the parameter overlay (2 s plus its restore); "off" is the backlight only; the battery log's `bkl` is the level at the interval's end | Agreed. The map holds 90 s and skips the first 15 s of each state, well past the overlay. |
 
+### Tonight's runs (10-15, `POWER-CAMPAIGN-PLAN.md`)
+
+- **R1, the per-load map** (22:10-22:40): JD's settings 73.5 mA, RGB off
+  28.3, every light out 27.3; the RGB is 62% of JD's draw.
+- **R2, USB data** (22:41-22:57): attached costs ~1.7 mA (2.3%).
+- **R3, the logged drain, RUNNING since 23:37:59 10-15**
+  ([`../history/battery-2026-10-15-drain-2f/`](../history/battery-2026-10-15-drain-2f/README.md)):
+  from a verified FULL; the cut expected ~02:00 10-18, then the charge.
+  ⚠️ **Do not flash, poll the board, touch the relay or `uhubctl`, or unplug
+  the QT Py until it ends**; the trial and guard own raw HID.
+
 ### Next, in order (10-15)
 
 1. **The per-load current map** (Phase 2's step 2, the "afternoon with the
