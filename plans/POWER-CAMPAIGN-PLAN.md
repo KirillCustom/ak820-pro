@@ -44,7 +44,9 @@ the radio.
 **R2, USB data attached against untethered (10-15, after R1).** On battery:
 data on, off, on (5 min each), via `uhubctl`. Every bench drain ran with data
 attached, which JD's real use never has; R2 is the offset that turns a bench
-runtime into a real one.
+runtime into a real one. **Result: ~1.7 mA** (73.9 attached against 72.15
+untethered, 2.3%), the link and the daemon's traffic together
+([`../history/power-bench-2026-10-15/usb-data-20261015/`](../history/power-bench-2026-10-15/usb-data-20261015/README.md)).
 
 **R3, the logged cycle (from 10-15 night, ~2.5 days).** As drain 2e:
 `bench_trial.py --wait-cut --poll 300 --full`, guarded by `trial_guard.py`, at

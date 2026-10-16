@@ -1,0 +1,5 @@
+Current status for hub 0-1.4 [2109:2822 VIA Labs, Inc. USB2.0 Hub, USB 2.10, 5 ports, ppps]
+  Port 2: 0103 power enable connect [0c45:8009 AJAZZ AK820 PRO 00000000000000000000000000000000]
+Sent power off request
+New status for hub 0-1.4 [2109:2822 VIA Labs, Inc. USB2.0 Hub, USB 2.10, 5 ports, ppps]
+  Port 2: 0000 off
