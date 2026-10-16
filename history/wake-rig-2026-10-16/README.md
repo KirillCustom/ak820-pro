@@ -52,3 +52,28 @@ the next flash restores the new map. To watch a test type, the socket can be
 remapped to a visible key the same way, and back. The firmware's default
 keymap (`keymap_to_c.py`) still has the old map; regenerate it when
 convenient.
+
+## End to end: the first drop test (16:31:25-16:31:57 10-16)
+
+`scripts/keydrop_test.py` with the Mac's listener (`hostagent/f19listener/`,
+"AK820 F19 Listener", Input Monitoring granted by JD; it logs F19 only).
+During R3's drain, between the trial's reads; JD's hands off. `keydrop.csv`.
+
+| batch | the board (presses) | the Mac (F19 down / up) | latency, relay → Mac key-down |
+|---|---|---|---|
+| 5 at 9.3/s (40/60 ms) | 5/5 | 5/5 / 5/5 | 26-38 ms, median 31 |
+| **200 at 9.1/s (40/60 ms)** | **200/200** | **200/200 / 200/200** | **median 33.5, p95 45, max 108 ms** |
+| 100 at 23.7/s (25/10 ms) | 90/100 | 90 / 90 | (counts only) |
+
+- **Typing speed: no drop anywhere** in 200.
+- At ~24/s the debounce rejected 10 (a 10 ms gap is at its release limit; the
+  first sweep had 10/10 there, so it is marginal), and **every press the
+  board registered reached the Mac**.
+- The latency (~33 ms median) is relay + 5 ms debounce + firmware + CH582F +
+  BT link + macOS, all on this Mac's clock.
+- Raw edges ran one short again (399/400, 198/200) with all presses counted:
+  the same unexplained edge as the first sweep.
+- The run's "presses with no key-down: 1 / 21" and a 0.3 ms minimum were the
+  script's matching, not drops (a trip outlasting the press period landed on
+  the wrong press). Fixed: latency now pairs arrivals in order, only when
+  every press arrived; otherwise counts only.
