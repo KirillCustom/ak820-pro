@@ -33,3 +33,22 @@ rig with one slow press first.
   40 ms dwell at ~10/s mimics fast typing with margin.
 - Unexplained: 19 of 20 edges in the first batch, all 10 presses counted;
   perhaps an edge between two consumes. Watch for it in the drop tests.
+
+## The remap (16:2x 10-16, at JD's go)
+
+Written over VIA's dynamic-keymap commands from a script between the trial's
+reads (not VIA itself, whose session the daemon's traffic can derail), each
+key read back:
+- (0,13), the rig's socket: play/pause (`0x00AE`) → **F19** (`0x006E`) on
+  both base layers (0 and 2). F19 rides the keyboard report like any letter,
+  and macOS gives it no action.
+- (0,14), the knob's press: mute (`0x00A8`) → **play/pause** on both base
+  layers. Mute stays on `Fn` + knob press (layer 3) on the Mac.
+- The Fn layers are unchanged ((0,13) is next track there).
+
+Backups: the keymap before, `~/Documents/ak820pro-keymap-before-f19-20261016.json`;
+`flash.sh`'s backup (`~/Documents/ak820pro-keymap.json`) re-dumped after, so
+the next flash restores the new map. To watch a test type, the socket can be
+remapped to a visible key the same way, and back. The firmware's default
+keymap (`keymap_to_c.py`) still has the old map; regenerate it when
+convenient.
