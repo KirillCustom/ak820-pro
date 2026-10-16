@@ -127,8 +127,9 @@ finding.
    with the logger alongside. It gives the pack's mAh (the charge register);
    its voltage curve under a known load (`vcell_mv`); `5C` against the pack
    across the range; the VBUS error's shape; the charge's CC-to-CV knee seen
-   directly in the current (task 12, `K_CC` against the level); and
-   `CHARGE_IR_MV` and relaxation at unplug. Before it:
+   directly in the current (task 12, `K_CC` against the level); and the
+   step and relaxation at unplug. The campaign as a whole, with codex's
+   review: [`POWER-CAMPAIGN-PLAN.md`](POWER-CAMPAIGN-PLAN.md). Before it:
    - decide RGB through the cut as before, or a lowered cut (RAM-only `cfg`);
    - fix `bench_trial.py`'s pack regex (about two lines): it matches only
      the `(estimate 5C …)` form, so some rows have an empty `pack_mv`.

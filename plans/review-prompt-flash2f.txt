@@ -20,3 +20,5 @@ Answer, with file:line evidence:
 7. Anything else that could hurt the keyboard in daily use, or make the bench's measurement wrong (for instance the backlight PWM, a cap that silently overrides the requested level, or the reply misreporting the effective level).
 
 Report each finding with a severity (blocking / should fix / note) and the evidence. If there is nothing blocking, say so plainly in the first line.
+
+Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it (there is no AGENTS.md).

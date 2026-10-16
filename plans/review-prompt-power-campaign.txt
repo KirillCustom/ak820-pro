@@ -1,0 +1,16 @@
+Review a measurement plan before it runs unattended for several days on JD's keyboard (AK820 Pro, QMK; this repo). Read-only: do not modify files, and send nothing to any device.
+
+The plan: plans/POWER-CAMPAIGN-PLAN.md. JD's goal: an accurate battery level, a calibrated charge model, every feature's current draw, a power-saving ladder sized on real numbers, and a runtime ("time left") estimate. Context to read: plans/BATTERY-GAUGE-PLAN.md (the agreed Phase 2 order, "The calibration run", "If the hardware arrives"), docs/battery.md (the gauge as built, Phase 1b; how the level and charge model work; the pack), docs/test-bench.md (the relay, uhubctl, "The power logger" and its caveats: the INA228 VBUS reads ~5% low, the reversed shunt, the charge register), plans/current-status.md (the 10-15 block), and the scripts the plan uses: scripts/power_log.py, scripts/qtpy/code.py, scripts/current_map.py, scripts/bench_trial.py, scripts/trial_guard.py (its new activity rows), scripts/devhook.py.
+
+Answer, with evidence:
+1. Coverage: does the plan, as written, produce what each of JD's five goals needs? Name any measurement that is missing or would not support its analysis (A1-A8).
+2. Validity: what could bias the results? Consider at least: USB data attached during drains; the host's own HID traffic (the Rust daemon's now-playing and clock, the trial's 5-min reads, the guard's new reads) and whether it changes the draw; temperature; the order and length of the map's holds (90 s, 15 s skipped, forward then backward) against the drift of a falling pack; the parameter overlay's drawing after VIA changes; the charge register's resets when the QT Py loses power; the MAX17048's VCELL as the voltage reference; the board's own idle behaviour.
+3. A1's method (the level from the charge register, the refit of the voltage-to-level table with an I×R term): is it sound for a LiPo at ~C/50, and what does it need that the plan does not collect (relaxation, hysteresis, a second load)?
+4. A3 (the charge model's knee from the current) and A7 (the runtime model from per-state power): sound? What would make them wrong?
+5. A8 (sizing the ladder from 5-minute key-press counts): what can and cannot be concluded at that resolution?
+6. Risks to the keyboard, the pack or JD's daily use from R1-R5 and from the guard's new reads (raw HID is exclusive on macOS; a failed read; the relay; uhubctl, which takes ~15 s and once hung).
+7. Anything to change before R3 starts tonight, versus what can wait for a later revision.
+
+Rank findings as must-fix-before-R3 / should-fix / note. If nothing must change before R3, say so in the first line.
+
+Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it (there is no AGENTS.md).
