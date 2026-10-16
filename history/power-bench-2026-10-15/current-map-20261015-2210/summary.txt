@@ -1,0 +1,32 @@
+ 1 jd           73.36 mA (samples   73.37, sd 0.21) vcell 4170
+ 2 rgb off      28.19 mA (samples   28.19, sd 0.05) vcell 4180
+ 3 white 255    73.42 mA (samples   73.38, sd 0.23) vcell 4167
+ 4 white 128    38.52 mA (samples   38.55, sd 0.08) vcell 4174
+ 5 white 64     32.52 mA (samples   32.55, sd 0.05) vcell 4175
+ 6 lcd max      36.65 mA (samples   36.66, sd 0.09) vcell 4173
+ 7 lcd 12       29.68 mA (samples   29.66, sd 0.28) vcell 4175
+ 8 lcd 4        28.08 mA (samples   28.03, sd 0.18) vcell 4175
+ 9 lcd 1        27.51 mA (samples   27.49, sd 0.11) vcell 4174
+10 lcd off      27.32 mA (samples   27.31, sd 0.08) vcell 4174
+11 lcd off      27.33 mA (samples   27.32, sd 0.06) vcell 4172
+12 lcd 1        27.54 mA (samples   27.53, sd 0.07) vcell 4173
+13 lcd 4        28.13 mA (samples   28.13, sd 0.06) vcell 4171
+14 lcd 12       29.81 mA (samples   29.83, sd 0.39) vcell 4170
+15 lcd max      36.75 mA (samples   36.77, sd 0.05) vcell 4168
+16 white 64     32.64 mA (samples   32.66, sd 0.05) vcell 4169
+17 white 128    38.65 mA (samples   38.69, sd 0.08) vcell 4167
+18 white 255    73.68 mA (samples   73.62, sd 0.32) vcell 4156
+19 rgb off      28.39 mA (samples   28.35, sd 0.17) vcell 4166
+20 jd           73.71 mA (samples   73.67, sd 0.30) vcell 4155
+
+state       mean of both passes (charge register)
+jd           73.53 mA  (passes: 73.36, 73.71)
+rgb off      28.29 mA  (passes: 28.19, 28.39)
+white 255    73.55 mA  (passes: 73.42, 73.68)
+white 128    38.59 mA  (passes: 38.52, 38.65)
+white 64     32.58 mA  (passes: 32.52, 32.64)
+lcd max      36.70 mA  (passes: 36.65, 36.75)
+lcd 12       29.74 mA  (passes: 29.68, 29.81)
+lcd 4        28.10 mA  (passes: 28.08, 28.13)
+lcd 1        27.52 mA  (passes: 27.51, 27.54)
+lcd off      27.33 mA  (passes: 27.32, 27.33)

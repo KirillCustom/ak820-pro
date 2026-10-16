@@ -33,8 +33,13 @@ first.
 **R1, the per-load map at the top (10-15, 22:10-22:41).**
 `scripts/current_map.py`: on battery, ten states forward then backward, 90 s
 each, the first 15 s skipped. RGB: JD's own, off, white at 255/128/64. Screen
-(RGB off): max, 12, 4, 1, off. Results:
-`history/power-bench-2026-10-15/current-map-20261015-2210/`.
+(RGB off): max, 12, 4, 1, off. Results
+([`../history/power-bench-2026-10-15/current-map-20261015-2210/`](../history/power-bench-2026-10-15/current-map-20261015-2210/README.md)),
+at 4.17 V: **JD's settings 73.5 mA; RGB off 28.3; every light out 27.3.**
+The RGB is 45 mA of JD's 73.5 (62%), and at brightness 128 only 10 mA; the
+screen's backlight is ~9.4 mA at full, linear in its duty, ~1 mA at JD's
+level 5. So the ladder's lever is the RGB; the 27 mA floor needs the MCU or
+the radio.
 
 **R2, USB data attached against untethered (10-15, after R1).** On battery:
 data on, off, on (5 min each), via `uhubctl`. Every bench drain ran with data
