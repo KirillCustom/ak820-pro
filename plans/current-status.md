@@ -77,6 +77,30 @@ answer.
   a report of wrong-length rows, a refusal to append to a CSV with other
   columns, and `SHUNT_SIGN`.
 
+### Flash 2f: the backlight from the host (10-15)
+
+JD asked for it (10-15): the per-load current map must step the screen with
+nobody at the keyboard. `HC_DEVHOOK` ops 4-6 (dev builds only): set the
+backlight level, switch it off or on (as `Fn`+`Home`, without the overlay),
+read it. All three reply `[level, max, on, effective, saved+1]`. RAM only.
+Host: `scripts/devhook.py lcd [LEVEL | on | off]`. Firmware `523744c30f`
+(local on `ak820pro-jdlien`, **not pushed**: JD's call), built as
+`via-dev-523744c30f-20261015-215932.bin`, token `0x754f00c1`.
+
+**Codex review** ([verbatim](review-codex-flash2f-2026-10-15.md), prompt
+[`review-prompt-flash2f.txt`](review-prompt-flash2f.txt)): no blocking
+finding.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | every access is inside the 32-byte report on the real dispatcher; `length < 5` would not guard a shorter buffer | **No change:** unreachable here (codex's own evidence: the dispatcher always passes `RAW_EPSIZE`), and op 2's probe has relied on the same since flash 2d. |
+| 2 | nothing set by ops 4/5 can reach flash; `Fn`+`PgUp`/`PgDn` afterwards persists the temporary level ±1; the reply's "saved" is the RAM cache, possibly a pending write | Agreed. A key press adopting the level shown is what a press means. Noted under `devhook.py lcd`. |
+| 3 | no torn state or stuck pin; "on" writes the pin high for at most one 50 µs tick before the PWM resumes | Agreed, existing behaviour (the key path is the same). |
+| 4 | should fix: the raw HID reply path (`send_report`, 100 ms timeout, queue locks) could stall the main loop ≥ 25 ms if the IN endpoint backs up | **Pre-existing, not changed by this flash:** every host tool's reply takes that path. Watched instead: the map reads the stall counters before and after; any `count_ge_25ms` there reopens it. |
+| 5 | dev-only, and `build.sh` still rejects a daily or fpb carrying the hook; instrumented has no negative assertion | Agreed; instrumented builds are never released. |
+| 6 | should fix: `devhook.py` accepted a reply to another op, crashed on a short report, and let bad arguments through | **Fixed (host only):** a whole 32-byte report with the echoed op, or nothing; usage checked before the device is opened. `current_map.py` checks the echoed op too. |
+| 7 | for the map: the PWM is nonlinear (`bkl_duty[]`, ~417 Hz); VIA RGB changes trigger the parameter overlay (2 s plus its restore); "off" is the backlight only; the battery log's `bkl` is the level at the interval's end | Agreed. The map holds 90 s and skips the first 15 s of each state, well past the overlay. |
+
 ### Next, in order (10-15)
 
 1. **The per-load current map** (Phase 2's step 2, the "afternoon with the

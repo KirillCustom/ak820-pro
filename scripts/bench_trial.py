@@ -61,7 +61,9 @@ def read_board():
     for line in out.splitlines():
         k, _, v = line.partition(" ")
         d[k.strip()] = v.strip()
-    m = re.search(r"(\d+) mV\s+\(estimate 5C (\d+)", d.get("pack", ""))
+    # ak820battery prints "(estimate 5C n)" or "(median 5C n)"; only the first
+    # was matched until 10-15, so median rows had an empty pack_mv.
+    m = re.search(r"(\d+) mV\s+\((?:estimate|median) 5C (\d+)", d.get("pack", ""))
     c = re.search(r"last (\d+)%", d.get("module", ""))
     v = re.search(r"(\d+) mV", d.get("vdd", ""))
     return {

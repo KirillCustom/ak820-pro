@@ -1,0 +1,22 @@
+Review a small firmware change before it is flashed to JD's keyboard (AK820 Pro, QMK, SN32F248B; this repo is the hub, the firmware is the clone qmk_firmware-ak820pro on branch ak820pro-jdlien). Read-only: do not modify files.
+
+The change is commit 523744c30f in qmk_firmware-ak820pro (`git -C qmk_firmware-ak820pro show 523744c30f`), plus the host script scripts/devhook.py (uncommitted in this hub repo; `git diff scripts/devhook.py`). It adds three ops to HC_DEVHOOK (raw HID, dev builds only, compiled under AK820_DEV_HOOKS) in keyboards/a_jazz/ak820pro/hid_protocol.c:
+- op 4: display_set_brightness(arg), RAM only;
+- op 5: display_set_power(arg != 0), as Fn+Home does but without its overlay;
+- op 6: read only.
+All three reply [level, max, on, effective, saved+1] at data[4..8].
+
+Purpose: the bench's per-load current map. An INA228 on the pack logs the board's current while the host steps the RGB (over VIA's lighting channel) and now the screen's backlight, with nobody at the keyboard. The intent is that nothing persists (a reboot restores JD's saved level), nothing is drawn, and nothing changes in daily, fpb or instrumented builds.
+
+Read at least: hid_protocol.c (the HC_DEVHOOK case and the raw HID dispatch around it, including how `data`/`length` arrive and how the reply is sent), graphics/display.c (the backlight: bkl_duty, bkl_level, bkl_cap, display_backlight_tick, display_set_brightness, display_set_power, display_backlight_effective, display_backlight_init, display_bootloader_splash), graphics/display.h, kb_eeconfig.c (the lcd brightness field and every path that writes kb_config to flash), power.c (the caps), battery.c around its use of display_backlight_effective, ak820pro.c (SCR_TOG/SCR_UP/SCR_DN), param_overlay.c (whether it polls the backlight level and would fire on a change it did not make), and build.sh (the flavor checks).
+
+Answer, with file:line evidence:
+1. Is every byte the ops read and write inside the report buffer for any `length` the dispatcher can pass? Is the `length < 5` guard right for ops 4-6?
+2. Can a level or power state set by ops 4/5 reach flash by any path: a deferred or coalesced kb_eeconfig write, a later write of the whole kb_config block (e.g. the battery's saved level at FULL, the clock mode, the BT slot), the bootloader splash, or anything else? If JD later presses Fn+PgUp/PgDn, what is persisted, and is that acceptable?
+3. Concurrency: bkl_level and display_powered are written from the main loop and read by a 20 kHz ISR; display_set_power also writes the GPIO. Any torn state, a stuck pin, or a case where off does not take effect?
+4. Does anything draw, block, or take a lock on these paths (the firmware's rule: nothing may stall the main loop 25 ms or more; LCD drawing is the usual culprit)? Does the param overlay or anything else react to a backlight change it did not initiate?
+5. Are the ops compiled only into dev builds, and does build.sh still reject a daily or fpb artifact that carries HC_DEVHOOK?
+6. The host script: argument validation, the reply check (channel, command, SET_VALUE vs unhandled), and the printed fields' order against the firmware's.
+7. Anything else that could hurt the keyboard in daily use, or make the bench's measurement wrong (for instance the backlight PWM, a cap that silently overrides the requested level, or the reply misreporting the effective level).
+
+Report each finding with a severity (blocking / should fix / note) and the evidence. If there is nothing blocking, say so plainly in the first line.
