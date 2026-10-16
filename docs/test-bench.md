@@ -325,14 +325,16 @@ converts them, finding the QT Py by its USB ids (Adafruit `239a`).
   sd 0.016 mA per row, and the charge register agrees (10-14). That is
   nothing over a charge (~0.6 mAh in 9 h) and matters only for standby floors.
 - **Sign:** + while the board runs on the pack (out of the pack), − while
-  charging. ⚠️ **The 10-15 harness has the pack on Vin− and the keyboard on
-  Vin+**, the reverse of the plan: on battery the raw reading was −74 mA
-  (20:53 10-15). `power_log.py`'s `SHUNT_SIGN = -1` flips current, shunt and
-  charge, so the CSV keeps the convention; the QT Py's lines stay raw. Nothing
-  is stressed by it: the INA228 measures both ways.
+  charging. The 10-15 harness first had the pack on Vin− (−74 mA raw on
+  battery, 20:53), so JD swapped the two + wires at the terminal block
+  (~20:59); checked at 21:01, +74 mA on battery and −136 mA charging.
+  `power_log.py`'s `SHUNT_SIGN` (+1) is there if it is ever wired the other
+  way again; the QT Py's lines stay raw. The INA228 measures both ways, so
+  the wrong way round stresses nothing.
 - ⚠️ **The INA228's VBUS reads ~215 mV low (10-15), cause not found.**
   Against the MAX17048's VCELL it was 214-215 mV low at −74, 0 and +145 mA
-  alike, so it is not a drop in the harness. The board agrees with the
+  alike, so it is not a drop in the harness, and still ~213 mV low with VBUS
+  on the pack side after the + swap. The board agrees with the
   MAX17048: its `5C` sat at the clamp (≥ 4036 mV) while VBUS said 3947.
   Suspect the VBUS-to-V+ bridge (a resistive joint would read low by a fixed
   fraction); a meter on V+ and on the VBUS pin, each to GND, would tell. Until

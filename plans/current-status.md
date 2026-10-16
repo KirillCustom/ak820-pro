@@ -112,11 +112,13 @@ mode. **Nothing records until the swap.**
      cuts the keyboard's 5 V (checked 20:53-20:54: battery, then external).
      ⚠️ So `uhubctl -l 0-1.4 -p 2` probably no longer reaches it (unchecked).
      Checked: the board runs and charges; on battery it draws 74 mA (RGB on,
-     BT linked); the MAX17048 answers. Found: **the shunt is reversed** (the
-     pack on Vin−; flipped in `power_log.py`), and **VBUS reads ~215 mV
-     low** (`docs/test-bench.md`, "The power logger"). Recording since
-     20:54:52 into `history/power-bench-2026-10-15/power.csv`
-     (`power-unflipped.csv` before that, raw sign).
+     BT linked); the MAX17048 answers. Found: **the shunt was reversed**
+     (the pack on Vin−), so JD swapped the + wires at ~20:59 (checked 21:01:
+     +74 mA on battery, −136 mA charging); and **VBUS reads ~213-215 mV
+     low** either way (`docs/test-bench.md`, "The power logger"). Recording
+     since 21:01:13 into `history/power-bench-2026-10-15/power.csv`, signs
+     right. Before it: `power-unflipped.csv` (raw, wrong sign) and
+     `power-flipped.csv` (right until 20:58:14, wrong from 21:00:40).
      - ⚠️ **Unexplained:** JD's photo shows the LCD at **22%** at 20:47:34,
        after the swap's power cycles, with the pack full; by 20:51 the board
        said FULL, 100%. The saved level is written at FULL (100% on 10-14

@@ -42,10 +42,10 @@ ADAFRUIT = 0x239A
 FIELDS = ["time", "epoch", "qt_ms", "vbus_mv", "vshunt_uv", "current_ma", "charge_mah",
           "temp_c", "vcell_mv", "soc_pct", "crate_pct_h"]
 CURRENT_LSB = 5e-6   # must match code.py; checked against its H line
-# The harness of 10-15 has the pack on the INA228's Vin- and the keyboard on
-# Vin+, the reverse of the plan (on battery it read -74 mA, 20:53 10-15).
-# Flipped here so + stays out of the pack; the QT Py's D lines stay raw.
-SHUNT_SIGN = -1
+# +1 with the pack on the INA228's Vin+ (the plan). The harness had them the
+# other way round from 20:38 to ~20:59 10-15 (-1 then), until JD swapped the
+# two + wires at the terminal block. The QT Py's D lines stay raw.
+SHUNT_SIGN = 1
 # CircuitPython's status bar: OSC title sequences, and the CSI clears around them
 ESCAPES = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]")
 H_MUST = [f"current {CURRENT_LSB:g}A", "temp 7.8125mdegC"]  # what this parser assumes
