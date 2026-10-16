@@ -80,6 +80,29 @@ the screen dim, so ~2 days with his lights changed. It is the validation run:
 the refit gauge (A1) and the runtime model (A7) are checked on data they were
 not fitted on, and it shows how the voltage curve moves with load.
 
+**R7, standby: the research now, the building later (JD asked, 10-15).**
+For "Two kinds of away" (`BATTERY-GAUGE-PLAN.md`): the long tier's savings
+are the largest that never touch typing in use (a 14 h night is ~1,030 mAh
+today, ~380 with the lights out, single to tens of mAh in a real standby).
+- **During R3/R4, no board time:**
+  - the SN32F248B's sleep modes (which pins wake it, RAM retention, wake
+    time), since key scanning lives in the row ISR (design question 2);
+  - the CH582F's commands (`CH582F_PROTOCOL.md`): a sleep or slower
+    connection timing, or only a dropped link (a reconnect of 1-15 s);
+  - **a wake rig:** a spare channel of the USB relay (relays 1, 3 and 4 are
+    unused) wired across one key's switch contacts, so the Mac presses a key
+    at a stamped moment and times its arrival over BT. Unattended, it
+    counts lag and lost wake keys over hundreds of sleeps. JD's hands: one
+    small wiring job.
+- **After the refit gauge and Phase 2's steps 3-4** (the lighting modes,
+  light sleep; light sleep keeps the link, so it wakes instantly): a
+  measurement build that sleeps on command and wakes on a key, timed by the
+  rig; then the radio's states. It reuses light sleep's pieces and the
+  reserve's machinery. It moves earlier if the research finds the wake path
+  easy.
+- **The PPK2** (deferred since 10-09, ~$182 CAD): µA floors, and logic inputs
+  to stamp the rig's press against the radio's wake. JD's call when to order.
+
 ## The analyses
 
 - **A1, the true level.** From R3's charge register: the mAh from FULL to the
