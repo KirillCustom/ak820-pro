@@ -29,7 +29,7 @@ submodule sits on our `ak820pro-patches` branch.
 | [docs/leds.md](docs/leds.md) | **Interrupt priorities**, RGB field rate, indicator LEDs, the rainbow, effects |
 | [docs/hardware.md](docs/hardware.md) | Slider power quirk, bootloader, build/flash, watchdog+health, hang history, diagnostics |
 | [docs/battery.md](docs/battery.md) | What the board can know about the pack, the regulator hiding it, the level estimate, idle ladder, the unexplained power-off |
-| [docs/test-bench.md](docs/test-bench.md) | Controlling the keyboard's charging from the host: the USB relay (cuts 5 V, keeps data), the "Christmas Tree" outlet, switched by Home Assistant (cuts the whole Acasis hub), hub depth limits, why uhubctl can't |
+| [docs/test-bench.md](docs/test-bench.md) | The bench, run from the Mac: the USB relay (relay 2 cuts the keyboard's 5 V; relay 1 presses a key, the wake rig, with its measured reliability and latency), `uhubctl` (USB data), the trial and its guard, the power logger (INA228 + MAX17048) and measuring loads from the Mac, the "Christmas Tree" outlet, hub depth limits |
 
 **Resuming work? Start at
 [`plans/current-status.md`](plans/current-status.md)** — where things stand and

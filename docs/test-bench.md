@@ -6,6 +6,12 @@ both from the USB side. Set up and measured 2026-10-08 on JD's Mac.
 
 ## The short version
 
+- **The bench's tools at a glance (10-16):** relay 2 switches the
+  keyboard's charging; relay 1 presses a key (the wake rig, below);
+  `uhubctl` cuts its USB data; the power logger measures the pack; the
+  lighting and the screen's backlight are set from the Mac; and a listener
+  times every rig keystroke's arrival. Everything but the wiring runs
+  without JD's hands.
 - **For the keyboard's charging, use the USB relay**
   ([below](#the-usb-relay-the-keyboards-charging-from-the-host), since 18:30
   10-08). It cuts only the keyboard's 5 V, the keyboard stays on USB, and the
@@ -49,6 +55,8 @@ it.
 port 3). It names itself "USBRelay4" but has two relays.
 - A USB cable's red 5 V wire runs through **RELAY2** (silkscreened on the
   board), between COM and NO. The cable's data wires bypass the relay.
+- **RELAY1 presses a key** (from 10-16): the wake rig,
+  ["The wake rig"](#the-wake-rig-relay-1-presses-a-key-10-16) below.
 - The cable's host end is on the dock's built-in hub too (`0-1.4` port 2 on
   10-08).
 - **Off is the safe state.** If the relay board loses power or is unplugged,
@@ -275,7 +283,18 @@ and its reserve, and the RAM log goes with it. `scripts/trial_guard.py --pid
 trial's CSV:
 - if the trial dies before the cut, it restarts it as `<name>-resumed-N.csv`;
 - if it dies after the cut, before FULL-ON, it dumps the log unless the trial
-  did, then turns relay 2 on.
+  did, then turns relay 2 on;
+- **progress, not just survival (10-15, codex):** before the cut, 45 min
+  (`--stall-min`) without a successful board read stops the trial and turns
+  relay 2 ON, so a stuck run charges the pack instead of draining it through
+  the reserve unwatched; a FAIL before FULL-ON also ends with the relay ON
+  (the trial's own `fail()` turns it off); 16 h (`--charge-h`) after FULL-ON
+  without `done` stops the trial, relay left on;
+- **an activity row after every successful drain poll** (10-15):
+  `guard-activity.csv`, one light read (`read_stalls`, one transaction):
+  key presses (16-bit, reset by a reboot), stalls ≥ 25 ms. JD's idle pattern
+  for the power ladder, and a running stall watch. A failed read is a blank
+  row, never zero presses.
 
 The guard also takes gate 8's per-event reads that the trial does not: the
 stall counters and the display probe at "Battery low" (`cfg` says `warned 1`)
@@ -283,6 +302,15 @@ and at the cut, the latter in the 60 s between the trial's dump and its
 relay-on, so the plug-in is not in it. Each read goes right after one of the
 trial's own: raw HID is exclusive on macOS, and two readers at once fail.
 First used on the 10-12 drain (`history/battery-2026-10-12-drain-2e/`).
+
+**Launch both detached** so they outlive the session (the 10-15 drain,
+`history/battery-2026-10-15-drain-2f/README.md`): the trial through a
+double fork (its pid in `trial.pid`), then the guard, then `caffeinate -i -s
+-w <guard pid>`. **Start a drain from a verified FULL:** `bench_trial.py
+--full` first, then relay 2 off at a logged moment, recording the power
+logger's charge register there. **Other tools between the trial's reads:**
+each waits for 20 s after the trial's latest row and must finish 30 s
+before the next (`--trial-csv`).
 
 ## The power logger: an INA228 and a MAX17048 on the pack (10-13; on the pack since 10-15)
 
@@ -306,6 +334,22 @@ relay (port 3) and the QT Py (`0-1.4.1` port 4).
 **What to read for what:** current and mAh from the INA228 (`current_ma`,
 `charge_mah`); the pack's voltage from the MAX17048 (`vcell_mv`), not the
 INA228's `vbus_mv` (below).
+
+**Measuring a load from the Mac (10-15):**
+- `scripts/current_map.py --log <power.csv>`: on battery (it switches relay
+  2), steps the lighting (VIA's channel, `_noeeprom`, RAM only) and the
+  screen's backlight (`HC_DEVHOOK` ops 4-6, flash 2f, RAM only), forward
+  then backward, and takes each state's current from the charge register;
+  restores both and the relay after.
+- `scripts/devhook.py lcd [LEVEL | on | off]`: the screen's backlight by
+  hand.
+- **Results** (`plans/POWER-CAMPAIGN-PLAN.md`, R1 and R2), at 4.17 V: JD's
+  settings 73.5 mA, RGB off 28.3, every light out 27.3; the RGB is 45 mA of
+  JD's 73.5, 10 mA at brightness 128; the backlight ~9.4 mA at full, linear
+  in its duty, ~1 mA at JD's level 5. **USB data attached costs ~1.7 mA**
+  (73.9 against 72.15 untethered, `uhubctl`). **The board is a
+  constant-power load, ~307 mW** at JD's settings: its current rises as the
+  pack falls (73.6 mA at 4.16 V, 75.2 at 4.09; R3, 10-16).
 
 - **INA228 settings:** the ±40.96 mV range; 15 mΩ shunt (`R015` on the part,
   and Adafruit's driver default); `CURRENT_LSB` 5 µA; continuous bus, shunt
@@ -386,3 +430,80 @@ INA228's `vbus_mv` (below).
   through, and both − ends share the INA228's GND hole, which is the ground
   tap. Without it, both chips would measure against the Mac's ground through
   the USB cables, which charging shifts by tens of mV (an estimate).
+
+## The wake rig: relay 1 presses a key (10-16)
+
+**What it is.** JD's idea (10-15): a key the Mac can press. A stripped switch
+housing with two leads soldered on sits in the socket at matrix (0,13), the
+key right of F12, and the leads go to **RELAY1**'s COM and NO. Relay contacts
+are dry, so the matrix and the relay board share no ground. The switch can
+still be pressed by hand only by bridging its contacts. ⚠️ Its contacts are
+fragile (JD broke and re-bent them on 10-16); give the cable strain relief.
+`plans/POWER-CAMPAIGN-PLAN.md`, R7.
+
+**The keymap** (written over VIA's dynamic-keymap commands between the
+trial's reads, not with VIA): (0,13) is **F19** on both base layers (0, 2).
+F19 rides the keyboard report like any letter, which the media keys do
+not, and macOS gives it no action. The knob's press, (0,14), became
+**play/pause** on both base layers; mute is `Fn` + knob press (layer 3). The
+keymap before: `~/Documents/ak820pro-keymap-before-f19-20261016.json`. To
+watch a test type, remap (0,13) to a visible key the same way, and back.
+
+**Pressing it.** `usb_relay.py on 1` / `off 1` by hand, or in-process
+(9-byte feature report, `0xFF`/`0xFD`, relay 1 only; relay 2 is never
+touched). It is loud.
+
+**The Mac's end: AK820 F19 Listener** (`hostagent/f19listener/main.swift`,
+`scripts/build-f19-listener.sh`): a background app in `~/Applications`,
+signed with the Developer ID identity and a fixed identifier
+(`com.jdlien.ak820pro.f19listener`), since TCC keys Input Monitoring on the
+signature; JD granted it on 10-16. Start it with `open -a "$HOME/Applications/AK820 F19 Listener.app"`
+(`open`, so the grant is the app's, not the shell's), stop it with
+`pkill -x ak820-f19-listener`. It logs F19 down and up only, with the
+event's own timestamp on the wall clock, to `~/Library/Logs/ak820pro/f19.log`.
+⚠️ An event tap sees every key: the callback matches F19 and returns every
+other event untouched, never stored. Keep it that way.
+
+**The tests:**
+- `scripts/relay_press_test.py`: dwell and rate sweeps against the board's
+  `raw_edges` (before debounce) and `key_presses` (after). It first checks
+  the rig with one slow press, so a broken switch cannot read as a slow
+  relay (the first sweep on 10-16 did exactly that).
+- `scripts/keydrop_test.py --n N --dwell MS --gap MS`: sent against
+  registered against received, and latency from the relay command to the
+  Mac's key-down (paired in order, only when every press arrived).
+- ⚠️ `key_presses` counts every key: **hands off the keyboard** while either
+  runs. With `--trial-csv` they wait for the gap after a running trial's
+  read. A test during a drain shifts its load slightly and shows in
+  `guard-activity.csv`: note when and how many in the drain's README.
+
+**Measured (10-16; `history/wake-rig-2026-10-16/`):**
+- **The relay closes its contact down to a 5 ms command**; it is not the
+  limit.
+- **The debounce is** (`sym_defer_pk`, 5 ms stable per key): presses held
+  under ~10 ms, and releases that short, are rejected, as designed. 15 ms
+  and up: 10/10.
+- **One key, reliably, to ~24 presses/s** (25 ms held, 10 ms open); at that
+  edge the debounce rejected 0 then 10 of 100 in two runs.
+- **End to end at typing speed: 200 of 200** reached the Mac, down and up
+  (9/s, 40 ms held). **Latency, relay command to the Mac's key-down: median
+  33.5 ms, p95 45, max 108** (relay, debounce, firmware, CH582F, BT link,
+  macOS).
+- At ~24/s, every press the board registered reached the Mac (90 of 90).
+- **The board's BT queue never filled** under ~120 play/pause presses in 14 s
+  (`queue_full` 0, `replaced` 0); the music toggling on for about a minute
+  after was downstream (the CH582F's own buffer or, likelier, macOS working
+  through the commands). Media keys go in a different report from typing:
+  test drops with F19.
+- Unexplained: `raw_edges` ran one short in every batch (19/20, 399/400,
+  198/200) with every press counted.
+- For scale: 300 wpm is ~25 keystrokes/s, but spread over many keys, so the
+  per-key debounce never sees one key at that rate; one key hammered at
+  24/s is harsher. Overlapping presses (rollover) need a second key: the
+  QT Py's spare GPIO with optocouplers, if one key finds something.
+
+**Next** (after the drain, R7): bursts at 20-30/s during plug-ins, redraws
+with a track playing and the overlay; 10,000-press runs; a nearly flat
+pack; a weak link; and the first key after a long idle, the baseline for
+every standby design. The relay's contact life (millions at signal current)
+is not a concern at that scale.
