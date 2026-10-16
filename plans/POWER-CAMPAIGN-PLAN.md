@@ -60,6 +60,18 @@ logger runs throughout. New in the guard: a health row after every poll
   10-16); a missed window is skipped, not forced. It shifts R3's load by well
   under 1% of its charge.
 
+**USB data during the runs (JD asked, 10-15).** R3 keeps data attached:
+comparable with drains 2c-2e, and it carries the live watch (the trial's
+reads, the guard's progress deadline) and the activity rows. Runtimes are
+corrected by the measured current (R2), recomputed, never by subtracting
+hours. Data goes **off** wherever 1.7 mA is large: the ladder's dark rungs and
+standby (6% of the 27 mA floor, and it would swamp a ~1 mA standby). Flipping
+it on for each read is not worth it: each flip is a re-enumeration (~15 s of
+`uhubctl` each way, the daemon reconnecting, a clock sync), ~290 a day at
+5-min polls. **An untethered drain** is the shape for R5: the logger alone
+sees the RGB cut (a ~45 mA step at ~3.40 V), then data on, dump the board's
+RAM log (which holds its view of the whole drain at 600 s), relay on.
+
 **R4, the charge from the cut** is R3's last phase: the whole current curve
 from 0% to FULL.
 
