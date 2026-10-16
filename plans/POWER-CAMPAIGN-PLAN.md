@@ -94,7 +94,17 @@ today, ~380 with the lights out, single to tens of mAh in a real standby).
     contacts, so the Mac presses a key
     at a stamped moment and times its arrival over BT. Unattended, it
     counts lag and lost wake keys over hundreds of sleeps. JD's hands: one
-    small wiring job.
+    small wiring job (a spare switch with two leads to relay 1's NO and COM,
+    in a hot-swap socket JD never uses, that key remapped to F19 in VIA on
+    both base layers; the Mac's listener needs Input Monitoring).
+  - **The same rig counts dropped keystrokes** (JD, 10-15): presses sent
+    (the relay, stamped) against presses the board saw (`key_presses`)
+    against keys the Mac got. A gap between the first two is the scan or
+    debounce; between the last two, the link. Run under plug-ins, display
+    events with a track playing, low battery and sleep. Limits: one key at
+    ~10 presses/s (no rollover or held-modifier cases), and the relay's
+    contact life. If it finds something, the step up is optocouplers on
+    the QT Py's spare GPIO: several keys, silent, µs timing.
 - **After the refit gauge and Phase 2's steps 3-4** (the lighting modes,
   light sleep; light sleep keeps the link, so it wakes instantly): a
   measurement build that sleeps on command and wakes on a key, timed by the
