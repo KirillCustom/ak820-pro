@@ -488,7 +488,9 @@ architectural; some may be the screen, which is fixable.
 
 1. Each mode's stages fire at the stated times, **on battery only**.
 2. ⚠️ **No keystroke is ever lost** on wake, from any stage, including radio
-   idle-down.
+   idle-down. **Except the long-away tier (JD, 10-15):** past ~2 h away the
+   waking key may be lost, never stuck
+   ([Two kinds of away](#two-kinds-of-away-jd-2026-10-15)).
 3. Stages remain **caps**, never writes to the user's settings.
 4. The mode survives a reboot; a flash resets it to Normal and says so.
 5. ⭐ **A measured runtime improvement** against a **matched baseline run** at
@@ -553,7 +555,9 @@ is built until JD says so.**
    it is complexity for nothing.
 7. **Radio-down and deep sleep last**, each behind its own gate: a wake
    buffer that never loses the waking keystroke (question 1), and a wake path
-   that does not exist yet (question 2).
+   that does not exist yet (question 2). **For the long-away tier (JD, 10-15)
+   the first gate relaxes** to "lost, never stuck"
+   ([Two kinds of away](#two-kinds-of-away-jd-2026-10-15)).
 
 ### A gauge that learns its pack: an idea, outside the agreed order (JD, 2026-10-10)
 
@@ -734,6 +738,9 @@ it types), and a reconnect that **buffers** keystrokes rather than dropping
 them if the radio sleeps. After 2 h idle, a few seconds of reconnect is a fair
 trade; a lost first keystroke is not. This belongs in Power Saver first, and in
 Normal only if reconnect proves near-instant.
+⚠️ **Superseded past ~2 h away (JD, 10-15):** the waking key may be lost there,
+and it belongs in Normal; see
+[Two kinds of away](#two-kinds-of-away-jd-2026-10-15), just below.
 
 ⭐ **A "light sleep" rung before deep sleep (JD: "can you slow down the loop?").**
 Keeps the BLE link, so no reconnect latency and no first-keystroke risk -- which
@@ -778,6 +785,84 @@ of the light-sleep saving is lost. Lights-off-after-a-short-idle recovers it.
 ⚠️ **Relevant to the 2026-09-24 unexplained power-off** (`docs/battery.md`):
 the CH582F's own idle behaviour is the first suspect there too, so learning its
 sleep states answers both.
+
+## Two kinds of away (JD, 2026-10-15)
+
+Said after R1's map (`POWER-CAMPAIGN-PLAN.md`), in note-taking mode:
+
+> we should use as little power as possible when a user has left the office
+> for the night or something like that... even if it costs a keystroke to
+> wake up and restore to normal use (and it might not even necessarily cost
+> that, just might lag a bit). But if a user goes to the bathroom and comes
+> back ten minutes later (or arguably, goes for lunch for an hour) they should
+> come back and the keyboard should work just as well as always, except that
+> lights will dim and turn off, but typing should always work reliably
+> without eating keystrokes all the time.
+
+And: the emergency reserve's machinery could serve "extended sleep after a
+couple hours of away time" too.
+
+| away | e.g. | what goes | waking |
+|---|---|---|---|
+| **short**, under ~2 h | bathroom, lunch | the ladder: lights dim, then off; the light-sleep rung | instant; every key types, as today |
+| **long**, ~2 h and more | the night, a weekend | all that can: screen panel asleep, the radio down or its deepest state, the MCU in deep sleep | may lag (reconnect) and **may lose the waking key**; keep it where that is cheap |
+
+**What it is worth (R1, 10-15).** With every light out the board still draws
+**27.3 mA** (MCU, radio, regulator, panel logic). A night away (14 h):
+
+| | per night | per weekend (64 h) |
+|---|---|---|
+| today (ladder compiled out, JD's 73.5 mA) | ~1,030 mAh (26%) | **more than the pack**: it is flat by Sunday |
+| the ladder alone, lights out (27.3 mA) | ~380 mAh (10%) | ~1,750 mAh (44%) |
+| long-away standby (0.1-3 mA, a guess) | ~1-40 mAh | ~6-190 mAh |
+
+The short tier is the existing ladder plus light sleep. The long tier is the
+biggest saving in this plan that never touches typing in use.
+
+**What it changes here** (the old text stays, marked superseded):
+- Phase 2 gate 2, "no keystroke is ever lost": holds for everything short of
+  long-away.
+- "Normal never touches the radio", and Standby's "a lost first keystroke is
+  not [a fair trade]... Power Saver first": past ~2 h, both give way. **It
+  belongs in Normal**, the default (this note's reading of JD: leaving for
+  the night is not a mode anyone remembers to pick; confirm when building).
+- The reserve and long-away are **one mechanism with two triggers**: ~2 h idle
+  at any level, or the reserve's few idle minutes near empty.
+
+**What it unblocks.** Design question 1's wake buffer (every event held
+through a reconnect) stops being the gate for this tier; best-effort buffering
+is still welcome ("might not even necessarily cost that"). Question 2's wake
+path may get simpler: with the waking key allowed to go, a slow poll (wake on
+a timer a few times a second, scan once, sleep) could replace a pin interrupt
+on the matrix. ❓ Whether the SN32's deep sleep keeps a timer running is
+unchecked (the datasheet).
+
+**What does not bend:**
+- ⚠️ **Lose, never stick.** A lost key goes whole: a press reaching the host
+  without its release is a held key (auto-repeat, a stuck Shift), far worse
+  than a missing letter. A wake delivers a key's press and release or neither,
+  and the first report after a reconnect is all-keys-up.
+- **Short absences cost nothing**: no lag, no lost key, below the line.
+- **On USB, none of it**, as everywhere in Phase 2.
+
+**Open:**
+1. **Where the line goes.** ~2 h is JD's figure, with lunch (~1 h) on the
+   short side. Too short loses a key after a long lunch; too long costs tens
+   of mAh. Err long. JD's real idle gaps set it: the power campaign's A8
+   (`POWER-CAMPAIGN-PLAN.md`) logs 5-minute key-press counts through R3
+   (`guard-activity.csv`), enough to see how often a 1-3 h gap ends in typing.
+2. **The lights as a "ready" signal**: on a long-away wake, restore them only
+   once the link is back, so lit keys mean typing works.
+3. **The reserve's own short-idle deep sleep**: at ~5% the bathroom break is
+   the short case again. Same allowance as long-away, or the old rule?
+4. **The clock after a long sleep**: which RTC survives the MCU's deep sleep,
+   and the screen must wake with the right time (`docs/clock.md`).
+5. **What the 27.3 mA is.** The order's steps 2 and 4 (the light-sleep build
+   gives the MCU's share), the CH582F's states (a held link with slave
+   latency, against stock's 0x0D), the panel's sleep; and the deep floor
+   itself needs the PPK2 (µA, deferred).
+
+Nothing here is built until JD says build.
 
 ---
 
