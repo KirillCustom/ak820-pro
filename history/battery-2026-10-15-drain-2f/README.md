@@ -24,3 +24,8 @@ read, `read_stalls()`, does not carry that field), with `caffeinate -i -s -w <gu
 
 **Expected:** the RGB cut around 02:00 10-18 (drain 2e: 50.35-50.43 h), then
 the charge to FULL (~9 h).
+
+**Not JD's typing:** two presses through the wake rig's relay 1 (the
+play/pause key, JD's first test of it), at 16:07:37 and 16:07:54 10-16.
+Both toggled the Mac's music as intended. `guard-activity.csv` counts them
+as key presses; relay 2 stayed off.
