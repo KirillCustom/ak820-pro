@@ -5,7 +5,7 @@ the bench's USB relay, in the play/pause key's socket (next to F12).
 `scripts/relay_press_test.py`: 10 presses per batch, timed by the Mac, against
 the board's `raw_edges` (before debounce) and `key_presses` (after it;
 `sym_defer_pk`, 5 ms per key). During R3's drain, between the trial's reads;
-JD's hands off. A first sweep at 16:10 measured a broken switch (the relay
+hands off the keyboard. A first sweep at 16:10 measured a broken switch (the relay
 clicked, the matrix saw nothing) and was discarded; the script now checks the
 rig with one slow press first.
 
@@ -34,7 +34,7 @@ rig with one slow press first.
 - Unexplained: 19 of 20 edges in the first batch, all 10 presses counted;
   perhaps an edge between two consumes. Watch for it in the drop tests.
 
-## The remap (16:2x 10-16, at JD's go)
+## The remap (16:2x 10-16)
 
 Written over VIA's dynamic-keymap commands from a script between the trial's
 reads (not VIA itself, whose session the daemon's traffic can derail), each
@@ -57,7 +57,7 @@ convenient.
 
 `scripts/keydrop_test.py` with the Mac's listener (`hostagent/f19listener/`,
 "AK820 F19 Listener", Input Monitoring granted by JD; it logs F19 only).
-During R3's drain, between the trial's reads; JD's hands off. `keydrop.csv`.
+During R3's drain, between the trial's reads; hands off the keyboard. `keydrop.csv`.
 
 | batch | the board (presses) | the Mac (F19 down / up) | latency, relay → Mac key-down |
 |---|---|---|---|

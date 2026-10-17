@@ -1,6 +1,6 @@
 # The logged power campaign — plan (2026-10-15)
 
-JD's goal (10-15): **an accurate battery level, a calibrated charge, every
+The goal: **an accurate battery level, a calibrated charge, every
 feature's draw, a power ladder designed on numbers, and a runtime estimate.**
 This plan is the measurement half of that, run on the bench with no hands but
 JD using the keyboard as usual. It replaces inference with measurement in
@@ -60,7 +60,7 @@ logger runs throughout. New in the guard: a health row after every poll
   10-16); a missed window is skipped, not forced. It shifts R3's load by well
   under 1% of its charge.
 
-**USB data during the runs (JD asked, 10-15).** R3 keeps data attached:
+**USB data during the runs.** R3 keeps data attached:
 comparable with drains 2c-2e, and it carries the live watch (the trial's
 reads, the guard's progress deadline) and the activity rows. Runtimes are
 corrected by the measured current (R2), recomputed, never by subtracting
@@ -80,7 +80,7 @@ the screen dim, so ~2 days with his lights changed. It is the validation run:
 the refit gauge (A1) and the runtime model (A7) are checked on data they were
 not fitted on, and it shows how the voltage curve moves with load.
 
-**R7, standby: the research now, the building later (JD asked, 10-15).**
+**R7, standby: the research now, the building later.**
 For "Two kinds of away" (`BATTERY-GAUGE-PLAN.md`): the long tier's savings
 are the largest that never touch typing in use (a 14 h night is ~1,030 mAh
 today, ~380 with the lights out, single to tens of mAh in a real standby).
@@ -97,7 +97,7 @@ today, ~380 with the lights out, single to tens of mAh in a real standby).
     small wiring job (a spare switch with two leads to relay 1's NO and COM,
     in a hot-swap socket JD never uses, that key remapped to F19 in VIA on
     both base layers; the Mac's listener needs Input Monitoring).
-  - **The same rig counts dropped keystrokes** (JD, 10-15): presses sent
+  - **The same rig counts dropped keystrokes**: presses sent
     (the relay, stamped) against presses the board saw (`key_presses`)
     against keys the Mac got. A gap between the first two is the scan or
     debounce; between the last two, the link. Run under plug-ins, display

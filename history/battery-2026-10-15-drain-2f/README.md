@@ -31,6 +31,6 @@ bridged in the analysis (the board is a ~307 mW load).
 the charge to FULL (~9 h).
 
 **Not JD's typing:** two presses through the wake rig's relay 1 (the
-play/pause key, JD's first test of it), at 16:07:37 and 16:07:54 10-16.
+play/pause key, the rig's first test), at 16:07:37 and 16:07:54 10-16.
 Both toggled the Mac's music as intended. `guard-activity.csv` counts them
 as key presses; relay 2 stayed off.

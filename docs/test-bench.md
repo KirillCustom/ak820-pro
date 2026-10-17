@@ -433,7 +433,7 @@ INA228's `vbus_mv` (below).
 
 ## The wake rig: relay 1 presses a key (10-16)
 
-**What it is.** JD's idea (10-15): a key the Mac can press. A stripped switch
+**What it is.** A key the Mac can press. A stripped switch
 housing with two leads soldered on sits in the socket at matrix (0,13), the
 key right of F12, and the leads go to **RELAY1**'s COM and NO. Relay contacts
 are dry, so the matrix and the relay board share no ground. The switch can

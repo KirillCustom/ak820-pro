@@ -23,7 +23,7 @@ closed (the 10-14 block below). The board is unchanged: flash 2e
 (`efd5b0f74a`, a `dev` build). The logger's design and every caveat:
 [`../docs/test-bench.md`](../docs/test-bench.md), "The power logger".
 
-**The rig (JD, 10-15): three USB ports for a keyboard built to need none.**
+**The rig (10-15): three USB ports for a keyboard built to need none.**
 - the keyboard, through the relay's cable (its 5 V on relay 2), on the dock
   hub `0-1.4` port 2 (`ioreg`: `AK820 PRO@00142000`);
 - the relay (`USBRelay4`) on port 3;
@@ -62,7 +62,7 @@ answer.
   voltage from `vcell_mv`.** The next drain shows whether the error is a
   ratio or an offset.
 - ⚠️ **Unexplained: the LCD read 22% at 20:47:34**, after the swap's power
-  cycles, with the pack full (JD's photo); it said FULL, 100%, by 20:51. The
+  cycles, with the pack full (a photo of the screen); it said FULL, 100%, by 20:51. The
   saved level is written at FULL (100% on 10-14 23:16), so a restore should
   not give 22%. Read the restore path before trusting the level after a pack
   swap.
@@ -79,7 +79,7 @@ answer.
 
 ### Flash 2f: the backlight from the host (10-15)
 
-JD asked for it (10-15): the per-load current map must step the screen with
+Why: the per-load current map must step the screen with
 nobody at the keyboard. `HC_DEVHOOK` ops 4-6 (dev builds only): set the
 backlight level, switch it off or on (as `Fn`+`Home`, without the overlay),
 read it. All three reply `[level, max, on, effective, saved+1]`. RAM only.
