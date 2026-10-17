@@ -35,3 +35,25 @@ play/pause key, the rig's first test), at 16:07:37 and 16:07:54 10-16.
 Both toggled the Mac's music as intended. `guard-activity.csv` counts them
 as key presses; relay 2 stayed off. Two more, at 12:50:22 and 12:52:31 10-17
 (did F19 wake the sleeping displays? both did).
+
+**The outage, 10-17.** Mains failed at **15:42:35** (the QT Py's last row
+15:42:34): the dock and everything on it lost power. The keyboard ran on
+through it on its pack. The trial's last good read was 15:39:10 (18.9%,
+3776 mV); from 15:44:10 its reads failed, with raw HID gone with the dock.
+The Mac, on its own battery, kernel-panicked at ~16:18 (a 60 s busy timeout
+in `IOMediaBSDClient`; most likely the external drives losing power
+mid-write) and rebooted, which killed the trial, the guard and the recorder
+(the trial's last row 16:14:16). The dock's power came back at **16:57:12**
+(from the QT Py's `qt_ms`), and `resume_bench.sh` restarted everything at
+17:10:43-47 (the trial into `drain-resumed-1.csv`: 16.0%, 3758 mV, on
+battery).
+- **The board did not restart:** uptime 5,655,943 ms at 23:43:22 10-15 and
+  155,126,893 ms at 17:15:45 10-17, one boot (~22:10 10-15), so its RAM log
+  is whole. `count_ge_25ms` 0.
+- The relay came back up off (its safe state), so no charge went in.
+- **The logger's hole is 15:42:34-16:57:12 (1 h 14.6 min).** The charge
+  register restarted at 0 at 16:57:12 and has counted since, with or without
+  a reader. At the 78-83 mA either side of the gap, that is ~100 mAh to bridge
+  (an estimate).
+- Logged before it: **3139.3 mAh over 40.08 h** (mean 78.3 mA), `vcell`
+  4187.5 to 3781.3 mV.

@@ -2,3 +2,7 @@
 2026-10-17 12:35:11 trial running (pid 63150)
 2026-10-17 12:35:11 guard running (pid 63557)
 2026-10-17 12:35:11 F19 listener running
+2026-10-17 17:10:43 recorder started (pid 31026); 2026-10-17 17:10:40 connected /dev/cu.usbmodem141401
+2026-10-17 17:10:45 trial restarted (pid 31106) into history/battery-2026-10-15-drain-2f/drain-resumed-1.csv
+2026-10-17 17:10:47 guard started (pid 31130) on history/battery-2026-10-15-drain-2f/drain-resumed-1.csv, with caffeinate
+2026-10-17 17:10:47 F19 listener started

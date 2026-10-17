@@ -109,6 +109,10 @@ finding.
 - **R3, the logged drain, RUNNING since 23:37:59 10-15**
   ([`../history/battery-2026-10-15-drain-2f/`](../history/battery-2026-10-15-drain-2f/README.md)):
   from a verified FULL; the cut expected ~02:00 10-18, then the charge.
+  **A mains outage on 10-17 (15:42:35-16:57:12)** took the dock and then the
+  Mac (a panic, rebooted). The board ran on through it without a restart,
+  and the bench was resumed at 17:10. The logger's hole, ~100 mAh to bridge,
+  is in the run's README.
   ⚠️ **Do not flash, poll the board, touch the relay or `uhubctl`, or unplug
   the QT Py until it ends**; the trial and guard own raw HID.
   ⚠️ **If the Mac rebooted, or any of its processes died: run
