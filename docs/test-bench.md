@@ -470,6 +470,16 @@ Apple Watch unlocked it, yet `f19.log` got nothing. A missing line therefore
 is not a missing keystroke while the Mac might be locked. For wake tests,
 keep it unlocked (no password on display sleep while testing), or count at
 the board (`raw_edges`, `key_presses`).
+**The Mac's power log sees it anyway.** `pmset -g log` recorded both lock-screen
+presses (12:50:22 and 12:52:31 10-17) as `WindowServer TurnedOn UserIsActive
+"com.apple.iohideventsystem.queue.tickle ... product:AK820 ..."`, the
+keyboard named as the source, then "Display is turned on" ~2 s later. It
+fires on the first activity after idle, to the second: the Mac-side record
+a wake test needs (did the first key after a long idle arrive, and when),
+locked or not. The unified log may carry the same with finer timestamps
+(unchecked). Counting every key of a burst, to the ms, still needs the
+listener and an unlocked session: run those with JD at the desk, or with
+the session left unlocked for a window (JD's call).
 
 **The tests:**
 - `scripts/relay_press_test.py`: dwell and rate sweeps against the board's
