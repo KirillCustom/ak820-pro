@@ -105,6 +105,12 @@ today, ~380 with the lights out, single to tens of mAh in a real standby).
     ~10 presses/s (no rollover or held-modifier cases), and the relay's
     contact life. If it finds something, the step up is optocouplers on
     the QT Py's spare GPIO: several keys, silent, µs timing.
+  - ⚠️ **When the monitors sleep, the Mac locks, and the listener then
+    registers no keypresses.** Wake tests use the board's counters and
+    macOS's power log (`pmset -g log` names the AK820 as the source of the
+    first activity after idle, even locked); drop and latency tests need the
+    session unlocked (`keydrop_test.py` refuses otherwise and keeps the
+    displays awake while it runs).
 - **After the refit gauge and Phase 2's steps 3-4** (the lighting modes,
   light sleep; light sleep keeps the link, so it wakes instantly): a
   measurement build that sleeps on command and wakes on a key, timed by the

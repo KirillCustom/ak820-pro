@@ -14,6 +14,10 @@ this Mac's clock): the relay's armature, the 5 ms debounce, the firmware, the
 CH582F, the BT link and macOS together.
 
 ⚠️ key_presses counts every key: keep hands off the keyboard while it runs.
+⚠️ The listener sees no keys while the Mac is locked (the lock screen's
+secure input), and on this Mac the displays sleeping locks it: so it refuses
+to start locked, holds the displays awake for the run (`caffeinate -d`), and
+flags the result if the Mac locked anyway.
 With --trial-csv it waits for the gap after a running bench_trial's read
 (raw HID is exclusive on macOS) and must finish before the next.
 """
@@ -21,6 +25,7 @@ import argparse
 import csv
 import os
 import statistics as st
+import subprocess
 import sys
 import time
 
@@ -32,6 +37,15 @@ import ak820health as health  # noqa: E402
 
 VID, PID = 0x16C0, 0x05DF
 LOG = os.path.expanduser("~/Library/Logs/ak820pro/f19.log")
+
+
+def mac_locked():
+    """The console session's CGSSessionScreenIsLocked, present (true) only
+    while the lock screen is up."""
+    out = subprocess.run("ioreg -n Root -d1 -a | plutil -extract IOConsoleUsers xml1 -o - -",
+                         shell=True, capture_output=True, text=True).stdout
+    i = out.find("CGSSessionScreenIsLocked")
+    return i >= 0 and out[i:i + 80].find("<true/>") >= 0
 
 
 def relay1(dev, on):
@@ -73,6 +87,9 @@ def main():
             time.sleep(start - time.time())
     if not os.popen("pgrep -x ak820-f19-listener").read().strip():
         sys.exit("the listener is not running: open -a \"$HOME/Applications/AK820 F19 Listener.app\"")
+    if mac_locked():
+        sys.exit("the Mac is locked: the listener sees no keys at the lock screen; unlock it first")
+    awake = subprocess.Popen(["caffeinate", "-d", "-w", str(os.getpid())])   # no display sleep, so no lock
 
     devs = hid.enumerate(VID, PID)
     if len(devs) != 1:
@@ -89,6 +106,8 @@ def main():
             releases.append(time.time())
             time.sleep(a.gap / 1000)
     time.sleep(1.5)   # the last key's trip to the Mac
+    locked_after = mac_locked()
+    awake.terminate()
     kp1, re1 = counts()
     ev = listener_events(offset)
     downs = [t for t, k in ev if k == "down"]
@@ -110,6 +129,8 @@ def main():
           f"({a.n / (presses[-1] - presses[0] + (a.dwell + a.gap) / 1000):.1f}/s)")
     print(f"  the board: raw edges {raw}/{2 * a.n}, key presses {kp}/{a.n}")
     print(f"  the Mac:   F19 down {len(downs)}/{a.n}, up {len(ups)}/{a.n}")
+    if locked_after:
+        print("  ⚠️ the Mac was locked at the end: keys at the lock screen went unlogged, so the Mac's count is not valid")
     if q:
         print(f"  latency, relay to the Mac's key-down: min {q[0]:.1f}  median {st.median(q):.1f}  "
               f"p95 {pct(0.95):.1f}  max {q[-1]:.1f} ms")

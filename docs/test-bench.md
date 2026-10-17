@@ -463,8 +463,13 @@ signature; JD granted it on 10-16. Start it with `open -a "$HOME/Applications/AK
 event's own timestamp on the wall clock, to `~/Library/Logs/ak820pro/f19.log`.
 ⚠️ An event tap sees every key: the callback matches F19 and returns every
 other event untouched, never stored. Keep it that way.
-⚠️ **It is blind while the Mac is locked.** Keys at the lock screen go to the
-login window under secure input, which no listener sees. On 10-17 at
+⚠️ **When the monitors sleep, this Mac locks, and from then on the listener
+registers no keypresses** until it is unlocked: keys at the lock screen go to
+the login window under secure input, which no listener sees.
+`keydrop_test.py` therefore refuses to start while the Mac is locked (it
+reads the console session's `CGSSessionScreenIsLocked`), holds the displays
+awake for the run (`caffeinate -d`), and flags its result if the Mac locked
+anyway. On 10-17 at
 12:50:22 a rig press woke the sleeping displays and the lock screen, and an
 Apple Watch unlocked it, yet `f19.log` got nothing. A missing line therefore
 is not a missing keystroke while the Mac might be locked. For wake tests,
