@@ -22,6 +22,11 @@ after every poll; its `loop_gap_max_ms` column stays empty, since the light
 read, `read_stalls()`, does not carry that field), with `caffeinate -i -s -w <guard>`. The 1 Hz pack log is
 `../power-bench-2026-10-15/power.csv` (recorder pid in its `power.pid`).
 
+**If the Mac reboots:** `scripts/resume_bench.sh` restarts what is not
+running and logs to `resume.log` here. A gap in `power.csv`, and a charge
+register restarted from 0 if the dock cut the QT Py's power, are to be
+bridged in the analysis (the board is a ~307 mW load).
+
 **Expected:** the RGB cut around 02:00 10-18 (drain 2e: 50.35-50.43 h), then
 the charge to FULL (~9 h).
 

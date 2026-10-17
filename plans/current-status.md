@@ -111,6 +111,11 @@ finding.
   from a verified FULL; the cut expected ~02:00 10-18, then the charge.
   ⚠️ **Do not flash, poll the board, touch the relay or `uhubctl`, or unplug
   the QT Py until it ends**; the trial and guard own raw HID.
+  ⚠️ **If the Mac rebooted, or any of its processes died: run
+  `scripts/resume_bench.sh`** at once. It restarts only what is not running
+  (the recorder, the trial as `drain-resumed-N.csv`, the guard with
+  caffeinate, the F19 listener) and refuses once the drain has reached the
+  cut. Left dead past the cut, nothing charges the pack.
 
 ### Next, in order (10-15)
 
