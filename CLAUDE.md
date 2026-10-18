@@ -28,6 +28,7 @@ submodule sits on our `ak820pro-patches` branch.
 | [docs/clock.md](docs/clock.md) | The two RTCs, divider trim, persisted period, host clock sync (the daemon; the Python timekeeper before it) |
 | [docs/leds.md](docs/leds.md) | **Interrupt priorities**, RGB field rate, indicator LEDs, the rainbow, effects |
 | [docs/hardware.md](docs/hardware.md) | Slider power quirk, bootloader, build/flash, watchdog+health, hang history, diagnostics |
+| [docs/sn32f299.md](docs/sn32f299.md) | The MCU's manual distilled, with page numbers: memory map, clocks, Sleep and Deep-sleep and what wakes them, interrupts, GPIO, timers, watchdog, the peripherals, the flash controller, electrical figures, this board's pin map, errata and what the manual does not say. Look a register up here before opening the PDF |
 | [docs/battery.md](docs/battery.md) | What the board can know about the pack, the regulator hiding it, the level estimate, idle ladder, the unexplained power-off |
 | [docs/test-bench.md](docs/test-bench.md) | The bench, run from the Mac: the USB relay (relay 2 cuts the keyboard's 5 V; relay 1 presses a key, the wake rig, with its measured reliability and latency), `uhubctl` (USB data), the trial and its guard, the power logger (INA228 + MAX17048) and measuring loads from the Mac, the "Christmas Tree" outlet, hub depth limits |
 

@@ -2,7 +2,9 @@
 
 The board itself: the slider, the bootloader, building and flashing, the
 watchdog and health counters, and the diagnostic recipes that have actually
-cracked problems here.
+cracked problems here. The MCU's own manual, distilled with page numbers
+(registers, clocks, Sleep and Deep-sleep, the pin map, errata), is
+[sn32f299.md](sn32f299.md).
 
 ## ⚠️ The mode slider is a POWER-SOURCE SWITCH
 
