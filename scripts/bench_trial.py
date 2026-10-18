@@ -100,6 +100,14 @@ class Log:
         if not os.path.exists(path):
             with open(path, "w", newline="") as f:
                 csv.writer(f).writerow(FIELDS)
+            return
+        # Resuming into an existing file: its header must be this schema, or the
+        # new rows would sit under the old column names (codex, Phase 2 verify).
+        with open(path, newline="") as f:
+            head = next(csv.reader(f), [])
+        if head != FIELDS:
+            sys.exit(f"{path} has another column layout ({len(head)} columns, this trial writes {len(FIELDS)}): "
+                     "give the trial a new file")
 
     def row(self, phase, b=None, note=""):
         t, s = now_s()

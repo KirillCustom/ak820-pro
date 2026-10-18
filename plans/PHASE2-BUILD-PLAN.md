@@ -317,6 +317,23 @@ entry's reports (interleaved, shuffled, the monotone ramp): **R3 +0.1 / +1.1,
 | — | ageing explained backwards | **Fixed** in the sensitivity line above. |
 | — | notes: the integration, holds, FULL, saved levels, the committed-frame accounting (no race), time left, the camera page, `HC_POWER`, log v6, DRIFT, compatibility, no dev leak, RAM (2,288 bytes above `.bss`; the stacks are separate): sound | Agreed. The per-second work includes two 64-bit divisions, not only the minute's: noted. Stack watermarks and the deferred EEPROM writes are checked on the board (`ak820health`), with the wake rig for keys. |
 
+### Codex's verify (10-18) and what changed
+
+[Verbatim](review-codex-phase2-verify-2026-10-18.md), prompt
+[`review-prompt-phase2-verify.txt`](review-prompt-phase2-verify.txt): the
+fixes sound but one firmware must-fix. Fixed in `d3e8389858`; the simulator
+121 cases.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | **must fix:** a known level carried from USB onto the pack skips the 1% floor (a USB boot at 3424 mV adopts 4 pm and shows 0% on battery); a cut cleared by a brief replug leaves a known 0 | **Fixed:** every known level is floored, or zeroed by a latched cut, on entering battery (`c_floor_entry`). |
+| 2 | should fix: a clamped boot restores the below-band marker as the 95% guess, though the count now runs below 90% while clamped | **Fixed:** the marker restores as itself, 89% (`c_clamp_marker`). |
+| 3 | should fix: RAINFALL and DRIFT reset their global state on every chunk of an init frame; a quick disable, cap change, enable can skip the init | **Fixed:** the resets once a frame (`iter == 0`); the re-init called even while disabled. Checked on the board by `ladder_check.py`. |
+| 4 | should fix: the ramp was allowed 4 points; one synthetic distribution; R3's last 83 s and 2e after its reboot not replayed; the sim cannot test fractional lit time or the backlight cap | **Partly fixed:** the ramp now held to 3 (it stays within +1.1); the backlight stub honours the cap. Bursts, the replays' ends and fractional lit time stay as stated (the board's stage map measures the lit-time model). |
+| 5 | should fix: resuming an older trial CSV mislabels the new columns | **Fixed:** the trial refuses a file with another header. |
+| — | test notes: `c_hold_stale`'s bound loose; `m_pause_missing` could pass without adopting; no exact 4011 mV case | The first two **fixed** (9.6 ± 1.5 pm; a return that forces a visible move). The exact boundary is not reachable through `5C`'s 8.75 mV steps; the rule is one comparison. |
+| — | the rest of the fixes correct; the dev build fine for the board checks after this | Agreed. |
+
 ## Codex's plan review (10-18) and what changed
 
 [Verbatim](review-codex-phase2-plan-2026-10-18.md), prompt

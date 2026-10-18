@@ -61,14 +61,11 @@ void kb_eeconfig_set_power_mode(uint8_t m) { power_mode_p1 = (uint8_t)(m + 1u); 
 static uint8_t bkl_cap = 0xFF;
 void     display_set_backlight_cap(uint8_t c) { bkl_cap = c; }
 static uint8_t sim_bkl = 10;   /* the user's backlight level; a replay sets it per entry */
-uint8_t  display_backlight_effective(void) { return sim_bkl; }
+static uint8_t bkl_cap;   /* below */
+uint8_t  display_backlight_effective(void) { return bkl_cap < sim_bkl ? bkl_cap : sim_bkl; }   /* as display.c */
 static const uint8_t bkl_duty_sim[24] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
                                          12, 14, 16, 18, 20, 23, 26, 29, 33, 37, 42, 48};
-uint8_t  display_backlight_duty(void) {
-    uint8_t l = display_backlight_effective();
-    if (bkl_cap < l) l = bkl_cap;
-    return bkl_duty_sim[l];
-}
+uint8_t  display_backlight_duty(void) { return bkl_duty_sim[display_backlight_effective()]; }
 static int      rgb_restarts;
 static uint8_t  rgb_mode = 2;
 uint8_t  rgb_matrix_get_mode(void) { return rgb_mode; }
@@ -1353,6 +1350,8 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "c_cut_reseat"))     c_cut_reseat();
     else if (!strcmp(s, "c_hold_stale"))     c_hold_stale();
     else if (!strcmp(s, "c_handover_stays")) c_handover_stays();
+    else if (!strcmp(s, "c_floor_entry"))    c_floor_entry();
+    else if (!strcmp(s, "c_clamp_marker"))   c_clamp_marker();
     else if (!strcmp(s, "c_replay_r3"))      c_replay_r3(argc > 2 ? argv[2] : "");
     else if (!strcmp(s, "c_replay_r3_shuf")) c_replay_r3_shuf(argc > 2 ? argv[2] : "");
     else if (!strcmp(s, "c_replay_r3_ramp")) c_replay_r3_ramp(argc > 2 ? argv[2] : "");

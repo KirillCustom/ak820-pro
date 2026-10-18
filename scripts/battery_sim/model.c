@@ -636,10 +636,14 @@ static void m_pause_missing(void) {
     run_s(BATTERY_PAUSE_S + 5 * 60);
     CHECK(battery_chg_state() == ST_NONE && battery_level_permille() == held, "held with nothing to adopt: %u -> %u",
           held, battery_level_permille());
-    stopped = 0; u_target = tgt_fixed; tgt_fixed_pm = 350;
+    /* Returning 300 above the held level, so the band's lower edge is above
+     * it and the adoption must visibly move it (codex, verify: inside the
+     * band the test passed with no adoption at all). */
+    stopped = 0; u_target = tgt_fixed; tgt_fixed_pm = held + 300;
     run_s(60);
-    CHECK(band_ok(battery_level_permille(), held), "then adopted into the band at 350-worth: %u (held %u, band ~%d)",
-          battery_level_permille(), held, band_expect(held));
+    uint16_t adopted = battery_level_permille();
+    CHECK(adopted > held + 150 && adopted <= held + 300, "then adopted, raised toward the pack: %u (held %u)", adopted,
+          held);
 }
 
 /* The handover from LOST and from UNKNOWN-CHG: a number once adopted. */
