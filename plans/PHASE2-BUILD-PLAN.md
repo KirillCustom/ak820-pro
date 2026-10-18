@@ -380,6 +380,30 @@ the simulator commit after it.
 | 4 | should fix: the tests check ~3.1 and ~5.1 s, not 4; no Fn+B wake, alert, owed-notice or energy check | **Fixed:** the 4.0 s boundary, an alert, `l_minimal_enter`, `l_minimal_owed`, the modelled power lit and dark; 125 cases. Notification logic in `display.c` stays source-review only. |
 | — | the cycle, persistence, op 14, HC_POWER, caps, USB and the energy model fine; no new blocking work | Agreed. |
 
+### Codex's Minimal-mode verifies (10-18)
+
+Verify 1 ([verbatim](review-codex-phase2-minimal-verify-2026-10-18.md),
+prompt [`review-prompt-phase2-minimal-verify.txt`](review-prompt-phase2-minimal-verify.txt)),
+of `e79f55f1cf`: **no must-fix; four should-fixes.**
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | an owed notice can replace Fn+B's overlay before it paints (`power_task()` runs before the band's pass and saw an old timestamp) | **Fixed** (`025fa2f07f`): `display_band_busy()`, an overlay counted from its post; the notices wait for a free band. |
+| 2 | an owed notice is posted 2 s into a 60 s alert and expires unseen behind it | **Fixed** by the same gate (an alert counted for its whole hold); the flash's announcement waits too. `l_low_alert` fails two ways against the old gate. |
+| 3 | "Connected" under an alert is never shown; an alert outlasted by an animation is lost | **Declined:** "Connected" confirms an event, and a minute late it would mislead (the connection digit shows the state anyway); the alert's 60 s from its post is its existing design. Verify 2 accepted this. |
+| 4 | host text: an identical push after expiry leaves the band blank; `display_set_text()`'s line-1 clear neither repaints nor wakes | **Fixed:** a revival (absent to present) and the clear are changes. The first was a display bug of its own, not only the wake's. |
+| — | source identity, the splash fix, the timing and the boundary/energy tests fine; the bench check sound for host text | Agreed. |
+
+Verify 2 ([verbatim](review-codex-phase2-minimal-verify2-2026-10-18.md),
+prompt [`review-prompt-phase2-minimal-verify2.txt`](review-prompt-phase2-minimal-verify2.txt)),
+of `025fa2f07f`: **no must-fix; one should-fix.**
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | in one tick `power_task()` posts a notice and `param_status_task()` replaces it before the band paints | **Fixed** (`460ca22840`): `power_task()` runs after `param_status_task()`. A readout posted in the next ~100 ms, before the paint, still replaces it: the user's own newer action; acknowledgement on paint is not built. |
+| — | notes: Fn+B's own overlay can expire behind an alert or page; the announcement does not check for a lit screen; expiry stays lazy while Fn+D or the animation owns the panel | Accepted as existing limits; none duplicates or loses a notice the band could show. |
+| — | `display_band_busy()`'s terms, the sequencing and the revival fine; the "Connected" disposition accepted | Agreed. |
+
 ## Codex's plan review (10-18) and what changed
 
 [Verbatim](review-codex-phase2-plan-2026-10-18.md), prompt

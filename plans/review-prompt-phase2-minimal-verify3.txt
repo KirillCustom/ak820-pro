@@ -1,0 +1,7 @@
+You are verifying a one-change fix before a flash (AK820 Pro, QMK on an SN32F299 Cortex-M0). Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify anything or run the simulator.
+
+Your second verify (plans/review-codex-phase2-minimal-verify2-2026-10-18.md) had one should-fix: in the same 10 Hz tick, power_task() could post "Saving power" (or the mode announcement) and param_status_task() then replace it with a setting's readout before the band painted. The fix moves power_task() after param_status_task() in housekeeping_task_kb:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 460ca22840
+The remaining case (a later readout posted in the ~100 ms before the band paints) is accepted: it is the user's own newer action superseding the notice; presentation acknowledgement is not built.
+
+Check, citing file:line: (a) the reorder fixes the same-tick case; (b) nothing in power_task() or the tasks it now runs after (bt_pair_hold_task, dbg_hold_task, modified_consumer_task, param_status_task) depended on the old order -- in particular battery_task() still runs before power_task(), param_status_task() cannot see the ladder's caps or stage changes as setting changes, and the stage/backlight latency is unchanged; (c) anything that could cost a keystroke. Rank must-fix / should-fix / note; be brief.

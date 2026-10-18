@@ -1,0 +1,20 @@
+You are verifying fixes to a small firmware change before it is flashed (AK820 Pro, QMK on an SN32F299 Cortex-M0, a CH582F radio on UART2). Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify anything, and do not run scripts/battery_sim/run.sh (it writes temporary files); its result is given below.
+
+Your verify of Minimal mode is plans/review-codex-phase2-minimal-verify-2026-10-18.md (no must-fix, four should-fixes). The fixes:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 025fa2f07f   (firmware)
+  git -C /Users/jdlien/code/ak820-pro show 0335555                           (the simulator)
+
+1 and 2. display_band_busy() (graphics/display.c): true while an alert is held (60 s from its post), an overlay is held (PARAM_OVERLAY_HOLD_MS from its post, so before it paints too), the pair gesture is up, or the animation, Fn+D's page or its restore owns the panel. power.c's low notice is delivered only when it is false (and never in Minimal, and only with the backlight lit), and the flash's mode announcement now waits for it too (a boot alert would otherwise hide it).
+3. Declined: "Connected" hidden under an alert is not replayed when the alert ends. It is a transient confirmation of an event; a minute late it would mislead, and the connection digit shows the state regardless. An alert outlasted by an animation is the alert's existing 60-s-from-post design, unchanged here.
+4. Host text: a push that brings an expired slot back (text_present false -> true) now dirties and bumps the generation even when the content is unchanged; display_set_text() dirties and bumps when it clears a non-empty line 1.
+
+The simulator passes all 126 cases; l_low_alert fails two ways against e79f55f1cf's gate.
+
+Check, citing file:line:
+a. Is display_band_busy() right on every term, including the expiry arithmetic, the PARAM_OVERLAY ifdef, and a stuck state that could hold it true forever (and so starve the low notice or the announcement)? Is the pair-hint term safe if a release is missed?
+b. With the announcement and the low notice both waiting, can either be lost, delivered twice, or delivered in Minimal? Any interaction with power_cycle_mode() (which posts directly, ungated) that matters?
+c. The host-text changes: any path that now repaints or wakes on a keepalive, or still misses a revival? Is reading text_present outside draw_text_slot() safe given draw_text_slot() is what expires it?
+d. Do you accept the disposition of 3?
+e. Anything that could cost a keystroke or the 25 ms budget.
+
+Rank findings must-fix / should-fix / note; say plainly what is fine. Be brief where it is fine.
