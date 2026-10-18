@@ -4,7 +4,7 @@ board's lighting and screen from the Mac while it runs on the pack, and read
 each state's current from the power logger.
 
     venv/bin/python scripts/current_map.py --log <power.csv> [--hold 90] [--settle 15]
-                                           [--out <dir>] [--dry-run]
+                                           [--set loads|rgb-curve] [--out <dir>] [--dry-run]
 
 What it does, in order:
 - reads JD's lighting (VIA's channel 3) and the screen (HC_DEVHOOK op 6, flash
@@ -26,6 +26,12 @@ set paths are all _noeeprom (quantum/via.c), so nothing reaches flash. The
 screen goes over HC_DEVHOOK ops 4/5, which never persist either.
 Writes go out only between holds, and the HID handle is closed during each
 hold, so the daemon keeps its now-playing and clock traffic.
+
+--set picks the states: `loads` (R1's ten, the default) or `rgb-curve` (white
+from 16 to 255 and red, green and blue alone, for the gauge's RGB power table,
+Phase 2's A4: R1 found 255 drawing far more than the line through 64 and 128
+predicts). Each state also records the board's own LED drive (`led drive`,
+per mille of the maximum) and the pack power (mA x vcell).
 """
 import argparse
 import csv
@@ -63,6 +69,16 @@ STATES = [
     ("lcd 1",        {"effect": 0},        1),
     ("lcd off",      {"effect": 0},        "off"),
 ]
+
+def _white(v):
+    return (f"white {v}", {"effect": 1, "h": 0, "s": 0, "v": v}, None)
+
+
+RGB_CURVE = ([("jd", None, None), ("rgb off", {"effect": 0}, None)]
+             + [_white(v) for v in (255, 254, 252, 248, 240, 224, 192, 160, 128, 96, 64, 48, 32, 16)]
+             + [(f"{name} {v}", {"effect": 1, "h": h, "s": 255, "v": v}, None)
+                for v in (255, 128) for name, h in (("red", 0), ("green", 85), ("blue", 170))])
+SETS = {"loads": STATES, "rgb-curve": RGB_CURVE}
 
 
 def stamp():
@@ -135,6 +151,13 @@ def supply():
     return m.group(1) if m else None
 
 
+def led_drive():
+    """The board's LED drive over the last second, per mille (None if unread)."""
+    rc, out = run([PY, BATT])
+    m = re.search(r"^led drive\s+([0-9.]+) %", out, re.M)
+    return round(float(m.group(1)) * 10) if m else None
+
+
 def relay_on():
     rc, out = run([PY, RELAY, "status"])
     return "relay 2 ON" in out
@@ -172,6 +195,7 @@ def main():
     ap.add_argument("--hold", type=int, default=90)
     ap.add_argument("--settle", type=int, default=15)
     ap.add_argument("--out", default=None, help="directory for steps.csv and the summary")
+    ap.add_argument("--set", choices=sorted(SETS), default="loads", help="which states")
     ap.add_argument("--dry-run", action="store_true", help="read and print the start state only")
     a = ap.parse_args()
     log = os.path.abspath(a.log)
@@ -206,7 +230,8 @@ def main():
             else:
                 raise SystemExit("relay 2 off, but the board does not read battery")
         say("on battery")
-        plan = STATES + STATES[::-1]
+        states = SETS[a.set]
+        plan = states + states[::-1]
         for i, (name, rgb, screen) in enumerate(plan):
             h = ak820text.open_device()
             try:
@@ -215,11 +240,13 @@ def main():
             finally:
                 h.close()
             t0 = time.time()
-            say(f"[{i + 1}/{len(plan)}] {name}: screen {st}")
-            time.sleep(a.hold)
+            time.sleep(min(a.settle, a.hold))
+            drive = led_drive()
+            say(f"[{i + 1}/{len(plan)}] {name}: screen {st}, led drive {drive}")
+            time.sleep(max(0, a.hold - a.settle))
             t1 = time.time()
             steps.append({"i": i + 1, "name": name, "t0": t0, "t1": t1,
-                          "lcd_effective": st["effective"], "lcd_on": st["on"]})
+                          "lcd_effective": st["effective"], "lcd_on": st["on"], "led_pm": drive})
             with open(os.path.join(out, "steps.csv"), "w", newline="") as f:
                 w = csv.DictWriter(f, fieldnames=list(steps[0]))
                 w.writeheader()
@@ -247,14 +274,16 @@ def main():
         by.setdefault(s["name"], []).append(m)
         lines.append(f"{s['i']:2d} {s['name']:10s} " + (
             f"{m['q_ma']:7.2f} mA (samples {m['mean_ma']:7.2f}, sd {m['sd_ma']:.2f}) "
-            f"vcell {m['vcell_mv']:.0f}" if m else "no data"))
+            f"vcell {m['vcell_mv']:.0f}, {m['q_ma'] * m['vcell_mv'] / 1000:6.1f} mW, "
+            f"led {s['led_pm']}" if m else "no data"))
     lines.append("")
-    lines.append("state       mean of both passes (charge register)")
-    for name, _, _ in STATES:
+    lines.append("state       mean of both passes (charge register), and pack power")
+    for name, _, _ in SETS[a.set]:
         ms = [m for m in by.get(name, []) if m]
         if ms:
             passes = ", ".join("%.2f" % m["q_ma"] for m in ms)
-            lines.append(f"{name:10s} {sum(m['q_ma'] for m in ms) / len(ms):7.2f} mA  (passes: {passes})")
+            mw = sum(m["q_ma"] * m["vcell_mv"] / 1000 for m in ms) / len(ms)
+            lines.append(f"{name:10s} {sum(m['q_ma'] for m in ms) / len(ms):7.2f} mA  {mw:6.1f} mW  (passes: {passes})")
     text = "\n".join(lines)
     print(text)
     with open(os.path.join(out, "summary.txt"), "w") as f:
