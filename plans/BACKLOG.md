@@ -108,6 +108,23 @@ a Claude Code hook. Ideas worth taking:
      Async writes (`IOHIDDeviceSetReportWithCallback`) might pack more into
      each event; untested. Whether the board received all 40 is unknown
      until the hook below.
+   - **Typing removes the wake-up, nothing else.** `pace 200` at 23:46:30
+     with JD typing throughout: the first write 25.0 ms (idle: 236.1), then
+     median 29.9, p90 31.1, max 44.9 ms, 33.1 writes/s. The steady ~30 ms is
+     the link's, busy or not.
+   - **The Mac's own Caps Lock updates do not wipe the host's bits.** `hold`
+     at 23:48:30: Scroll Lock set over BLE, then Caps on and off from the
+     keyboard; SCR stayed lit through both (on the LCD). So a Caps press
+     mid-frame does not garble it, at least on macOS.
+   - ⚠️ **Locked, the Mac refuses every write.** The display slept at
+     23:49:37 and the session locked with it; `night` at 23:51:15 opened the
+     BLE device, then all 54 synchronous writes and all 200 async ones came
+     back `0xe00002e2` (`kIOReturnNotPermitted`) in under 1 ms: nothing was
+     sent. Input Monitoring holds only while the session is unlocked, as the
+     F19 listener is blind then (`docs/test-bench.md`). For the daemon: no
+     clock or now-playing over the air while the Mac is locked, so resync on
+     unlock. Its three tests (repeats, the unnamed bits, async writes) rerun
+     at the first unlock after 06:00 10-18.
    - **Where it would live: the Rust daemon (`ak820-agent/`).** It already
      owns now-playing and the clock on both OSes, and only one process may
      run clock transactions, so a clock over the air cannot be a separate

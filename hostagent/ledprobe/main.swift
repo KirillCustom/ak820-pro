@@ -22,6 +22,9 @@
 //                    Bluetooth report.
 //   pace [n] [delay_s]  n back-to-back Scroll Lock writes over BLE (default
 //                    40), each timed; the summary says how fast they complete
+//   hold [s] [delay_s]  Scroll Lock on over BLE for s seconds (default 30), then off
+//   night [delay_s]  unattended, over BLE: repeated values, the two unnamed
+//                    LED bits, and 200 writes issued without waiting, all timed
 //
 // Logs to ~/Library/Logs/ak820pro/ledprobe.log. Started by `open` (so TCC sees
 // this app, not whatever shell started it); built and signed by
@@ -129,15 +132,103 @@ func openTarget(_ t: Target) -> (IOHIDDevice, Int)? {
 // is bit 2 (0x04) in both descriptors. Caps goes out as 0, so leave Caps off.
 // With a report ID, macOS takes the ID as the buffer's first byte.
 @discardableResult
-func setScroll(_ t: Target, _ dev: IOHIDDevice, _ reportID: Int, _ on: Bool) -> Double {
-    let leds: UInt8 = on ? 0x04 : 0x00
+func setLeds(_ t: Target, _ dev: IOHIDDevice, _ reportID: Int, _ leds: UInt8, _ what: String) -> Double {
     let buf: [UInt8] = reportID == 0 ? [leds] : [UInt8(reportID), leds]
     let t0 = Date().timeIntervalSince1970
     let r = IOHIDDeviceSetReport(dev, kIOHIDReportTypeOutput, CFIndex(reportID), buf, buf.count)
     let ms = (Date().timeIntervalSince1970 - t0) * 1000
-    Probe.note(String(format: "%@: scroll %@ (report %d, 0x%02x) -> 0x%08x in %.1f ms",
-                      t.name, on ? "ON" : "off", reportID, leds, r, ms))
+    Probe.note(String(format: "%@: %@ (report %d, 0x%02x) -> 0x%08x in %.1f ms",
+                      t.name, what, reportID, leds, r, ms))
     return ms
+}
+
+@discardableResult
+func setScroll(_ t: Target, _ dev: IOHIDDevice, _ reportID: Int, _ on: Bool) -> Double {
+    setLeds(t, dev, reportID, on ? 0x04 : 0x00, on ? "scroll ON" : "scroll off")
+}
+
+func median(_ xs: [Double]) -> Double {
+    let s = xs.sorted()
+    return s.isEmpty ? .nan : s.count % 2 == 1 ? s[s.count / 2] : (s[s.count / 2 - 1] + s[s.count / 2]) / 2
+}
+
+// Does macOS send a write that changes nothing? Timed against writes that do:
+// ~0 ms suggests it was dropped on the Mac, ~30 ms that it crossed the link.
+// Neither says what the radio chip did with it.
+func repeatTest(_ dev: IOHIDDevice, _ id: Int) {
+    let t = targets[1]
+    setLeds(t, dev, id, 0x04, "warm-up"); setLeds(t, dev, id, 0x00, "warm-up")
+    var changes: [Double] = [], repeats: [Double] = []
+    for _ in 0..<3 {
+        for v: UInt8 in [0x04, 0x00] {
+            changes.append(setLeds(t, dev, id, v, "change"))
+            for _ in 0..<3 { repeats.append(setLeds(t, dev, id, v, "repeat")) }
+        }
+    }
+    Probe.note(String(format: "repeat: %d changes median %.1f ms, %d repeats median %.1f ms (min %.1f, max %.1f)",
+                      changes.count, median(changes), repeats.count, median(repeats),
+                      repeats.min() ?? .nan, repeats.max() ?? .nan))
+}
+
+// The descriptor's two unnamed LED bits (3 and 4): does macOS take and send
+// them? Timed against Scroll Lock (bit 2). Each value is followed by 0x00.
+func bitsTest(_ dev: IOHIDDevice, _ id: Int) {
+    let t = targets[1]
+    setLeds(t, dev, id, 0x04, "warm-up"); setLeds(t, dev, id, 0x00, "warm-up")
+    var by: [UInt8: [Double]] = [:]
+    for _ in 0..<3 {
+        for v: UInt8 in [0x04, 0x08, 0x10, 0x18] {
+            by[v, default: []].append(setLeds(t, dev, id, v, "bits"))
+            setLeds(t, dev, id, 0x00, "bits clear")
+        }
+    }
+    let line = by.keys.sorted().map { String(format: "0x%02x %.1f ms", $0, median(by[$0]!)) }.joined(separator: ", ")
+    Probe.note("bits: medians \(line)")
+}
+
+// Writes issued without waiting for each to finish: does the link take more
+// than one per ~30 ms? Completion times come from the callbacks.
+enum Async {
+    static var t0 = 0.0
+    static var done: [Double] = []
+    static var codes: [IOReturn: Int] = [:]
+}
+let asyncDone: IOHIDReportCallback = { _, result, _, _, _, _, _ in
+    Async.done.append((Date().timeIntervalSince1970 - Async.t0) * 1000)
+    Async.codes[result, default: 0] += 1
+}
+
+func asyncTest(_ dev: IOHIDDevice, _ id: Int, _ n: Int) {
+    let t = targets[1]
+    let n = n % 2 == 0 ? n : n + 1   // even, so the last write is 0x00
+    setLeds(t, dev, id, 0x04, "warm-up"); setLeds(t, dev, id, 0x00, "warm-up")
+    IOHIDDeviceScheduleWithRunLoop(dev, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+    var bufs: [UnsafeMutablePointer<UInt8>] = []
+    var issued = 0
+    var refused: [IOReturn: Int] = [:]
+    Async.t0 = Date().timeIntervalSince1970
+    for i in 0..<n {
+        let b = UnsafeMutablePointer<UInt8>.allocate(capacity: 2)   // must outlive the write
+        b[0] = UInt8(id); b[1] = i % 2 == 0 ? 0x04 : 0x00
+        bufs.append(b)
+        let r = IOHIDDeviceSetReportWithCallback(dev, kIOHIDReportTypeOutput, CFIndex(id), b, 2, 5.0, asyncDone, nil)
+        if r == kIOReturnSuccess { issued += 1 } else { refused[r, default: 0] += 1 }
+    }
+    let issueMs = (Date().timeIntervalSince1970 - Async.t0) * 1000
+    let deadline = Date().addingTimeInterval(20)
+    while Async.done.count < issued && Date() < deadline {
+        CFRunLoopRunInMode(.defaultMode, 0.05, true)
+    }
+    IOHIDDeviceUnscheduleFromRunLoop(dev, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+    let last = Async.done.max() ?? .nan
+    let codes = Async.codes.map { String(format: "0x%08x x%d", $0.key, $0.value) }.joined(separator: ", ")
+    let refusedText = refused.map { String(format: "0x%08x x%d", $0.key, $0.value) }.joined(separator: ", ")
+    Probe.note(String(format: "async: %d issued in %.1f ms (refused: %@); %d completed, the last at %.1f ms (%.1f/s); results: %@",
+                      issued, issueMs, refusedText.isEmpty ? "none" : refusedText, Async.done.count, last,
+                      Double(Async.done.count) / (last / 1000), codes.isEmpty ? "none" : codes))
+    if Async.done.count < issued { setLeds(t, dev, id, 0x00, "clear after timeout") }
+    // Freed only once every callback is in: a late one would read freed memory.
+    if Async.done.count == issued { bufs.forEach { $0.deallocate() } }
 }
 
 func waitForAccess() {
@@ -209,7 +300,39 @@ case "pace":
     Probe.note(String(format: "pace: %d writes in %.2f s (%.1f/s): first %.1f, min %.1f, median %.1f, max %.1f ms",
                       n, total, Double(n) / total, ms[0], sorted[0], sorted[n / 2], sorted[n - 1]))
     IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone))
+case "hold":
+    // Scroll Lock on over BLE for a while, then off: does the Mac's own LED
+    // report on a Caps Lock press wipe it? (JD presses Caps twice meanwhile.)
+    let secs = args.count > 1 ? Double(args[1]) ?? 30 : 30
+    let delay = args.count > 2 ? Double(args[2]) ?? 0 : 0
+    guard let (dev, id) = openTarget(targets[1]), id == 2 else {
+        Probe.note("hold: need the BLE device open with LEDs in report 2; stopping")
+        exit(3)
+    }
+    Probe.note(String(format: "hold: %.0f s, starting in %.0f s", secs, delay))
+    Thread.sleep(forTimeInterval: delay)
+    setScroll(targets[1], dev, id, true)
+    Thread.sleep(forTimeInterval: secs)
+    setScroll(targets[1], dev, id, false)
+    IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone))
+    Probe.note("hold: done")
+case "night":
+    // The three tests that need nobody at the board, 10 s apart.
+    let delay = args.count > 1 ? Double(args[1]) ?? 0 : 0
+    guard let (dev, id) = openTarget(targets[1]), id == 2 else {
+        Probe.note("night: need the BLE device open with LEDs in report 2; stopping")
+        exit(3)
+    }
+    Probe.note(String(format: "night: starting in %.0f s", delay))
+    Thread.sleep(forTimeInterval: delay)
+    repeatTest(dev, id)
+    Thread.sleep(forTimeInterval: 10)
+    bitsTest(dev, id)
+    Thread.sleep(forTimeInterval: 10)
+    asyncTest(dev, id, 200)
+    IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone))
+    Probe.note("night: done")
 default:
-    Probe.note("unknown mode \(mode); use check, run [delay_s] or pace [n] [delay_s]")
+    Probe.note("unknown mode \(mode); use check, run, pace, hold or night")
     exit(64)
 }
