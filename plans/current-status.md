@@ -26,6 +26,24 @@ of 18 frames exact ([`LOCK-LED-CHANNEL-PLAN.md`](LOCK-LED-CHANNEL-PLAN.md),
 frames exact, P3 included** (below). **The channel is parked; next is the
 power work** (the ladder, an accurate gauge, a runtime estimate).
 
+### Two workstreams, and their order (10-18)
+
+**1. Phase 2, first:** an accurate gauge, a time-left estimate, the ladder.
+Done: R1-R4 and A1/A2 (the gauge reads up to 13.7 points low on the plateau,
+where 15 mV spans 85-70%, so the fix is counting energy down from FULL with
+the board's modelled draw there and reading the voltage below ~3.98 V). Next,
+desk work: A3 (the charge), A4 (the load model), A7 (the hybrid gauge and
+time-left, replayed on R3 and drains 2c-2e), A8 (the ladder's sizing); then a
+plan, codex, JD's build. Then flashes: the gauge and time-left, R5 (a drain
+at another load), the `Fn`+`B` modes, light sleep, the reserve, gate 5.
+
+**2. The lock-LED channel, parked:** the transport is proven (24/24 frames,
+P3 moves no light). Left before it shows a title over Bluetooth: the text
+frame type, the board putting it in the LCD's text slot (a flash), and the
+daemon's sender (the largest piece), plus the resume list's test items; then
+Windows (unknown route), 2.4G and an ack path. The daemon's host-side work
+fits Phase 2's multi-day drains, when the board cannot be flashed.
+
 ### Flash 2g: the 5A trace and the settled SCR (10-18)
 
 Why: what reaches the board of the LED byte a host writes over BLE (which of
