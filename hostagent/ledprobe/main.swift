@@ -20,6 +20,8 @@
 //                    Lock blinking 5 s on / 5 s off, six times. A steady SCR
 //                    means the USB report got through; a blinking one, the
 //                    Bluetooth report.
+//   pace [n] [delay_s]  n back-to-back Scroll Lock writes over BLE (default
+//                    40), each timed; the summary says how fast they complete
 //
 // Logs to ~/Library/Logs/ak820pro/ledprobe.log. Started by `open` (so TCC sees
 // this app, not whatever shell started it); built and signed by
@@ -126,7 +128,8 @@ func openTarget(_ t: Target) -> (IOHIDDevice, Int)? {
 // The whole LED byte as a raw output report, so the bit is exact: Scroll Lock
 // is bit 2 (0x04) in both descriptors. Caps goes out as 0, so leave Caps off.
 // With a report ID, macOS takes the ID as the buffer's first byte.
-func setScroll(_ t: Target, _ dev: IOHIDDevice, _ reportID: Int, _ on: Bool) {
+@discardableResult
+func setScroll(_ t: Target, _ dev: IOHIDDevice, _ reportID: Int, _ on: Bool) -> Double {
     let leds: UInt8 = on ? 0x04 : 0x00
     let buf: [UInt8] = reportID == 0 ? [leds] : [UInt8(reportID), leds]
     let t0 = Date().timeIntervalSince1970
@@ -134,6 +137,7 @@ func setScroll(_ t: Target, _ dev: IOHIDDevice, _ reportID: Int, _ on: Bool) {
     let ms = (Date().timeIntervalSince1970 - t0) * 1000
     Probe.note(String(format: "%@: scroll %@ (report %d, 0x%02x) -> 0x%08x in %.1f ms",
                       t.name, on ? "ON" : "off", reportID, leds, r, ms))
+    return ms
 }
 
 func waitForAccess() {
@@ -184,7 +188,28 @@ case "run":
     }
     for (_, dev, _) in opened { IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone)) }
     Probe.note("run: done")
+case "pace":
+    // How fast back-to-back writes complete: N writes over BLE, Scroll Lock
+    // alternating, each waiting for the last. 5 s apart (run) each one may
+    // pay the idle link's wake-up; back to back, only the first should.
+    let n = args.count > 1 ? Int(args[1]) ?? 40 : 40
+    let delay = args.count > 2 ? Double(args[2]) ?? 0 : 0
+    guard let (dev, id) = openTarget(targets[1]), id == 2 else {
+        Probe.note("pace: need the BLE device open with LEDs in report 2; stopping")
+        exit(3)
+    }
+    Probe.note(String(format: "pace: %d writes, starting in %.0f s", n, delay))
+    Thread.sleep(forTimeInterval: delay)
+    let t0 = Date().timeIntervalSince1970
+    var ms: [Double] = []
+    for i in 0..<n { ms.append(setScroll(targets[1], dev, id, i % 2 == 0)) }
+    if n % 2 == 1 { setScroll(targets[1], dev, id, false) }
+    let total = Date().timeIntervalSince1970 - t0
+    let sorted = ms.sorted()
+    Probe.note(String(format: "pace: %d writes in %.2f s (%.1f/s): first %.1f, min %.1f, median %.1f, max %.1f ms",
+                      n, total, Double(n) / total, ms[0], sorted[0], sorted[n / 2], sorted[n - 1]))
+    IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone))
 default:
-    Probe.note("unknown mode \(mode); use check or run [delay_s]")
+    Probe.note("unknown mode \(mode); use check, run [delay_s] or pace [n] [delay_s]")
     exit(64)
 }

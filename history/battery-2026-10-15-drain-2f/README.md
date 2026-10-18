@@ -36,6 +36,12 @@ Both toggled the Mac's music as intended. `guard-activity.csv` counts them
 as key presses; relay 2 stayed off. Two more, at 12:50:22 and 12:52:31 10-17
 (did F19 wake the sleeping displays? both did).
 
+**Not the drain's load either: the lock-LED probe, 23:22:05-23:23:37 10-17**
+(`hostagent/ledprobe/`, `plans/BACKLOG.md`): Scroll Lock written twice over
+USB, then twelve times over Bluetooth (six SCR blinks on the LCD). No raw
+HID, no relay, no cable change; placed between the trial's 23:20:49 and
+23:25:49 polls. The guard's count of passes >= 25 ms stayed 0 (23:25:52).
+
 **The outage, 10-17.** Mains failed at **15:42:35** (the QT Py's last row
 15:42:34): the dock and everything on it lost power. The keyboard ran on
 through it on its pack. The trial's last good read was 15:39:10 (18.9%,

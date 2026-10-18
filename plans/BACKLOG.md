@@ -76,6 +76,22 @@ a Claude Code hook. Ideas worth taking:
      already accepts `d <= 0x1F`), the host owns 4 bits, not 2: 15 moves per
      change, ~3.9 bits, against quill4gen7's 1. Unknown until the firmware can
      show `host_leds`. Probe: `hostagent/ledprobe/`, `scripts/build-led-probe.sh`.
+   - **Link 2 PROVEN, 23:22:35-23:23:37 10-17: the Mac sets this keyboard's
+     Scroll Lock over Bluetooth.** `ledprobe run`: SCR blinked six times on
+     the LCD as sent; all 12 BLE writes returned success. The USB control
+     before it (Scroll Lock on for 20 s over the cable) showed nothing, as
+     `led_update_kb` says: in BT mode the lock lights come from the radio
+     only. Each synchronous `IOHIDDeviceSetReport` 5 s apart took
+     **23.7-355.3 ms (median 106)**, against 2.1-2.4 ms over USB.
+   - **That was the idle link waking up, not a floor per report.** `ledprobe
+     pace 40` at 23:27:48, back to back: the first write 236.1 ms, then
+     27.6-47.1 ms (median 29.9), **26.2 writes/s**. ~30 ms looks like two
+     connection events per acknowledged write (request, then response, at a
+     ~15 ms interval: an inference, not read off the link). So a frame pays
+     one wake-up, then ~33 reports/s while each write waits for the last.
+     Async writes (`IOHIDDeviceSetReportWithCallback`) might pack more into
+     each event; untested. Whether the board received all 40 is unknown
+     until the hook below.
    - **The test that answers the rest without JD's eyes (after R3, one `dev`
      flash):** a dev hook that returns the last `5A` byte and a count of `5A`
      frames. The probe then sends all 32 byte values and reads back what
