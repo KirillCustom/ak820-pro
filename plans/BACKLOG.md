@@ -72,6 +72,11 @@ a Claude Code hook. Ideas worth taking:
        settled change, not once per bit.
      - If the restore is lost, SCR shows wrongly until the next change; the
        frame's CRC fails then too, so its resend restores it.
+     - The likely real use is a key remapped to Scroll Lock and bumped by
+       accident ("why is Excel scrolling the sheet?"). The board sent that
+       press itself, so a Scroll Lock change arriving within ~250 ms of its
+       own `KC_SCRL` can show at once; only changes it did not cause wait to
+       settle. (macOS ignores the key; Windows echoes it in milliseconds.)
    - **Power: negligible.** One BLE output report and one `5A` UART frame per
      bit, in bursts of 1-2 s. Only a constant stream would show.
    - **Limits:** ~100 bit/s, one way, each frame sent twice; timing to
