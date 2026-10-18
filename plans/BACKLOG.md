@@ -70,8 +70,10 @@ a Claude Code hook. Ideas worth taking:
      - A frame then never changes the indicator, a real Scroll Lock (another
        host, an app) still shows, ~1.5 s late, and the band repaints once per
        settled change, not once per bit.
-     - If the restore is lost, SCR shows wrongly until the next change; the
-       frame's CRC fails then too, so its resend restores it.
+     - If the restore is lost, SCR shows wrongly until the next change. The
+       frame's CRC does not cover the restore, so a valid frame can still
+       leave it wrong, for good if the host then locks (codex, 10-18:
+       `LOCK-LED-CHANNEL-PLAN.md` now keeps Scroll out of the default profile).
      - The likely real use is a key remapped to Scroll Lock and bumped by
        accident ("why is Excel scrolling the sheet?"). The board sent that
        press itself, so a Scroll Lock change arriving within ~250 ms of its

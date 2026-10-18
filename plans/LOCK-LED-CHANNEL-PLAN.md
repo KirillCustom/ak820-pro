@@ -130,3 +130,41 @@ bit/s, ~5.5 s.
 **Where it lives:** the Rust daemon (`ak820-agent/`), as a second transport for
 the messages it already sends over raw HID, used when the cable is absent; the
 board's decoder beside the 5A parser.
+
+## Codex's review (10-18) and what changed
+
+[Verbatim](review-codex-lockled-plan-2026-10-18.md), prompt
+[`review-prompt-lockled-plan.txt`](review-prompt-lockled-plan.txt), at
+gpt-6-astra xhigh with a brief to go wide. Its verdict: keep change coding,
+pack in small fixed blocks, compress the text, start with CRC and delayed
+retries, no Reed-Solomon yet; the real speed-ups are forwarded padding bits
+and the 2.4G dongle, not a cleverer four-light alphabet; and look for an
+acknowledgement path before any error correction.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | Every raw report carries Caps; production must write the user's current Caps in each one, and the read-then-write race cannot be closed from user space | **Agreed.** The probe's Caps = 0 is for experiments only. The daemon reads Caps before each write and aborts the frame on a change. The race is stated as a limit, not designed away. |
+| 2 | Skipping every report whose Caps bit changed is unreliable (the daemon's own next write can carry a new Caps) | **Agreed:** a Caps transition aborts the frame; no classifying. |
+| 3 | The trace timestamps parsing, not UART arrival, so a 60 ms gap is not a known-position erasure | **Agreed. Timing-derived erasures dropped.** |
+| 4 | A lost restore does not fail the payload's CRC (BACKLOG said it did) | **Agreed; BACKLOG fixed.** |
+| 5 | The alphabet does not enforce the 1.5 s Scroll rule, and the board's 500 ms own-key exception can show channel traffic | **Agreed:** the default profile leaves Scroll alone (next row). The four-light profile restores at checkpoints. |
+| 6 | **Default profile: Num plus bits 3-4, Scroll untouched.** Base-7 change coding, 14 bits in 5 changes, ~89.6 bit/s; four lights optional, with a restore checkpoint every 24 payload writes | **Adopted, pending the width test** (it needs bits 3-4 to arrive; if they do not, only Num and Scroll remain and Scroll must be used). |
+| 7 | Whole-frame base-15 is unnecessary: 31 bits in 8 base-15 digits into one `uint32_t` (99.2% of capacity), 14 bits in 5 base-7 digits for three lights | **Adopted.** Constant work per symbol, bounded state, test vectors. |
+| 8 | Padding bits 5-7 are the best speed-up: bits 3-7 would be five data bits with every visible lock left alone, ~158 bit/s; the `d <= 0x1F` guard must then split transport data from QMK's LED bitmap, not be removed | **High-priority test (`high`), and the guard rule adopted** if they arrive. |
+| 9 | The 2.4G dongle could beat every BLE refinement (8-40 ms a bit there) | **Test first, high priority**, after BLE. |
+| 10 | Timing modulation only pays if a delay under ~15.6 ms is reliably distinguishable; the writes already jitter 24-45 ms | **Rejected for version one.** |
+| 11 | Caps as a data bit | **Rejected** (as the draft). |
+| 12 | The display holds 19 artist + 21 title characters; the daemon resends text every 30 s and playback every 3 s, which this channel cannot carry as is | **Agreed:** wireless gets its own publication policy (send on change, once more ~2 s later, a slow full refresh; playback extrapolated on the board). |
+| 13 | Text: 7-bit ASCII packing (12.5%) now; a 6-bit alphabet, base-95, dictionaries and deltas later or after a corpus; deltas need a base id | **Adopted as ordered.** Absolute snapshots are the first wire contract. |
+| 14 | Clock: anchor to the preamble's last edge, send the timestamp after it, add the board's elapsed time on commit; ±20 ms is a hypothesis; keep wireless syncs out of the SOF bias learner; settle who owns the RTC reference off USB (PCF discipline still runs, `rtc.c:1514`) | **Agreed**, and the RTC ownership question goes to the clock work before any wireless clock is built. |
+| 15 | **An acknowledgement path first:** unusual `A3` consumer usages (BACKLOG idea 2, which worked for quill4gen7 on Linux/2.4G) could carry acks over BLE to a Mac; never at the expense of real input | **Test first, highest priority** of the architecture questions. |
+| 16 | CRC-16 and delayed full-state retries to start; Reed-Solomon only once symbol positions are known; reject fountain codes, convolutional codes and CRC-guided search; deletion-correcting codes only if measured | **Adopted.** |
+| 17 | Timeouts: 150 ms between symbols on a warm link, a separate ~8 s frame lifetime, warm the link before framing, re-arm only on a preamble, never round a gap into missing symbols | **Adopted.** |
+| 18 | Sync: an absolute training pattern, bits 3-4 `00 → 11 → 00 → 11` with Num and Scroll held; with only Num and Scroll nothing can make a frame impossible to imitate | **Adopted.** |
+| 19 | Windows' real-lock route: reject for production (an idle check cannot keep the user idle; apps and KVMs act on the toggles) | **JD's call**, against his earlier "a reasonable tradeoff". Per-device indicator access is tested first either way. |
+| 20 | Framing: a header with version, profile, type, sequence, length and a CRC-8, sent in the three-light alphabet; payload <= 48 bytes; CRC-16/CCITT-FALSE; a two-change restore trailer, and commit only after it | **Adopted.** |
+| 21 | Tests: 44 clean symbols bound the error rate only to ~6.6%; ~3,000 clean frames bound frame failure near 0.1%; missing tests: Caps races (Caps starting on, changes mid-frame, another keyboard), failure at every write boundary, fault injection, typing and display load, clock ground truth, long patterns, the ack and dongle probes | **Agreed.** The six tests pick the physical channel; reliability needs a frame-level soak, after the decoder exists. |
+
+**Codex's estimates** (warm link, calculated, not measured): a 30-character
+text in ~3.3 s on the three-light profile, ~2.7 s on four lights with
+checkpoints; ~0.4 s more for the quiet interval and a cold-link wake.
