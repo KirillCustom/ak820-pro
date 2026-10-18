@@ -5,6 +5,7 @@ the panel backlight.
     scripts/devhook.py press | reset | read
     scripts/devhook.py lcd [LEVEL | on | off]
     scripts/devhook.py leds [reset | json]
+    scripts/devhook.py frames [reset | json]
 
 `lcd` alone reads the backlight; a LEVEL or on/off sets it (a LEVEL above the
 maximum is clamped by the firmware, and the reply says what was set). Setting
@@ -17,6 +18,11 @@ saved. "off" is what Fn+Home does, without its overlay. Needs flash 2f or later
 report, as frame number, byte and ms since the previous frame (the ring keeps
 the last 52). `leds reset` clears it; `leds json` prints the same as one JSON
 object, for scripts/ledchannel_test.py.
+
+`frames` reads the lock-LED channel's receiver (flash 2h or later, lockchan.c):
+frames committed, preambles reached, each abort reason's count, and the last
+frame (profile, type, seq, payload, its anchor and commit times). `frames
+reset` zeroes it; `frames json` prints it as one JSON object.
 """
 import sys
 sys.path.insert(0, "/Users/jdlien/code/ak820-pro/hostagent")
@@ -27,7 +33,7 @@ NAMES = [f"restore clear band {i}" for i in range(1, 9)] + [
     "restore: battery (outline)", "restore: lock band", "restore: text slot",
     "hk: text slot", "hk: status overlay", "hk: lock band", "hk: clock", "hk: battery",
     "hk: conn digit", "text icon", "band clear", "debug page compose", "debug glyph pump"]
-USAGE = "usage: devhook.py press | reset | read | lcd [LEVEL | on | off] | leds [reset | json]"
+USAGE = "usage: devhook.py press | reset | read | lcd [LEVEL | on | off] | leds [reset | json] | frames [reset | json]"
 def xfer(h, op, arg=0):
     h.write(bytes([0, SET_VALUE, CH, HC, op, arg]) + bytes(27))   # report id + 32 bytes
     for _ in range(5):
@@ -39,10 +45,10 @@ def xfer(h, op, arg=0):
             return bytes(r)
     sys.exit("no reply")
 args = sys.argv[1:]
-ok = (len(args) == 1 and args[0] in ("press", "reset", "read", "lcd", "leds")) or (
+ok = (len(args) == 1 and args[0] in ("press", "reset", "read", "lcd", "leds", "frames")) or (
     len(args) == 2 and args[0] == "lcd" and (args[1] in ("on", "off") or
                                            (args[1].isdigit() and int(args[1]) <= 255))) or (
-    len(args) == 2 and args[0] == "leds" and args[1] in ("reset", "json"))
+    len(args) == 2 and args[0] in ("leds", "frames") and args[1] in ("reset", "json"))
 if not ok:
     sys.exit(USAGE)
 h = open_device()
@@ -87,6 +93,37 @@ elif cmd == "leds":
               f"{'none yet' if age == 0xFFFFFFFF else f'{age} ms ago'}")
         for n, b, g in seq:
             print(f"  #{n:<5} 0x{b:02x}  {'>254' if g == 255 else g:>4} ms")
+elif cmd == "frames" and args[1:] == ["reset"]: xfer(h, 13)
+elif cmd == "frames":
+    u32 = lambda b: int.from_bytes(b, "little")
+    ABORTS = ["gap", "lifetime", "caps", "header_crc", "header", "range", "crc", "trailer", "reset"]
+    for _ in range(5):   # consistent only if no frame landed between the reads
+        r = xfer(h, 10)
+        ab = xfer(h, 11)
+        pages = [xfer(h, 12, pg) for pg in (0, 1)]
+        if any(p[4] != pg or p[5] != 0 for pg, p in enumerate(pages)):
+            sys.exit("a payload page did not echo its number")
+        if xfer(h, 10)[4:8] == r[4:8]: break
+    else:
+        sys.exit("frames kept arriving while they were read")
+    st = {"frames": u32(r[4:8]), "preambles": u32(r[8:12]), "busy": bool(r[12]),
+          "aborts": {n: int.from_bytes(ab[4 + 2 * i:6 + 2 * i], "little") for i, n in enumerate(ABORTS)},
+          "last": {"profile": r[13], "type": r[14], "seq": r[15], "len": r[16],
+                   "payload": (pages[0][6:32] + pages[1][6:28])[:r[16]].hex(),
+                   "anchor_ms": u32(r[17:21]), "commit_ms": u32(r[21:25])},
+          "board_ms": u32(r[25:29])}
+    if args[1:] == ["json"]:
+        import json
+        print(json.dumps(st))
+    else:
+        l = st["last"]
+        print(f"{st['frames']} frames, {st['preambles']} preambles{', mid-frame' if st['busy'] else ''}; aborts "
+              + ", ".join(f"{k} {v}" for k, v in st["aborts"].items() if v))
+        if st["frames"]:
+            print(f"  last: P{l['profile']} type {l['type']} seq {l['seq']} len {l['len']}, "
+                  f"{(st['board_ms'] - l['commit_ms']) & 0xFFFFFFFF} ms ago, "
+                  f"{(l['commit_ms'] - l['anchor_ms']) & 0xFFFFFFFF} ms from anchor to commit")
+            print(f"  payload {bytes.fromhex(l['payload'])!r}")
 elif cmd == "read":
     vals = []
     for pg in (0, 1):

@@ -1,9 +1,9 @@
 # The lock-LED channel: a design to review
 
-Status: **a draft for codex to take apart (10-18)**. Nothing here is built
-except the test tools (`hostagent/ledprobe/`, `scripts/ledchannel_test.py`)
-and flash 2g's 5A trace. The research, with every measurement, is
-`plans/BACKLOG.md`, "Community", quill4gen7 item 1.
+Status: **approved by JD and being built (10-18).** The wire format below is
+version 0: the board's receiver and the reference encoder exist and are tested
+on the host; nothing on the board acts on frames yet. The research, with every
+measurement, is `plans/BACKLOG.md`, "Community", quill4gen7 item 1.
 
 ## What it is for
 
@@ -130,6 +130,68 @@ bit/s, ~5.5 s.
 **Where it lives:** the Rust daemon (`ak820-agent/`), as a second transport for
 the messages it already sends over raw HID, used when the cable is absent; the
 board's decoder beside the 5A parser.
+
+## The wire format (version 0, built 10-18)
+
+Approved by JD 10-18 after codex's review (below). The receiver is
+`lockchan.c` in the board directory (dev builds only for now: frames are
+decoded and counted, `HC_DEVHOOK` ops 10-13 read them, nothing acts on them
+yet); the reference encoder is `scripts/lockchan.py`; `scripts/lockchan_test.py`
+compiles the receiver on the Mac and checks the two against each other.
+
+**Profiles** (which LED bits carry data; Caps `0x02` never does):
+
+| | data bits | base | block | rate at 32 writes/s |
+|---|---|---|---|---|
+| P0 | Num `0x01`, Scroll `0x04` | 3 | 19 bits in 12 digits | ~51 bit/s |
+| **P1 (default)** | Num, bit 3 `0x08`, bit 4 `0x10` | 7 | 14 bits in 5 digits | ~90 bit/s |
+| P2 | Num, Scroll, bits 3-4 | 15 | 31 bits in 8 digits | ~124 bit/s |
+
+**A digit is a transition.** Each write flips a non-empty subset of the
+profile's data bits; subset `s` (bit i of `s` = the profile's i-th data bit)
+is digit `s - 1`. A write that flips none of them is ignored (repeats, and
+Scroll under P1).
+
+**Blocks.** A section's bits, most significant first, in blocks of the
+profile's size; the last block holds what is left in the fewest digits `n`
+with `base^n >= 2^r`. Digits most significant first; a block that decodes to
+`2^bits` or more aborts the frame.
+
+**A frame:**
+1. **Quiet:** no data-bit transition for 100 ms.
+2. **Preamble:** three transitions each flipping bits 3-4 together (from bits
+   3-4 clear): `00 → 11 → 00 → 11`, for a P1 or P2 frame; or each flipping Num
+   and Scroll together, for a P0 frame. The third is the frame's anchor.
+3. **Header:** 32 bits in P1 (after a bits 3-4 preamble) or P0: `[version(2)=0
+   | profile(2) | type(4)] [seq] [len <= 48] [CRC-8 of the three]`, CRC-8 poly
+   `0x07`, init 0. A bits 3-4 preamble may announce P1 or P2; a Num + Scroll
+   one only P0.
+4. **Payload:** `len` bytes then a CRC-16/CCITT-FALSE (poly `0x1021`, init
+   `0xFFFF`, big-endian) over the 4 header bytes and the payload, in the
+   announced profile.
+5. **Trailer:** two transitions back to the baseline (the LED byte before the
+   preamble, on the profile's bits): first to `baseline ^ 0x08` (P0: `^ 0x01`),
+   or `^ 0x10` (P0: `^ 0x04`) when the payload already ended there; then the
+   baseline. The frame commits only then.
+
+**Aborts:** more than 150 ms between transitions; a frame older than 12 s; any
+Caps change; a bad header CRC, version, profile or length; a block out of
+range; a bad CRC-16; a wrong trailer; the link going down. After any abort the
+receiver needs the quiet and a new preamble.
+
+**On the board** a frame in progress holds the LCD's Scroll Lock (the settle
+clock restarts when it ends), which covers P0 and P2; P1 never touches Scroll.
+
+**Sizes** (from the encoder): a 29-byte payload (30 characters of 7-bit text
+plus two length bytes) is 106 writes in P1 (~3.3 s at 31 ms a write), 81 in P2
+(~2.5 s), 183 in P0 (~5.7 s); 48 bytes is 160, 121 and 279.
+
+**Not yet:** what a frame carries (types: text, clock), 7-bit text packing,
+the publication policy, the daemon's sender, and acting on frames. Those
+follow once the board shows frames arriving intact.
+
+**Windows:** JD has a second AK820 Pro on the Windows PC (not on a relay), the
+test bed for the Windows routes when they come.
 
 ## Codex's review (10-18) and what changed
 

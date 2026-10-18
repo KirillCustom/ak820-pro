@@ -3,8 +3,8 @@ what reaches the board of the LED bytes this Mac writes over Bluetooth.
 
     venv/bin/python scripts/ledchannel_test.py [--out DIR] [TEST ...]
 
-TEST is width, high, repeats, speed, random or caps (default: all six, in
-that order). Each one resets the board's 5A trace (`scripts/devhook.py leds reset`,
+TEST is width, high, repeats, speed, random, caps or frames (default: the
+first six, in that order; frames needs flash 2h). Each one resets the board's 5A trace (`scripts/devhook.py leds reset`,
 over the cable), has the LED probe write a sequence over BLE (`seq` mode), then
 reads the trace back and compares:
   width    0x01..0x1F then 0x00, 200 ms apart: which of the five bits arrive
@@ -22,6 +22,10 @@ reads the trace back and compares:
            off in software, as a key press would: does the LED report the Mac
            sends for Caps keep bits 3-4 (0x1a, 0x18) or zero them (0x02,
            0x00)? Caps Lock is really on for ~0.6 s, so not mid-typing
+  frames   whole frames from scripts/lockchan.py, six per profile (P1, P2,
+           P0), text payloads of 20-37 bytes, back to back: does the board's
+           receiver (lockchan.c, flash 2h) commit each one exactly, and how
+           long does it take
 Needs flash 2g (the trace; the slider on BT, linked), the probe app
 (scripts/build-led-probe.sh) and the Mac unlocked (locked, it refuses every
 write). Caps (0x02) shows CAPS on the LCD while it is set. The board's stall
@@ -148,14 +152,63 @@ def caps_test(out):
           f"by the Mac's Caps report; stalls +{after['count_ge_25ms'] - before['count_ge_25ms']}")
 
 
+def frames(*args):
+    r = subprocess.run([PY, os.path.join(ROOT, "scripts/devhook.py"), "frames", *args],
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        sys.exit(f"devhook.py frames {' '.join(args)}: {(r.stderr or r.stdout).strip()}")
+    return json.loads(r.stdout) if args == ("json",) else None
+
+
+def frames_test(out):
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from lockchan import encode, P0, P1, P2
+    rng = random.Random(8202)
+    words = "the a of and to in love night light song blue heart home road dream fire rain".split()
+    results = []
+    for prof, name in ((P1, "P1"), (P2, "P2"), (P0, "P0")):
+        before = health()
+        frames("reset")
+        ok = 0
+        for i in range(6):
+            text = " ".join(rng.choice(words).title() for _ in range(12))[:rng.randint(20, 37)].encode()
+            seq = (prof * 16 + i) & 0xFF
+            w = encode(text, type=1, seq=seq, profile=prof, user=0)
+            t0 = time.time()
+            send(0, w)
+            host_s = time.time() - t0
+            time.sleep(0.6)
+            st = frames("json")
+            l = st["last"]
+            good = (st["frames"] == i + 1 and l["seq"] == seq and l["profile"] == prof
+                    and bytes.fromhex(l["payload"]) == text)
+            ok += good
+            results.append({"profile": name, "seq": seq, "text": text.decode(), "writes": len(w),
+                            "ok": good, "host_s": round(host_s, 2),
+                            "board_anchor_to_commit_ms": (l["commit_ms"] - l["anchor_ms"]) & 0xFFFFFFFF if good else None,
+                            "receiver": st})
+            if not good:
+                print(f"{'':14} {name} frame {i} NOT received: frames {st['frames']}, aborts "
+                      + ", ".join(f"{k} {v}" for k, v in st["aborts"].items() if v))
+        after = health()
+        mine = [r for r in results if r["profile"] == name and r["ok"]]
+        span = sorted(r["board_anchor_to_commit_ms"] for r in mine)
+        print(f"frames-{name:8} {ok}/6 committed exactly; {results[-1]['writes']} writes for the last; "
+              f"anchor to commit {span[0] if span else '-'}-{span[-1] if span else '-'} ms; "
+              f"stalls +{after['count_ge_25ms'] - before['count_ge_25ms']}, "
+              f"overruns +{after['uart_overrun'] - before['uart_overrun']}")
+    with open(os.path.join(out, "frames.json"), "w") as f:
+        json.dump(results, f, indent=1)
+
+
 def main():
     args = sys.argv[1:]
     out = os.path.join(ROOT, "history", "ledchannel-" + time.strftime("%Y-%m-%d"))
     if args[:1] == ["--out"]:
         if len(args) < 2: sys.exit(__doc__)
         out, args = args[1], args[2:]
-    names = ("width", "high", "repeats", "speed", "random", "caps")
-    tests = args or list(names)
+    names = ("width", "high", "repeats", "speed", "random", "caps", "frames")
+    tests = args or list(names[:6])
     if any(t not in names for t in tests):
         sys.exit(__doc__)
     os.makedirs(out, exist_ok=True)
@@ -179,6 +232,8 @@ def main():
             run("random", 0, vals + ([0] if vals[-1] else []), out)
         elif t == "caps":
             caps_test(out)
+        elif t == "frames":
+            frames_test(out)
 
 
 if __name__ == "__main__":
