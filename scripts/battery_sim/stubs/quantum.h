@@ -33,4 +33,8 @@ uint32_t last_input_activity_elapsed(void);
 bool gpio_read_pin(int pin);
 
 bool rgb_matrix_is_enabled(void);
+/* QMK's colour types (quantum/color.h), for power.c's dim hook. */
+typedef struct { uint8_t r, g, b; } rgb_t;
+typedef struct { uint8_t h, s, v; } hsv_t;
+rgb_t hsv_to_rgb(hsv_t hsv);
 #define RGB_MATRIX_LED_COUNT 82

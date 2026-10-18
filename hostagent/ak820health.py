@@ -69,7 +69,7 @@ LINK_FIELDS = ["sent", "timeouts", "queue_full", "giveups", "replaced",
                "uart_overrun", "uart_framing", "uart_parity", "_reserved"]
 # HC_FLASHW: write sessions/programs/erases by writer (flash_stats.h).
 WRITERS = ["other", "kb", "rgb", "via"]
-KB_FIELDS = ["bt", "rtc_period", "lcd_brightness", "clock_mode", "batt_level"]
+KB_FIELDS = ["bt", "rtc_period", "lcd_brightness", "clock_mode", "batt_level", "power_mode"]
 RTC_PATHS = {0: "-", 1: "sof", 2: "pcf"}
 # HC_ACCT: scope order is loop_acct.h's enum acct_scope, unaccounted last.
 SCOPES = ["ch582", "battery", "display_hk", "blit_pump", "rtc_task", "rtc_fast",
@@ -304,13 +304,13 @@ def read_flashw(h):
     p1 = _txn_page(h, HC_FLASHW, 1)
     p2 = _txn_page(h, HC_FLASHW, 2)
     v0 = struct.unpack_from("<4I4H2H", p0, 4)
-    v1 = struct.unpack_from("<4I5H", p1, 4)
+    v1 = struct.unpack_from("<4I6H", p1, 4)   # the 6th: power_mode (was reserved, 0)
     v2 = struct.unpack_from("<HBBH4IIH", p2, 4)
     return {
         "sessions": dict(zip(WRITERS, v0[0:4])),
         "erases": dict(zip(WRITERS, v0[4:8])),
         "programs": dict(zip(WRITERS, v1[0:4])),
-        "kb_field_sessions": dict(zip(KB_FIELDS, v1[4:9])),
+        "kb_field_sessions": dict(zip(KB_FIELDS, v1[4:10])),
         "kb_mixed": v0[8], "kb_unknown": v0[9],
         "rtc_last_proposed": v2[0], "rtc_last_proposed_path": RTC_PATHS.get(v2[1], v2[1]),
         "rtc_last_stored_path": RTC_PATHS.get(v2[2], v2[2]), "rtc_last_stored": v2[3],

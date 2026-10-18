@@ -55,6 +55,13 @@ if grep -qE '^#define BATTERY_LOG_VERSION +([5-9]|[1-9][0-9])\b' "$build/battery
     [ $san = 0 ] && echo "ok   the model's scenarios under ASan and UBSan" || fail=1
 fi
 
+# Phase 2: the power modes (ladder.c), against a power.h that has them.
+if grep -q '^#define POWER_HAS_MODES' "$build/power.h"; then
+    for s in l_normal l_modes l_usb l_low_cap l_val_cap l_lights_cut l_announce l_persisted; do
+        "$build/sim" "$s" || fail=1
+    done
+fi
+
 # A build of the board's battery.c and power.c AT A PINNED REVISION, straight
 # from git, so what it checks cannot move when the working tree does.
 pinned() {   # pinned <rev> <dir>

@@ -37,7 +37,8 @@ static int      failures;
 
 uint32_t timer_read32(void) { return now_ms; }
 uint32_t timer_elapsed32(uint32_t last) { return now_ms - last; }
-uint32_t last_input_activity_elapsed(void) { return 0; }
+static uint32_t idle_ms;     /* the ladder's idle time; 0 = typing now */
+uint32_t last_input_activity_elapsed(void) { return idle_ms; }
 bool     gpio_read_pin(int pin) { return pin == CHARGE_CHRG_PIN ? !chrg_low : true; }
 bool     rgb_matrix_is_enabled(void) { return true; }
 uint8_t  ch582_get_battery(void) { return module_level; }
@@ -46,7 +47,19 @@ uint16_t ch582_battery_reports(void) { return reports; }
 bool     ch582_is_usb(void) { return false; }
 bool     ch582_is_connected(void) { return true; }
 void     display_set_alert(const char *m) { n_alerts++; snprintf(last_alert, sizeof last_alert, "%s", m); }
-void     display_set_backlight_cap(uint8_t c) { (void)c; }
+static char last_status[32] = "";
+void     display_set_param_status(const char *s) { snprintf(last_status, sizeof last_status, "%s", s); }
+/* QMK's conversion, for the dim hook: s = 0 (white) is all the sim needs. */
+rgb_t    hsv_to_rgb(hsv_t c) { rgb_t r = {c.v, c.v, c.v}; return r; }
+static uint8_t power_mode_p1;   /* kb_eeconfig's power mode + 1, 0 = unset */
+bool kb_eeconfig_get_power_mode(uint8_t *m) {
+    if (power_mode_p1 == 0) return false;
+    *m = (uint8_t)(power_mode_p1 - 1u);
+    return true;
+}
+void kb_eeconfig_set_power_mode(uint8_t m) { power_mode_p1 = (uint8_t)(m + 1u); }
+static uint8_t bkl_cap = 0xFF;
+void     display_set_backlight_cap(uint8_t c) { bkl_cap = c; }
 uint8_t  display_backlight_effective(void) { return 10; }
 uint32_t sn32f2xx_led_load(void) { return scale ? 82u * 3u * 255u / 2u : 0u; }
 void     sn32f2xx_set_power_scale(uint8_t s) { scale = s; }
@@ -1130,6 +1143,9 @@ static void c5_equivalence(void) {
 
 #if BATTERY_LOG_VERSION >= 5
 #include "model.c"   /* Phase 1b, B2: the charging model's scenarios (flash 2) */
+#ifdef POWER_HAS_MODES
+#include "ladder.c"  /* Phase 2: the power modes */
+#endif
 #endif
 
 static void stale(void) {
@@ -1233,6 +1249,16 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "m_replay_0928"))  m_replay_0928(argc > 2 ? argv[2] : "");
     else if (!strcmp(s, "m_replay_1001"))  m_replay_1001(argc > 2 ? argv[2] : "");
     else if (!strcmp(s, "m_replay_1004a")) m_replay_1004a(argc > 2 ? argv[2] : "");
+#endif
+#ifdef POWER_HAS_MODES
+    else if (!strcmp(s, "l_normal"))     l_normal();
+    else if (!strcmp(s, "l_modes"))      l_modes();
+    else if (!strcmp(s, "l_usb"))        l_usb();
+    else if (!strcmp(s, "l_low_cap"))    l_low_cap();
+    else if (!strcmp(s, "l_val_cap"))    l_val_cap();
+    else if (!strcmp(s, "l_lights_cut")) l_lights_cut();
+    else if (!strcmp(s, "l_announce"))   l_announce();
+    else if (!strcmp(s, "l_persisted"))  l_persisted();
 #endif
     else if (!strcmp(s, "baseline_0928"))      baseline_0928(argc > 2 ? argv[2] : "");
     else if (!strcmp(s, "baseline_1001"))      baseline_1001(argc > 2 ? argv[2] : "");
