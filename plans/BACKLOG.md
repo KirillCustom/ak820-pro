@@ -108,6 +108,24 @@ a Claude Code hook. Ideas worth taking:
      Async writes (`IOHIDDeviceSetReportWithCallback`) might pack more into
      each event; untested. Whether the board received all 40 is unknown
      until the hook below.
+   - **Where it would live: the Rust daemon (`ak820-agent/`).** It already
+     owns now-playing and the clock on both OSes, and only one process may
+     run clock transactions, so a clock over the air cannot be a separate
+     tool. The lights become a second transport for the same messages, used
+     when the cable's raw HID is absent; on macOS it is the probe's
+     `IOHIDDeviceSetReport`, in the daemon's hand-rolled IOKit style.
+   - **Windows is unproven and harder** (from memory, unverified):
+     1. a per-keyboard output report (`HidD_SetOutputReport`): Windows holds
+        keyboard collections exclusively, so an app's write is probably
+        refused;
+     2. the keyboard class driver's `IOCTL_KEYBOARD_SET_INDICATORS`, the old
+        trick of disk-activity LED tools: sets one keyboard's lights without
+        moving the lock state, but untested on Windows 11 and on a BLE
+        keyboard, and Windows may reassert the lights on any lock change;
+     3. toggling the real lock keys: global, the side effects above. No.
+     A Windows probe first, finding the board without enumerating HID (the
+     daemon's finder already does), and only if a Windows PC uses the
+     keyboard wirelessly: over the cable, raw HID already does all of it.
    - **The test that answers the rest without JD's eyes (after R3, one `dev`
      flash):** a dev hook that returns the last `5A` byte and a count of `5A`
      frames. The probe then sends all 32 byte values and reads back what
