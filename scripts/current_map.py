@@ -76,10 +76,13 @@ def _white(v):
     return (f"white {v}", {"effect": 1, "h": 0, "s": 0, "v": v}, None)
 
 
+# The low end too (JD, 10-18: is a dim green cheaper than a dim red?): white
+# at value 3 (drive 1 of 255 after QMK's CIE curve) for the fixed cost of any
+# LED lit, and each colour alone at value 16 (drive 2).
 RGB_CURVE = ([("jd", None, None), ("rgb off", {"effect": 0}, None)]
-             + [_white(v) for v in (255, 254, 252, 248, 240, 224, 192, 160, 128, 96, 64, 48, 32, 16)]
+             + [_white(v) for v in (255, 254, 252, 248, 240, 224, 192, 160, 128, 96, 64, 48, 32, 16, 3)]
              + [(f"{name} {v}", {"effect": 1, "h": h, "s": 255, "v": v}, None)
-                for v in (255, 128) for name, h in (("red", 0), ("green", 85), ("blue", 170))])
+                for v in (255, 128, 16) for name, h in (("red", 0), ("green", 85), ("blue", 170))])
 # Phase 2: the ladder's stages forced (HC_DEVHOOK op 14), at JD's lighting and
 # at a coloured and an animated effect, each against the board's own modelled
 # draw (HC_POWER), which the summary sets beside the logger's. A 4th element
