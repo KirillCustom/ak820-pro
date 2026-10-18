@@ -1,7 +1,8 @@
 # R3: the logged drain on flash 2f (from 2026-10-15 23:37:59)
 
-`plans/POWER-CAMPAIGN-PLAN.md`, R3/R4. Running unattended: the RGB cut at
-02:01:22 10-18 after 50.39 h; charging since 02:06:53.
+`plans/POWER-CAMPAIGN-PLAN.md`, R3/R4. **Done:** the RGB cut at 02:01:22
+10-18 after 50.39 h; charged from 02:06:53 to FULL (the charger stopped at
+12:00:49; the trial confirmed at 12:07:13 and ended at 12:17:15).
 
 **Start boundary** (codex's must-fix 3): `bench_trial.py --full` topped the
 pack up to the charger's termination (FULL 23:27:19, two CHRG-high reads 5
@@ -90,3 +91,20 @@ cut and the relay the board drew 35.2-37.3 mA.
   cannot say which of the two did it. Every lock-band change repaints the
   band, so the burst is the likelier one (an inference, not measured).
   The load itself is not something the drain does.
+
+**The charge (R4), 10-18.** Relay 2 on at 02:06:53; the logger's first
+charging second 02:06:54 at -564.9 mA (`vcell` 3526 mV). Constant current
+~549-565 mA to ~05:00 (`vcell` 4006 mV), then a taper: -486 mA at 06:00, -371
+at 08:00, -283 at 10:00, -131 at 11:30. **The charger stopped at 12:00:49**, the
+last charging second at -81.1 mA (`vcell` 4186 mV; the 10-15 top-up stopped at
+~78 mA). **3972.4 mAh in over 9.90 h**, against ~4012 mAh out to the cut (and
+~3 mAh of reserve before the relay): the register says the pack took back
+~1% less than it gave, so read the two as equal within the bridge's estimate
+and the register's own error, not as a measured efficiency. The trial saw FULL
+(CHRG high twice, 5 minutes apart) at 12:07:13 and dumped the RAM log at
+12:17:15 (`log-20261018-1217-full.csv`, 372 entries). The board's level read
+99.0% from 11:37 to 11:57 and 100% at 12:02.
+
+**The stall count at the end: still 1** (`ak820health.py --stalls`, 12:18:02,
+uptime 62.1 h, 43,171 presses): the 08:02 probe run (200 Scroll Lock toggles
+at 32/s among them) added none. Flash 2h went on at 12:18.
