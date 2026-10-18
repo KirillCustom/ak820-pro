@@ -304,7 +304,10 @@ RAM log survives).
 
 ```
  3.712V     ← the pack in volts; >4.036V / <3.161V at the 5C clamps, -.---V none
-   58%      ← the level in percent; --% unknown
+58% 31h     ← the level, and on battery the time left to the cut (Phase 2;
+              "4d" from 100 h, "<1h", "~" for the space while the average is
+              under an hour old; the level alone on USB or after the cut);
+              --% unknown. 8 cells since Phase 2 ("100%~51h")
 14:03:27    ← the board's clock
 5C 62@3     ← the raw 5C @ its age in s (the 10×23 status face)
 ```
@@ -315,7 +318,8 @@ from the clock the host agent keeps right.
 
 **In the clock's font, 15×22, since 2026-10-06** (`6eadbd0e3a`, shipped in
 flash 2). The atlas, cropped for the clock, still holds all 95 ASCII glyphs;
-the crop cut only descenders, and the page draws none (digits `. : % V < > -`).
+the crop cut only descenders, and the page draws none (digits `. : % V < > -`,
+and since Phase 2 `h d ~`; `scripts/camera_page_preview.py` renders them).
 Each line is a fixed grid of cells, so a changed character repaints only its
 own cell, and the pump paints **one changed cell per main-loop pass**. It
 shares the debug page's banded clear and staged restore, and recomposes once a

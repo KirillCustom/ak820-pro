@@ -341,6 +341,13 @@ INA228's `vbus_mv` (below).
   screen's backlight (`HC_DEVHOOK` ops 4-6, flash 2f, RAM only), forward
   then backward, and takes each state's current from the charge register;
   restores both and the relay after.
+  `--set rgb-curve` (Phase 2): white at 14 values and the three colours,
+  each with the board's LED drive read back; `--set stages`: the ladder's
+  stages forced (`HC_DEVHOOK` op 14) at three lightings, each beside the
+  board's own modelled draw (`HC_POWER`). On Phase 2 firmware every map holds
+  Full power and a forced stage, so the ladder cannot move a load mid-hold.
+- `scripts/ladder_check.py` (Phase 2): every enabled effect through every
+  forced ladder stage, on USB, the LED drive read back: off must read 0.0%.
 - `scripts/devhook.py lcd [LEVEL | on | off]`: the screen's backlight by
   hand.
 - **Results** (`plans/POWER-CAMPAIGN-PLAN.md`, R1 and R2), at 4.17 V: JD's

@@ -11,8 +11,9 @@ reviews and every disposition:
 [`plans/BATTERY-GAUGE-REFINE-PLAN.md`](../plans/BATTERY-GAUGE-REFINE-PLAN.md)
 ("As built" holds every measurement).
 
-> **State (2026-10-18): Phase 2 is being built**: an accurate gauge, a
-> time-left estimate and the power ladder
+> **State (2026-10-18): Phase 2 is built** (`d3e8389858`, "The gauge as
+> built, Phase 2" and "The idle ladder and the power modes", below): an
+> accurate gauge, a time-left estimate and the power ladder
 > ([`plans/POWER-CAMPAIGN-PLAN.md`](../plans/POWER-CAMPAIGN-PLAN.md),
 > [`plans/BATTERY-GAUGE-PLAN.md`](../plans/BATTERY-GAUGE-PLAN.md)). The logged
 > cycle (R3/R4) measured the gauge against the pack's real energy for the
@@ -817,6 +818,77 @@ flash ([hardware.md](hardware.md)).
 `scripts/diag_sim` covers the period's save scheduler: the first save at 10
 min, 3 saves in a day of the worst wander on both paths, 1 in two settled days.
 
+## The gauge as built, Phase 2: the energy count (`d3e8389858`)
+
+The plan, its three codex reviews and every disposition:
+[`plans/PHASE2-BUILD-PLAN.md`](../plans/PHASE2-BUILD-PLAN.md). The evidence:
+R1-R4 and A1-A8 in [`plans/POWER-CAMPAIGN-PLAN.md`](../plans/POWER-CAMPAIGN-PLAN.md).
+
+**Why:** on the curve's flat stretches a few mV are ~10 points. Against the
+logger's measured energy (R3) the voltage-read level was up to 13.8 points low
+at 70-80%, and a refit cannot help: the plateau moved 10-25 mV between
+cycles. The board is a constant-power load (305-311 mW over R3's whole drain),
+so its energy can be counted.
+
+**The count.** On battery, each second, the board's modelled draw over the
+elapsed time comes off the level, one per mille per 56,084.4 mW.s (15,579 mWh,
+R3's energy from FULL to the RGB cut, `E_CAP_MWH`). The model (`battery.c`,
+"The energy count"), in mW at ~4.17 V:
+- the base, every light out: 106.9 (R1's 114.0 less R2's USB data);
+- USB data, while USB is configured on battery (the bench only): +7.1;
+- the backlight: 39.1 x its duty / 48 (linear, R1);
+- the RGB: 9.5 while any LED is lit, plus 2.857 uW per unit of the channel
+  sum, from **the committed frames, time-weighted** (the LED driver sums each
+  frame it hands the row ISR and keeps sum x ms and lit ms:
+  `sn32f2xx_led_drive_take`). Linear in drive; QMK's CIE curve makes it look
+  otherwise in values (value 64 and 128 are drives of 12 and 48).
+Calibrated for JD's unit as it runs (BT linked, the MCU awake, the panel
+drawing). Not measured: the radio's other states, 2.4G, temperature.
+
+**The voltage bounds it, by a band, asymmetric** (`BATTERY_BAND_MV_UP` 25,
+`_DOWN` 40, `_PM` 15 in `battery.h`):
+- above `curve(V + 25) + 15` the level is ratcheted down (6 estimates in a
+  row, at most 1% a step); an allowance reaching the clamp's 4036 mV is no
+  bound;
+- below `curve(V − 40) − 15` the level waits and the count's energy is
+  dropped, not banked; only with a fresh estimate. The pack's voltage rises
+  when the load falls (R1: +10 mV from 73 to 28 mA), so a tighter lower edge
+  would pause the count through every idle night;
+- at the top clamp nothing bounds it (no 90.5% floor any more: a light load
+  stays clamped below 90% true).
+
+**0% is the cut.** No level on battery goes below 1% on its own (the count,
+the first estimate, every adoption, the entry to battery); the protection's
+cut latching sets 0, which wins over any re-seat and hides time left.
+
+**Anchors:** FULL sets 100% and restarts the count; after a charge the count
+runs from the charging model's level through the 30-minute relaxation, and
+the re-seat keeps it inside the band (on the plateau the band is wide, so the
+model's level stands; where the curve is steep the voltage moves it). On idle
+USB a known level stays, bounded by the band. A reboot on battery starts from
+the voltage (or, clamped, the saved level: a 90-100% point or "under 90", 89%):
+its accuracy is the voltage's, not claimed.
+
+**Time left** (`battery_time_left_min`): the level's energy over the average
+draw, which is the mean of the minutes on battery so far and an exponential
+average with a 12 h time constant from the 720th; frozen on USB. On
+`Fn`+`D`'s camera page: `58% 31h`, `85% 4d`, `9% <1h`, `100%~51h` while under
+an hour of average; nothing on USB, unknown or after the cut.
+
+**Measured on the host** (`scripts/battery_sim`, 121 cases): R3 and drain 2e
+replayed through the firmware at one-second steps, under three orderings of
+each 10-minute entry's `5C` reports: **within +0.1 / +1.2 points at every
+second**, against the gauge's −13.8 and −7.3. With the capacity deliberately
+wrong (`run.sh --sensitivity`): ±5% stays within 3.8 points; an aged pack
+(the firmware assuming 13% more than the pack holds) reads up to 5.8 high; a
+model over-counting by 13% reads up to 10.2 low. **Not yet measured: a drain
+under the ladder's changing load (R5).**
+
+**Raw HID:** `HC_POWER` (0x0F; `ak820battery.py` prints it): the mode and
+stage, the count's state, the draw and its average, time left, the energy since
+FULL, the band. **The log, v6:** 15-minute entries (180 h), the period's
+modelled energy in `vdd_min`'s place.
+
 ## Hardware facts
 
 **The pack** (JD's unit, printed on the cell): `JKJ606090 4000mAh 72.9g,
@@ -1139,20 +1211,31 @@ unidentified, so that is a hypothesis**, and a flip would also reset any latch
 in the board's own power path. It does make suspect 2 concrete: something that
 trips the protector, then holds it tripped while the board stays connected.
 
-## The idle ladder (`3b85686ff7`, compiled out)
+## The idle ladder and the power modes (Phase 2, `power.c`)
 
-On battery only: RGB to a quarter after 1 minute idle, RGB off and the screen
-capped at level 4 of 23 after 5, the screen backlight off after 15. Any key
-or knob turn restores everything within a tenth of a second, and the key
-types as normal. Each stage is a cap below the user's settings, never a
-change to them. ⚠️ **Built only with `POWER_LADDER_ENABLE`**, off by default
-since the gauge: it would change the load during the calibration run, and
-which of its stages pays is unmeasured (plan, 2.6). Deep sleep (stopping the
-row ISR, sleeping the MCU) is next; key scanning lives in that ISR, so it
-needs its own wake path (task 8.4, and task 9 for making that ISR cheaper).
-Phase 2 of the plan (power modes on `Fn`+`B`, an emergency reserve mode,
-standby) supersedes the ladder's design; JD is collecting ideas there, not
-building yet.
+`Fn`+`B` (`PWR_MODE`) cycles **Full power**, **Normal power** (the default) and
+**Power saver**, shown as an overlay and persisted (kb datablock byte 6; a
+flash resets it to Normal and says so once). On battery only:
+
+| | Full | Normal | Saver |
+|---|---|---|---|
+| RGB dimmed (its value capped at 64 of 255) | never | 1 min idle | 30 s |
+| RGB off, screen capped at level 4 | never | 5 min | 2 min |
+| screen backlight off | never | 15 min | 5 min |
+
+Any key or knob turn restores everything within a tenth of a second, and the
+key types as normal. Every stage is a cap, never a change to the user's
+settings. The dim caps the lighting's own value (`rgb_matrix_hsv_to_rgb`), so
+a colour keeps its hue; every stage change re-runs the effect's init pass
+(`rgb_matrix_reinit_effect`, a local hook in `quantum/rgb_matrix/`), so effects
+that redraw only some LEDs a frame go dark at once and come back whole. Below
+15% the lighting follows Saver whatever the mode, and says so once a
+discharge ("Saving power", on a lit screen; a real charge re-arms it).
+
+Measured (R1, A8): the RGB is 189 of the board's 306 mW at JD's settings,
+and JD's keyboard sits idle ~88% of the time, so Normal should roughly double
+a charge's runtime (a model estimate; R5 measures it). Light sleep, the
+radio and deep sleep are not built yet.
 
 ## Open questions
 
