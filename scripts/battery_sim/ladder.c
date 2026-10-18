@@ -207,6 +207,23 @@ static void l_minimal_owed(void) {
     CHECK(!strcmp(last_status, "Saving power"), "then the owed notice, got '%s'", last_status);
 }
 
+/* Notices into a free band only: behind an alert (60 s from its post) the
+ * flash's "Normal power" and the low cap's "Saving power" would expire
+ * unseen, so they wait it out, then come one after the other. */
+static void l_low_alert(void) {
+    power_init();
+    display_set_alert("Watchdog reset");   /* as at a boot after a reset */
+    uint32_t t0 = now_ms;
+    vdd_mv = 3900; c5 = 62;                /* ~11%: under the low cap */
+    while (now_ms - t0 < 59900u) ltick();
+    CHECK(battery_level_permille() <= 150, "level %u pm, want <= 150", battery_level_permille());
+    CHECK(last_status[0] == 0, "nothing over the alert, got '%s'", last_status);
+    while (now_ms - t0 < 60500u) ltick();
+    CHECK(!strcmp(last_status, "Normal power"), "the announcement once it ends, got '%s'", last_status);
+    while (now_ms - t0 < 63000u) ltick();
+    CHECK(!strcmp(last_status, "Saving power"), "then the low notice, got '%s'", last_status);
+}
+
 static void l_persisted(void) {
     kb_eeconfig_set_power_mode(POWER_MODE_SAVER);
     power_init();

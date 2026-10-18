@@ -50,16 +50,23 @@ bool     ch582_is_connected(void) { return true; }
  * paints every message the moment it is posted, so the post is the paint. */
 static uint32_t msg_at;       /* when the band last showed a new message */
 static bool     msg_seen, debug_open;
+static uint32_t alert_at, status_at;   /* for display_band_busy(): its holds run from the post */
+static bool     alert_posted, status_posted;
 void     display_set_alert(const char *m) {
     n_alerts++; snprintf(last_alert, sizeof last_alert, "%s", m);
-    msg_at = now_ms; msg_seen = true;
+    msg_at = alert_at = now_ms; msg_seen = alert_posted = true;
 }
 static char last_status[32] = "";
 void     display_set_param_status(const char *s) {
     snprintf(last_status, sizeof last_status, "%s", s);
-    msg_at = now_ms; msg_seen = true;
+    msg_at = status_at = now_ms; msg_seen = status_posted = true;
 }
 bool     display_message_recent(uint32_t ms) { return msg_seen && now_ms - msg_at < ms; }
+/* As display.c: an alert holds 60 s, an overlay 2 s, and Fn+D's page owns the panel. */
+bool     display_band_busy(void) {
+    return debug_open || (alert_posted && now_ms - alert_at < 60000u) ||
+           (status_posted && now_ms - status_at < 2000u);
+}
 bool     display_debug_active(void) { return debug_open; }
 /* QMK's conversion, for the dim hook: s = 0 (white) is all the sim needs. */
 rgb_t    hsv_to_rgb(hsv_t c) { rgb_t r = {c.v, c.v, c.v}; return r; }
@@ -1346,6 +1353,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "l_minimal"))    l_minimal();
     else if (!strcmp(s, "l_minimal_enter")) l_minimal_enter();
     else if (!strcmp(s, "l_minimal_owed"))  l_minimal_owed();
+    else if (!strcmp(s, "l_low_alert"))     l_low_alert();
     else if (!strcmp(s, "c_rate"))        c_rate();
     else if (!strcmp(s, "c_uneven"))      c_uneven();
     else if (!strcmp(s, "c_wrap"))        c_wrap();
