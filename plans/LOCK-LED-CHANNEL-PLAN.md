@@ -158,6 +158,9 @@ with `base^n >= 2^r`. Digits most significant first; a block that decodes to
 `2^bits` or more aborts the frame.
 
 **A frame:**
+0. **Warm-up:** the sender first makes sure the board has its baseline, with
+   one change and back (bit 3 on, then off): after a reset or a link change
+   the board's first LED byte only sets the baseline (codex, flash 2h).
 1. **Quiet:** no data-bit transition for 100 ms.
 2. **Preamble:** three transitions each flipping bits 3-4 together (from bits
    3-4 clear): `00 → 11 → 00 → 11`, for a P1 or P2 frame; or each flipping Num
@@ -174,13 +177,18 @@ with `base^n >= 2^r`. Digits most significant first; a block that decodes to
    or `^ 0x10` (P0: `^ 0x04`) when the payload already ended there; then the
    baseline. The frame commits only then.
 
-**Aborts:** more than 150 ms between transitions; a frame older than 12 s; any
-Caps change; a bad header CRC, version, profile or length; a block out of
-range; a bad CRC-16; a wrong trailer; the link going down. After any abort the
-receiver needs the quiet and a new preamble.
+**Aborts:** more than 150 ms between transitions; a frame older than 12 s; a
+Caps change once synced (before sync it only cancels the preamble); a bad
+header CRC, version, profile or length; a block out of range; a bad CRC-16; a
+wrong trailer; the link going down, a slot select, pairing or cable mode, at
+once, before the next byte. After any abort the receiver needs the quiet and a
+new preamble.
 
 **On the board** a frame in progress holds the LCD's Scroll Lock (the settle
 clock restarts when it ends), which covers P0 and P2; P1 never touches Scroll.
+Only while the radio is the active host. Limits (codex): back-to-back frames
+can hold it indefinitely, and after a sender dies mid-frame the light it left
+shows once settled; the hold is not a restore.
 
 **Sizes** (from the encoder): a 29-byte payload (30 characters of 7-bit text
 plus two length bytes) is 106 writes in P1 (~3.3 s at 31 ms a write), 81 in P2

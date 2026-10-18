@@ -23,9 +23,11 @@ reads the trace back and compares:
            sends for Caps keep bits 3-4 (0x1a, 0x18) or zero them (0x02,
            0x00)? Caps Lock is really on for ~0.6 s, so not mid-typing
   frames   whole frames from scripts/lockchan.py, six per profile (P1, P2,
-           P0), text payloads of 20-37 bytes, back to back: does the board's
+           P0), text payloads of 20-37 bytes, each frame's writes back to back
+           (the frames themselves are seconds apart), each after the sender's
+           warm-up (bit 3 on and off, then the quiet): does the board's
            receiver (lockchan.c, flash 2h) commit each one exactly, and how
-           long does it take
+           long does it take. Pass/fail: exits 1 if any frame is wrong
 Needs flash 2g (the trace; the slider on BT, linked), the probe app
 (scripts/build-led-probe.sh) and the Mac unlocked (locked, it refuses every
 write). Caps (0x02) shows CAPS on the LCD while it is set. The board's stall
@@ -173,14 +175,17 @@ def frames_test(out):
         for i in range(6):
             text = " ".join(rng.choice(words).title() for _ in range(12))[:rng.randint(20, 37)].encode()
             seq = (prof * 16 + i) & 0xFF
-            w = encode(text, type=1, seq=seq, profile=prof, user=0)
+            typ = 1 + i % 3
+            w = encode(text, type=typ, seq=seq, profile=prof, user=0)
+            send(0, [0x08, 0x00])   # the warm-up; the next launch is the quiet
             t0 = time.time()
             send(0, w)
             host_s = time.time() - t0
             time.sleep(0.6)
             st = frames("json")
             l = st["last"]
-            good = (st["frames"] == i + 1 and l["seq"] == seq and l["profile"] == prof
+            good = (st["frames"] == i + 1 and not st["busy"] and l["seq"] == seq and l["type"] == typ
+                    and l["profile"] == prof and l["len"] == len(text)
                     and bytes.fromhex(l["payload"]) == text)
             ok += good
             results.append({"profile": name, "seq": seq, "text": text.decode(), "writes": len(w),
@@ -191,7 +196,8 @@ def frames_test(out):
                 print(f"{'':14} {name} frame {i} NOT received: frames {st['frames']}, aborts "
                       + ", ".join(f"{k} {v}" for k, v in st["aborts"].items() if v))
         after = health()
-        mine = [r for r in results if r["profile"] == name and r["ok"]]
+        results.append({"profile": name, "health_before": before, "health_after": after})
+        mine = [r for r in results if r.get("profile") == name and r.get("ok")]
         span = sorted(r["board_anchor_to_commit_ms"] for r in mine)
         print(f"frames-{name:8} {ok}/6 committed exactly; {results[-1]['writes']} writes for the last; "
               f"anchor to commit {span[0] if span else '-'}-{span[-1] if span else '-'} ms; "
@@ -199,6 +205,7 @@ def frames_test(out):
               f"overruns +{after['uart_overrun'] - before['uart_overrun']}")
     with open(os.path.join(out, "frames.json"), "w") as f:
         json.dump(results, f, indent=1)
+    return all(r["ok"] for r in results if "ok" in r)
 
 
 def main():
@@ -212,6 +219,7 @@ def main():
     if any(t not in names for t in tests):
         sys.exit(__doc__)
     os.makedirs(out, exist_ok=True)
+    failed = False
     for t in tests:
         if t == "width":
             run("width", 200, list(range(1, 32)) + [0], out)
@@ -233,7 +241,10 @@ def main():
         elif t == "caps":
             caps_test(out)
         elif t == "frames":
-            frames_test(out)
+            if not frames_test(out):
+                failed = True
+    if failed:
+        sys.exit("frames: FAILED (frames.json has each frame)")
 
 
 if __name__ == "__main__":

@@ -64,6 +64,16 @@ class Rx:
     def busy(self):
         return L.lockchan_busy(self.buf)
 
+    def link_lost(self):
+        L.lockchan_link_lost(self.buf)
+
+    def warm(self, user, t):
+        """What a sender does first: a change and back, so the board has the
+        baseline whatever it saw last, then the quiet. Returns the time after."""
+        self.feed((user & 0x07) ^ 0x08, t)
+        self.feed(user & 0x07, t + 31)
+        return t + 31 + 300
+
     def stats(self):
         o = (ctypes.c_uint32 * 17)()
         L.lc_get(self.buf, o)
@@ -169,54 +179,67 @@ def test_repeats_and_unused_bits(rng):
     check("repeats and Scroll under P1", bad == 0, f"{bad} of 1000 frames lost")
 
 
-def fault(rng, w):
-    """One fault at a random place. Returns (writes, kind)."""
-    w = list(w)
-    i = rng.randrange(len(w))
-    kind = rng.choice(["delete", "insert", "substitute", "caps", "swap", "delete2"])
+def fault(rng, tl):
+    """One fault on a timeline of (value, time), at a random place. Removed
+    reports keep the others' times, so a loss leaves its real gap; inserted
+    and substituted values keep the neighbours' Caps, so they reach the CRC
+    and trailer checks instead of the Caps abort. Returns (timeline, kind)."""
+    tl = list(tl)
+    i = rng.randrange(len(tl))
+    caps = tl[i][0] & 0x02
+    kind = rng.choice(["delete", "burst", "insert", "substitute", "caps", "swap", "dup"])
     if kind == "delete":
-        del w[i]
-    elif kind == "delete2":            # two in a row lost (or merged)
-        del w[i:i + 2]
+        del tl[i]
+    elif kind == "burst":              # 2-10 in a row lost (or merged)
+        del tl[i:i + rng.randint(2, 10)]
     elif kind == "insert":
-        w.insert(i, rng.randrange(32))
+        t_prev = tl[i - 1][1] if i else tl[i][1] - 31
+        tl.insert(i, ((rng.randrange(32) & ~0x02) | caps, (t_prev + tl[i][1]) // 2))
     elif kind == "substitute":
-        w[i] = rng.randrange(32)
+        tl[i] = ((rng.randrange(32) & ~0x02) | caps, tl[i][1])
     elif kind == "caps":               # the user (or the Mac) changes Caps mid-frame
-        w = w[:i] + [v ^ 0x02 for v in w[i:]]
-    elif kind == "swap" and i + 1 < len(w):
-        w[i], w[i + 1] = w[i + 1], w[i]
-    return w, kind
+        tl = tl[:i] + [(v ^ 0x02, t) for v, t in tl[i:]]
+    elif kind == "swap" and i + 1 < len(tl):
+        (a, ta), (b, tb) = tl[i], tl[i + 1]
+        tl[i], tl[i + 1] = (b, ta), (a, tb)
+    elif kind == "dup":
+        tl.insert(i, (tl[i][0], tl[i][1]))
+    return tl, kind
+
+
+def feed_checked(rx, tl, f):
+    """Feed a timeline; every commit must be exactly f. Returns (commits, wrong)."""
+    commits = wrong = 0
+    for v, tt in tl:
+        if rx.feed(v, tt):
+            commits += 1
+            if f is None or not matches(rx.stats(), f):
+                wrong += 1
+        rx.poll(tt + 1)
+    return commits, wrong
 
 
 def test_faults(rng):
     rx, t = Rx(), 1000
-    rx.feed(0, t)
-    t += 500
     wrong = recovered = clean_lost = 0
     kinds = {}
-    for i in range(20000):
+    for i in range(30000):
         f = random_frame(rng)
-        w, kind = fault(rng, encode(**f))
-        rx.feed(f["user"], t)
-        t += 300
-        before = rx.stats()["frames"]
-        got, t = run_frame(rx, f, w, t, rng)
-        st = rx.stats()
-        if got:
-            if matches(st, f):
-                recovered += 1
-                kinds[kind] = kinds.get(kind, 0) + 1
-            else:
-                wrong += 1
-                print(f"  WRONG COMMIT after {kind}: sent {f}, got {st}")
-        t += 300
+        t = rx.warm(f["user"], t)
+        tl, t_end = timeline(encode(**f), rng, t)
+        tl, kind = fault(rng, tl)
+        commits, bad = feed_checked(rx, tl, f)
+        wrong += bad
+        if commits and not bad:
+            recovered += 1
+            kinds[kind] = kinds.get(kind, 0) + 1
+        t = t_end + 300
         # The next clean frame always gets through.
         g = random_frame(rng)
-        rx.feed(g["user"], t)
-        t += 300
-        got2, t = run_frame(rx, g, encode(**g), t, rng)
-        if not (got2 and matches(rx.stats(), g)):
+        t = rx.warm(g["user"], t)
+        tl, t = timeline(encode(**g), rng, t)
+        commits, bad = feed_checked(rx, tl, g)
+        if commits != 1 or bad:
             clean_lost += 1
         t += 300
     check("faults never commit a wrong frame", wrong == 0, f"{wrong} wrong")
@@ -246,16 +269,20 @@ def test_garbage_after_preamble(rng):
 
 
 def test_human(rng):
-    """An hour of lock presses seconds apart, from any keyboard: nothing syncs."""
+    """Lock presses from any keyboard, single lights at 20 ms to 3 s apart (a
+    report changes one light at a time when a person presses keys), plus the
+    odd simultaneous pair from a host restoring state: nothing ever commits,
+    and the bits 3-4 preamble never starts."""
     rx, t, state = Rx(), 1000, 0
     rx.feed(0, t)
-    for _ in range(3600):
-        t += rng.randint(200, 3000)
-        state ^= rng.choice([0x01, 0x02, 0x04, 0x05, 0x03, 0x06, 0x07])
+    for _ in range(50000):
+        t += rng.randint(20, 3000)
+        state ^= rng.choice([0x01, 0x02, 0x04] * 10 + [0x05, 0x03, 0x06, 0x07])
         rx.feed(state, t)
         rx.poll(t + 1)
     st = rx.stats()
-    check("human presses never sync", st["preambles"] == 0 and st["frames"] == 0, f"{st}")
+    check("human presses never commit", st["frames"] == 0, f"{st}")
+    check("any preamble human presses reach dies at the header", st["aborts"]["header_crc"] + st["aborts"]["header"] == st["preambles"], f"{st}")
 
 
 def test_timing(rng):
@@ -312,6 +339,81 @@ def test_timing(rng):
         check(f"second frame after {quiet} ms", got == bool(want), f"got {got}")
 
 
+def test_link_lost_everywhere(rng):
+    """The link lost before each write of a frame, in turn: never a commit,
+    and the next frame (after the sender's warm-up) always decodes."""
+    bad = 0
+    for prof in (P0, P1, P2):
+        f = dict(payload=b"link lost here", type=4, seq=5, profile=prof, user=0x04)
+        w = encode(**f)
+        for k in range(len(w)):
+            rx, t = Rx(), 1000
+            t = rx.warm(f["user"], t)
+            tl, t = timeline(w, rng, t)
+            for j, (v, tt) in enumerate(tl):
+                if j == k:
+                    rx.link_lost()
+                if rx.feed(v, tt):
+                    bad += 1
+            t = rx.warm(f["user"], t + 300)
+            tl, _ = timeline(w, rng, t)
+            commits, wrong = feed_checked(rx, tl, f)
+            bad += (commits != 1) + wrong
+    check("link lost before any write", bad == 0, f"{bad} bad")
+
+
+def test_boundaries():
+    """Quiet 99/100 ms, gap 150/151 ms, lifetime 12000/12001 ms, also across
+    the 32-bit timer's wrap."""
+    f = dict(payload=bytes(range(48)), type=6, seq=7, profile=P0, user=0)
+    w = encode(**f)
+    for t0 in (1000, 0xFFFFFFFF - 6000):
+        for quiet, want in ((99, 0), (100, 1)):
+            rx = Rx()
+            rx.feed(0x08, t0)
+            rx.feed(0x00, t0 + 31)
+            tl = [(v, t0 + 31 + quiet + 31 * k) for k, v in enumerate(encode(b"q", profile=P1))]
+            commits, _ = feed_checked(rx, tl, dict(payload=b"q", type=1, seq=0, profile=P1, user=0))
+            check(f"quiet {quiet} ms at {t0:#x}", commits == want, f"{commits}")
+        for gap, want in ((150, 1), (151, 0)):
+            g = dict(payload=b"gap", type=1, seq=0, profile=P1, user=0)
+            rx, t = Rx(), t0
+            t = rx.warm(0, t)
+            tl = [(v, t + 31 * k + (gap - 31 if k >= 10 else 0)) for k, v in enumerate(encode(**g))]
+            commits, _ = feed_checked(rx, tl, g)
+            check(f"gap {gap} ms at {t0:#x}", commits == want, f"{commits}")
+        for life, want in ((12000, 1), (12001, 0)):
+            rx, t = Rx(), t0
+            t = rx.warm(0, t)
+            n = len(w)
+            # Evenly spread so the trailer's last write lands `life` ms after the
+            # preamble's first, every gap under 150 ms.
+            tl = [(v, t + (life * k) // (n - 1)) for k, v in enumerate(w)]
+            commits, _ = feed_checked(rx, tl, f)
+            check(f"lifetime {life} ms at {t0:#x}", commits == want, f"{commits}")
+
+
+# Pinned writes for one short frame per profile: the encoder must not drift
+# from what the board was built against. Regenerate only with a version bump.
+GOLDEN = {
+    P0: [7, 2, 7, 6, 7, 6, 7, 3, 2, 3, 6, 2, 3, 6, 3, 2, 3, 7, 2, 6, 3, 6, 2, 6, 7, 2, 3, 6, 2, 3, 7,
+         6, 3, 7, 2, 7, 2, 3, 6, 7, 3, 2, 7, 3, 2, 6, 2, 7, 6, 2, 3, 2, 3, 7, 6, 7, 6, 2, 6, 2, 3, 2],
+    P1: [26, 2, 26, 27, 11, 3, 10, 19, 3, 19, 27, 26, 3, 10, 11, 3, 27, 19, 27, 2, 26, 10, 26, 27, 2,
+         3, 26, 10, 18, 2, 10, 18, 19, 18, 10, 18, 2],
+    P2: [26, 2, 26, 27, 2, 10, 3, 11, 27, 11, 10, 18, 11, 2, 10, 2, 10, 14, 7, 15, 26, 19, 27, 26, 19,
+         27, 18, 11, 18, 3, 10, 2],
+}
+
+
+def test_golden():
+    for prof in (P0, P1, P2):
+        w = encode(b"AK820", type=1, seq=42, profile=prof, user=0x02)
+        if GOLDEN[prof] is None:
+            print(f"     golden P{prof}: {w}")
+        else:
+            check(f"golden P{prof}", w == GOLDEN[prof], f"{w}")
+
+
 def test_timer_wrap(rng):
     rx = Rx()
     t = 0xFFFFFFFF - 2000
@@ -340,6 +442,9 @@ def main():
     test_human(rng)
     test_timing(rng)
     test_timer_wrap(rng)
+    test_link_lost_everywhere(rng)
+    test_boundaries()
+    test_golden()
     if VERBOSE:
         report_sizes()
     print("lockchan: all passed" if not fails else f"lockchan: {fails} FAILED")

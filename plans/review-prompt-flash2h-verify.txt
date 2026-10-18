@@ -1,0 +1,7 @@
+Verify fixes before a flash. Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify anything.
+
+You reviewed flash 2h (firmware commit 3dcbc8b34c) in /Users/jdlien/code/ak820-pro/plans/review-codex-flash2h-2026-10-18.md. The fixes are firmware commit b05e7cbc4e:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show b05e7cbc4e
+plus host-side changes in /Users/jdlien/code/ak820-pro/scripts/lockchan_test.py (the strengthened tests: link loss before every write, Caps-preserving faults, deletion bursts keeping real gaps, every commit checked, faster human presses, the 99/100, 150/151 and 12000/12001 ms boundaries also across the timer wrap, pinned golden vectors) and /Users/jdlien/code/ak820-pro/scripts/ledchannel_test.py (frames_test: a warm-up before each frame, every field checked, idle required, health kept, exit 1 on failure). The host suite passes.
+
+For each of your findings 1-4 and the notes (the cable-mode hold, Caps wording, the header's cost comment), say whether the fix is complete and correct, citing file:line. In particular for finding 1: is every path where the link goes down or changes covered before the next byte of the same UART drain is parsed (5B down states, the promotion path, slot select, pairing, ch582_cancel_connect), and is any path now reset wrongly (e.g. a reset that drops a frame on a harmless 5B)? Flag anything new the fixes introduced. Rank must-fix / should-fix / note; be brief where things are fine.

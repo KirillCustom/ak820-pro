@@ -52,6 +52,32 @@ with the LED probe's new `seq` and `aseq` modes.
 | 5 | should fix (plan): a 10 ms sleep after a ~30 ms synchronous write tests ~40 ms between starts, not 10 | **Fixed:** the runner reports the measured start-to-start spacing; `speed-async` (the probe's new `aseq`, every write issued at once) is the fastest this Mac can send. |
 | 6 | notes: context all main loop; ring, gap, bounds and LE layout fine; raw vs accepted kept apart; reset keeps `host_leds`; the header's `host_leds` is the radio's even in cable mode; nothing dev-only leaks; the 25 ms budget untouched but not proven; missing frames could be UART loss or checksum rejects | Agreed. The runner reads `count_ge_25ms`, `rx_malformed` and the UART overrun and framing counts before and after every test. Slider on BT for the tests. |
 
+### Flash 2h: the lock-LED channel's receiver (10-18)
+
+`lockchan.c` decodes the wire format (`LOCK-LED-CHANNEL-PLAN.md`, "The wire
+format", version 0) from the 5A stream, dev builds only: frames counted,
+`HC_DEVHOOK` ops 10-13 read them (`scripts/devhook.py frames`), nothing acts
+on them. A frame in progress holds the LCD's settled Scroll Lock. Host:
+`scripts/lockchan.py` (reference encoder), `scripts/lockchan_test.py` (the
+receiver compiled on the Mac against it: all pass), `ledchannel_test.py
+frames`. Firmware `3dcbc8b34c` then `b05e7cbc4e` (local, **not pushed**),
+built as `via-dev-b05e7cbc4e-20261018-112802.bin`, token `0x9583223d`;
+daily `via-daily-b05e7cbc4e-20261018-112824.bin`.
+
+**Codex review** ([verbatim](review-codex-flash2h-2026-10-18.md), prompt
+[`review-prompt-flash2h.txt`](review-prompt-flash2h.txt)): one must-fix.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | **must fix:** the receiver learned of a link drop only at the end of the UART drain, so a drop, a reconnect and a frame's last reports in one drain could commit an old frame | **Fixed:** `lockchan_link_lost()` at every site at once (the three 5B down states, slot select, pairing, cable mode). |
+| 2 | should fix: the Scroll key's show-at-once shortcut bypasses the hold | **Fixed:** not while a frame is in progress. |
+| 3 | should fix: the board test sent no baseline, so a fresh receiver loses the first preamble edge | **Fixed:** a warm-up (bit 3 on, off) before every frame; the spec now requires it. |
+| 4 | should fix: the board test never failed, skipped `type` and idle, dropped health | **Fixed:** every field, idle after, health kept, exit 1 on failure. |
+| 5 | notes: the codec matches v0; no overflow (15^8 - 1 < 2^32); timing and wrap sound; 180 bytes of RAM; the hold applied in cable mode too; back-to-back frames can hold Scroll; Caps wording; the header undersold the CRC's cost | Cable mode: **fixed** (feed, poll and hold only while the radio is the host). The rest: spec and comments reworded. |
+| 6 | should fix: the host tests were too kind (Caps-randomising faults, deletions retimed, last-commit-only oracle, slow human presses, no boundaries, encoder and decoder sharing one understanding) | **Fixed:** Caps-preserving faults, bursts with real gaps, every commit checked, presses 20 ms apart, exact boundaries across the wrap, link loss before every write, pinned golden vectors. Shared understanding remains: the spec is the contract. |
+
+Verify pass on `b05e7cbc4e`: [`review-codex-flash2h-verify-2026-10-18.md`](review-codex-flash2h-verify-2026-10-18.md).
+
 ## 2026-10-15
 
 **Where things stand: the INA228 power logger is on the pack and recording,
