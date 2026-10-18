@@ -22,12 +22,13 @@ reads the trace back and compares:
            off in software, as a key press would: does the LED report the Mac
            sends for Caps keep bits 3-4 (0x1a, 0x18) or zero them (0x02,
            0x00)? Caps Lock is really on for ~0.6 s, so not mid-typing
-  frames   whole frames from scripts/lockchan.py, six per profile (P1, P2,
-           P0), text payloads of 20-37 bytes, each frame's writes back to back
-           (the frames themselves are seconds apart), each after the sender's
-           warm-up (bit 3 on and off, then the quiet): does the board's
-           receiver (lockchan.c, flash 2h) commit each one exactly, and how
-           long does it take. Pass/fail: exits 1 if any frame is wrong
+  frames   whole frames from scripts/lockchan.py, six per profile (P3, P1,
+           P2, P0), text payloads of 20-37 bytes, each frame's writes back to
+           back (the frames themselves are seconds apart), each after the
+           sender's warm-up (bit 3 on and off, then the quiet): does the
+           board's receiver (lockchan.c; P3 needs flash 2i) commit each one
+           exactly, and how long does it take. Pass/fail: exits 1 if any frame
+           is wrong
 Needs flash 2g (the trace; the slider on BT, linked), the probe app
 (scripts/build-led-probe.sh) and the Mac unlocked (locked, it refuses every
 write). Caps (0x02) shows CAPS on the LCD while it is set. The board's stall
@@ -164,11 +165,12 @@ def frames(*args):
 
 def frames_test(out):
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
-    from lockchan import encode, P0, P1, P2
+    from lockchan import encode, P0, P1, P2, P3
     rng = random.Random(8202)
     words = "the a of and to in love night light song blue heart home road dream fire rain".split()
     results, health_log, stalled = [], [], False
-    for prof, name in ((P1, "P1"), (P2, "P2"), (P0, "P0")):
+    last_write = time.time()   # unknown before the run: wait the full time once
+    for prof, name in ((P3, "P3"), (P1, "P1"), (P2, "P2"), (P0, "P0")):
         before = health()
         frames("reset")
         ok = 0
@@ -178,10 +180,15 @@ def frames_test(out):
             typ = 1 + i % 3
             w = encode(text, type=typ, seq=seq, profile=prof, user=0)
             n0 = frames("json")["frames"]
-            send(0, [0x08, 0x00])   # the warm-up, so the board has the baseline,
+            # More than the 500 ms gap since this Mac's last LED write, so a
+            # receiver a lost frame left mid-section has let go (codex, flash
+            # 2i: the first frame of a run had no such wait);
+            time.sleep(max(0.0, 0.7 - (time.time() - last_write)))
+            send(0, [0x08, 0x00])   # then the warm-up, so the board has the baseline,
             time.sleep(0.3)         # then the quiet (the probe exits once its last write completes)
             t0 = time.time()
             send(0, w)
+            last_write = time.time()
             host_s = time.time() - t0
             time.sleep(0.6)
             st = frames("json")

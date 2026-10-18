@@ -175,9 +175,47 @@ results in `history/ledchannel-2026-10-18/`.
 3. The Caps paint's stall goes to the display work (`Fn`+`D`'s probe, a track
    playing).
 
+## Measured on the board, flash 2i (15:18-15:25 10-18)
+
+`ledchannel_test.py frames`, results in `history/ledchannel-2026-10-18-2i/`:
+**24 of 24 frames committed exactly**, six per profile, 20-37-byte texts:
+
+| | writes | host send | anchor to commit (board) |
+|---|---|---|---|
+| **P3** | 52-74 | 1.85-2.75 s | 1484-2217 ms |
+| P1 | 83-129 | 2.76-4.09 s | 2413-3777 ms |
+| P2 | 67-96 | 2.31-3.08 s | 1933-2833 ms |
+| P0 | 148-188 | 4.62-5.82 s | 4383-5579 ms |
+
+No pass >= 25 ms (`count_ge_25ms` 0 throughout, from the flash), UART
+overruns +3 in all. No write in this run went past the old 150 ms gap, so the
+500 ms limit was not exercised on the board, only in the host tests.
+
+**Where the channel stands:** P3 works end to end on the Mac over Bluetooth
+and moves no light. **Parked here (10-18)** while the power work comes first.
+Left for when it resumes, in order:
+1. Codex's 2i should-fixes for the host tests: valid-CRC headers announcing
+   forbidden profiles, versions and lengths; block values exactly at and below
+   the range limit; falling-edge starts for both high preambles and the stray
+   transition 300 ms before a frame; unused-bit and repeat reports during a
+   stall; the golden vectors fed into the C; boundary tests checking content,
+   not only counts.
+2. The Scroll hold only for frames that can carry Scroll (P0, P2, a P1
+   preamble until its header ends), not P3 (codex 2i, note 2).
+3. A Caps change while padding bits are set: does the Mac's own Caps report
+   keep bits 5-7 (the board's guard would then drop it, and the band would
+   miss the change)? Needs the probe's `capsmix` to take a value.
+4. Then the daemon's sender (codex 2i, note 3): serialized write completions;
+   the gap's wait counted from the last completion, with margin, and already
+   elapsed idle time counts; coalesce to the latest state and resend it now
+   and then, since nothing acknowledges; a clock frame's time refers to the
+   anchor.
+
 ## The wire format (version 0, built 10-18)
 
-Approved by JD 10-18 after codex's review (below). The receiver is
+Approved by JD 10-18 after codex's review (below). Flash 2i (10-18) added P3,
+raised the gap to 500 ms and made the preamble's spacing the quiet (150 ms);
+the board results above are flash 2h's. The receiver is
 `lockchan.c` in the board directory (dev builds only for now: frames are
 decoded and counted, `HC_DEVHOOK` ops 10-13 read them, nothing acts on them
 yet); the reference encoder is `scripts/lockchan.py`; `scripts/lockchan_test.py`
@@ -188,13 +226,24 @@ compiles the receiver on the Mac and checks the two against each other.
 | | data bits | base | block | rate at 32 writes/s |
 |---|---|---|---|---|
 | P0 | Num `0x01`, Scroll `0x04` | 3 | 19 bits in 12 digits | ~51 bit/s |
-| **P1 (default)** | Num, bit 3 `0x08`, bit 4 `0x10` | 7 | 14 bits in 5 digits | ~90 bit/s |
+| P1 (default until P3 passes) | Num, bit 3 `0x08`, bit 4 `0x10` | 7 | 14 bits in 5 digits | ~90 bit/s |
 | P2 | Num, Scroll, bits 3-4 | 15 | 31 bits in 8 digits | ~124 bit/s |
+| **P3 (candidate default, 2i)** | bits 3-7 `0x08`-`0x80` | 31 | 29 bits in 6 digits | ~155 bit/s |
+
+P3 carries data in bits 3-4 and the padding bits 5-7, which the module
+passes. The board's `d <= 0x1F` guard keeps a byte with any padding bit set out
+of QMK's LED state; the others change only Compose and Kana there, which
+nothing on the board reads. Num, Caps and Scroll never move, so no light
+changes and no Scroll rule. `31^6 < 2^32`, so a block still fits the
+receiver's `uint32_t`.
 
 **A digit is a transition.** Each write flips a non-empty subset of the
 profile's data bits; subset `s` (bit i of `s` = the profile's i-th data bit)
-is digit `s - 1`. A write that flips none of them is ignored (repeats, and
-Scroll under P1).
+is digit `s - 1`. Once synced, a write that flips none of them is ignored
+(repeats, Scroll under P1, Num and Scroll under P3) and does not restart the
+gap clock; but after the gap has run out, any non-Caps transition ends the
+frame. Before sync, every non-Caps transition counts, for the quiet and for
+the preamble's spacing.
 
 **Blocks.** A section's bits, most significant first, in blocks of the
 profile's size; the last block holds what is left in the fewest digits `n`
@@ -202,17 +251,24 @@ with `base^n >= 2^r`. Digits most significant first; a block that decodes to
 `2^bits` or more aborts the frame.
 
 **A frame:**
-0. **Warm-up:** the sender first makes sure the board has its baseline, with
-   one change and back (bit 3 on, then off): after a reset or a link change
-   the board's first LED byte only sets the baseline (codex, flash 2h).
-1. **Quiet:** no data-bit transition for 100 ms.
-2. **Preamble:** three transitions each flipping bits 3-4 together (from bits
-   3-4 clear): `00 → 11 → 00 → 11`, for a P1 or P2 frame; or each flipping Num
-   and Scroll together, for a P0 frame. The third is the frame's anchor.
-3. **Header:** 32 bits in P1 (after a bits 3-4 preamble) or P0: `[version(2)=0
-   | profile(2) | type(4)] [seq] [len <= 48] [CRC-8 of the three]`, CRC-8 poly
-   `0x07`, init 0. A bits 3-4 preamble may announce P1 or P2; a Num + Scroll
-   one only P0.
+0. **Warm-up:** more than 500 ms (the gap) after its last write, so a
+   receiver that a lost or abandoned frame left mid-section has given it up,
+   the sender makes sure the board has its baseline, with one change and back
+   (bit 3 on, then off): after a reset or a link change the board's first LED
+   byte only sets the baseline (codex, flash 2h).
+1. **Quiet:** no data-bit transition for 150 ms.
+2. **Preamble:** three transitions, the first after the quiet, the second and
+   third each less than 150 ms after the one before, each flipping bits 3-4 together (from bits 3-4 clear), `00 → 11 →
+   00 → 11`, for a P1 or P2 frame; bits 5-7 together (from bits 5-7 clear),
+   for a P3 frame; or Num and Scroll together, for a P0 frame. A transition
+   150 ms or more after the last is a new first transition, never a
+   continuation, so a stray light change just before a frame cannot pass for
+   its first one (with the 500 ms gap it could, and the frame was lost). The
+   third is the frame's anchor.
+3. **Header:** 32 bits in P1 (after a bits 3-4 preamble), P3 (after a bits
+   5-7 one) or P0: `[version(2)=0 | profile(2) | type(4)] [seq] [len <= 48]
+   [CRC-8 of the three]`, CRC-8 poly `0x07`, init 0. A bits 3-4 preamble may
+   announce P1 or P2; a bits 5-7 one only P3; a Num + Scroll one only P0.
 4. **Payload:** `len` bytes then a CRC-16/CCITT-FALSE (poly `0x1021`, init
    `0xFFFF`, big-endian) over the 4 header bytes and the payload, in the
    announced profile.
@@ -221,7 +277,8 @@ with `base^n >= 2^r`. Digits most significant first; a block that decodes to
    or `^ 0x10` (P0: `^ 0x04`) when the payload already ended there; then the
    baseline. The frame commits only then.
 
-**Aborts:** more than 150 ms between transitions; a frame older than 12 s; a
+**Aborts:** more than 500 ms between transitions once synced (150 ms before:
+the preamble's own limit); a frame older than 12 s; a
 Caps change once synced (before sync it only cancels the preamble); a bad
 header CRC, version, profile or length; a block out of range; a bad CRC-16; a
 wrong trailer; the link going down, a slot select, pairing or cable mode, at
@@ -229,14 +286,17 @@ once, before the next byte. After any abort the receiver needs the quiet and a
 new preamble.
 
 **On the board** a frame in progress holds the LCD's Scroll Lock (the settle
-clock restarts when it ends), which covers P0 and P2; P1 never touches Scroll.
+clock restarts when it ends), which covers P0 and P2; P1 and P3 never touch
+Scroll.
 Only while the radio is the active host. Limits (codex): back-to-back frames
 can hold it indefinitely, and after a sender dies mid-frame the light it left
 shows once settled; the hold is not a restore.
 
 **Sizes** (from the encoder): a 29-byte payload (30 characters of 7-bit text
-plus two length bytes) is 106 writes in P1 (~3.3 s at 31 ms a write), 81 in P2
-(~2.5 s), 183 in P0 (~5.7 s); 48 bytes is 160, 121 and 279.
+plus two length bytes) is 64 writes in P3 (~2.0 s at 31 ms a write), 106 in
+P1 (~3.3 s), 81 in P2 (~2.5 s), 183 in P0 (~5.7 s); 48 bytes is 95, 160, 121
+and 279. Add the warm-up's wait (over 0.5 s) and the link's wake-up (the
+first write, 130-376 ms measured) to each frame.
 
 **Not yet:** what a frame carries (types: text, clock), 7-bit text packing,
 the publication policy, the daemon's sender, and acting on frames. Those

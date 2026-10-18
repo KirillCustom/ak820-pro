@@ -17,10 +17,14 @@ the next reset instead of waiting for it.
 
 ## 2026-10-18 — RESUME HERE
 
-**R3 is done but for its charge** (cut 02:01:22 10-18 after 50.39 h,
-~4012 mAh; [`../history/battery-2026-10-15-drain-2f/`](../history/battery-2026-10-15-drain-2f/README.md)).
-The trial ends at FULL. **Next: flash 2g, then the lock-LED channel's
-hands-free tests** (`plans/BACKLOG.md`, quill4gen7 item 1).
+**R3 and its charge are done** (cut 02:01:22 10-18 after 50.39 h, ~4012
+mAh out; 3972.4 mAh back in over 9.90 h;
+[`../history/battery-2026-10-15-drain-2f/`](../history/battery-2026-10-15-drain-2f/README.md)).
+**Flash 2h went on at 12:18 10-18** and its board tests ran 12:20-12:30: 17
+of 18 frames exact ([`LOCK-LED-CHANNEL-PLAN.md`](LOCK-LED-CHANNEL-PLAN.md),
+"Measured on the board, flash 2h"). **Flash 2i went on at 15:18: 24 of 24
+frames exact, P3 included** (below). **The channel is parked; next is the
+power work** (the ladder, an accurate gauge, a runtime estimate).
 
 ### Flash 2g: the 5A trace and the settled SCR (10-18)
 
@@ -105,10 +109,50 @@ fixes correct, nothing new; one older gap.
 | 1 | must fix (strict isolation): `5B 32` kept the receiver's candidate, so a reconnect whose down state was lost could finish an old link's frame | **Fixed in `4652a87470`, as codex specified:** reset on `5B 32`, which comes once per link-up (`docs/wireless.md`), so it never cuts a live frame. |
 | 2 | the TX checks, the frame layout, battery polls exempt, main-loop context, the promotion mirroring `5B 32` (it clears a pending pair too, as `5B 32` does) | Agreed. |
 
-**The build to flash:** `via-dev-4652a87470-20261018-114709.bin`, token
+**The build flashed (12:18 10-18):** `via-dev-4652a87470-20261018-114709.bin`, token
 `0x5d53643c`; daily `via-daily-4652a87470-20261018-114730.bin`. Firmware
 commits `3dcbc8b34c`, `b05e7cbc4e`, `19152be2e3`, `9cbb1209df`, `4652a87470`
 are local, **not pushed**.
+
+### Flash 2i: profile P3 and the 500 ms gap (10-18)
+
+From flash 2h's board results: the module passes all eight bits, and the one
+lost frame was a 366 ms write past the 150 ms gap. Firmware `112942fa63`
+(local, **not pushed**):
+- **P3:** bits 3-7, base 31, 29 bits in 6 digits; its own preamble (bits 5-7
+  together), its header in P3. Num, Caps and Scroll never move. A 29-byte
+  payload is 64 writes (~2.0 s) against P1's 106.
+- **The gap once synced: 150 → 500 ms.**
+- **The preamble's spacing limit is the quiet, 150 ms (was 100):** with a 500
+  ms gap, a stray Num + Scroll change 300 ms before a frame passed for its
+  first transition in the host tests (a frame lost). Now a transition 150 ms
+  after the last always starts a preamble.
+- **A sender rule in the spec:** the warm-up comes over 500 ms after the
+  sender's last write, so a receiver left mid-section by a broken frame has let
+  go (without it the host tests lost 703 of 30,000 frames after a faulted one).
+
+Host: `lockchan.py` and `lockchan_test.py` (P3 everywhere, bits 5-7 in the
+fault and garbage models, hiccups of 366 and 500 ms, the new boundaries, a
+golden P3 vector: all 18,073 checks pass), `ledchannel_test.py frames` with
+P3 first. Built as `via-dev-112942fa63-20261018-150802.bin`, token
+`0x081daec1`; daily `via-daily-112942fa63-20261018-150823.bin` builds clean.
+**Codex review** ([verbatim](review-codex-flash2i-2026-10-18.md), prompt
+[`review-prompt-flash2i.txt`](review-prompt-flash2i.txt)): no must-fix.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | P3's codec matches the spec and encoder; no overflow (31^6 - 1 < 2^32); header rules, preamble starts and trailer right; golden vectors decoded independently | Agreed. |
+| 2 | timing right, wrap included; 100-149 ms quiets now fail (no sender is deployed); an abandoned frame holds Scroll ~350 ms longer; P3 holds Scroll though it never carries it | Agreed. The P3 hold is **deferred** (the channel's resume list, `LOCK-LED-CHANNEL-PLAN.md`). |
+| 3 | the sender's wait past the gap is the right rule; no cheap receiver-only reset; daemon advice | Agreed; the advice is on the resume list. |
+| 4 | integration sound; padding-set bytes cannot promote LINKING (recovery latency only); a Caps change carried only in a padding-set byte would be dropped by the guard; the trace cannot tell gaps over 254 ms apart | The Caps case: **deferred** (a probe test). The rest agreed. |
+| 5 | should fix: deterministic negative tests (forbidden headers, range limits, falling-edge starts, stall reports, golden fed to C, content in boundaries) | **Deferred** with the channel parked (the resume list, item 1). |
+| 6 | should fix: the board test's first frame had no wait past the gap; two spec wordings | **Fixed:** a 0.7 s wait since the last write before every warm-up; the spec's preamble and unused-bit wording. |
+
+**Flashed at 15:18 10-18** exactly as reviewed (`112942fa63`); the frames
+test then gave **24 of 24 exact**, P3 6/6, no stall
+([`LOCK-LED-CHANNEL-PLAN.md`](LOCK-LED-CHANNEL-PLAN.md), "Measured on the
+board, flash 2i"). **The channel is parked there**; the power work comes
+first.
 
 ## 2026-10-15
 

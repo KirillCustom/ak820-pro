@@ -3,15 +3,15 @@
 write each. The board's receiver is lockchan.c; scripts/lockchan_test.py checks
 the two against each other.
 
-    from lockchan import encode, P0, P1, P2
-    writes = encode(b"payload", type=1, seq=7, profile=P1, user=0x00)
+    from lockchan import encode, P0, P1, P2, P3
+    writes = encode(b"payload", type=1, seq=7, profile=P3, user=0x00)
 
 `user` is the host's real lock state (Num 0x01, Caps 0x02, Scroll 0x04). Every
 write keeps its Caps, and the frame ends back on it. A production sender reads
 Caps again before each write and abandons the frame when it changes; this
 reference takes it as fixed.
 """
-P0, P1, P2 = 0, 1, 2
+P0, P1, P2, P3 = 0, 1, 2, 3
 CAPS = 0x02
 MAX_PAYLOAD = 48
 
@@ -20,8 +20,11 @@ PROFILES = {
     P0: (0x05, (0x01, 0x04), 3, 19, 12, (0x01, 0x04)),
     P1: (0x19, (0x01, 0x08, 0x10), 7, 14, 5, (0x08, 0x10)),
     P2: (0x1D, (0x01, 0x04, 0x08, 0x10), 15, 31, 8, (0x08, 0x10)),
+    P3: (0xF8, (0x08, 0x10, 0x20, 0x40, 0x80), 31, 29, 6, (0x08, 0x10)),
 }
-PRE_HIGH, PRE_LOW = 0x18, 0x05
+PRE_HIGH, PRE_PAD, PRE_LOW = 0x18, 0xE0, 0x05
+HEADER_PROFILE = {P0: P0, P1: P1, P2: P1, P3: P3}
+PREAMBLE = {P0: PRE_LOW, P1: PRE_HIGH, P2: PRE_HIGH, P3: PRE_PAD}
 
 
 def digits_for(base, r):
@@ -81,8 +84,8 @@ def header(profile, type_, seq, length):
 def encode(payload, type=1, seq=0, profile=P1, user=0x00):
     payload = bytes(payload)
     if len(payload) > MAX_PAYLOAD or not 0 <= type < 16 or not 0 <= seq < 256 or profile not in PROFILES:
-        raise ValueError("payload <= 48 bytes, type 0-15, seq 0-255, profile P0-P2")
-    state = user & 0x07    # bits 3-4 clear: the baseline
+        raise ValueError("payload <= 48 bytes, type 0-15, seq 0-255, profile P0-P3")
+    state = user & 0x07    # bits 3-7 clear: the baseline
     base = state
     out = []
 
@@ -91,8 +94,8 @@ def encode(payload, type=1, seq=0, profile=P1, user=0x00):
         state = s
         out.append(s)
 
-    hdr_profile = P0 if profile == P0 else P1
-    pre = PRE_LOW if profile == P0 else PRE_HIGH
+    hdr_profile = HEADER_PROFILE[profile]
+    pre = PREAMBLE[profile]
     for _ in range(3):
         write(state ^ pre)
     h = header(profile, type, seq, len(payload))

@@ -12,7 +12,11 @@ commits a wrong frame. Exit status 1 on any failure.
 import ctypes, os, random, subprocess, sys, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lockchan import encode, P0, P1, P2, PROFILES  # noqa: E402
+from lockchan import encode, P0, P1, P2, P3, PROFILES  # noqa: E402
+
+GAP_MS = 500       # lockchan.h: LOCKCHAN_GAP_MS
+QUIET_MS = 150     # LOCKCHAN_QUIET_MS
+ALL = (P0, P1, P2, P3)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro")
@@ -68,8 +72,10 @@ class Rx:
         L.lockchan_link_lost(self.buf)
 
     def warm(self, user, t):
-        """What a sender does first: a change and back, so the board has the
-        baseline whatever it saw last, then the quiet. Returns the time after."""
+        """What a sender does first, more than the gap after its last write (so a
+        receiver a broken frame left mid-section has given it up): a change and
+        back, so the board has the baseline whatever it saw last, then the
+        quiet. Returns the time after."""
         self.feed((user & 0x07) ^ 0x08, t)
         self.feed(user & 0x07, t + 31)
         return t + 31 + 300
@@ -102,7 +108,7 @@ def timeline(writes, rng, t0, step=31, jitter=8):
 
 
 def random_frame(rng, profile=None):
-    profile = rng.choice([P0, P1, P2]) if profile is None else profile
+    profile = rng.choice(ALL) if profile is None else profile
     n = rng.randint(0, 48)
     return dict(payload=bytes(rng.randrange(256) for _ in range(n)), type=rng.randrange(16),
                 seq=rng.randrange(256), profile=profile, user=rng.randrange(8))
@@ -153,22 +159,24 @@ def test_roundtrip(rng):
 
 
 def test_repeats_and_unused_bits(rng):
-    """Repeated reports, and (P1 only) Scroll moving under the frame, change nothing."""
+    """Repeated reports, and lights a profile does not use moving under the
+    frame (Scroll under P1, Num and Scroll under P3), change nothing."""
     rx, t = Rx(), 1000
     rx.feed(0, t)
     t += 500
     bad = 0
     for i in range(1000):
-        f = random_frame(rng, rng.choice([P0, P1, P2]))
+        f = random_frame(rng)
         w = encode(**f)
         out = []
-        scroll = 0
+        free = {P1: (0x04,), P3: (0x01, 0x04)}.get(f["profile"], ())
+        other = 0
         for k, v in enumerate(w):
-            if f["profile"] == P1 and k > 3 and rng.random() < 0.05:
-                scroll ^= 0x04             # another keyboard's Scroll Lock
-            out.append(v ^ scroll)
+            if free and k > 3 and rng.random() < 0.05:
+                other ^= rng.choice(free)  # another keyboard's Num or Scroll Lock
+            out.append(v ^ other)
             if rng.random() < 0.3:
-                out.append(v ^ scroll)     # a repeat
+                out.append(v ^ other)      # a repeat
         rx.feed(f["user"] & 0x07, t)
         t += 300
         got, t = run_frame(rx, f, out, t, rng)
@@ -176,7 +184,7 @@ def test_repeats_and_unused_bits(rng):
         if not (got and matches(st, f)):
             bad += 1
         t += 300
-    check("repeats and Scroll under P1", bad == 0, f"{bad} of 1000 frames lost")
+    check("repeats, and unused lights moving", bad == 0, f"{bad} of 1000 frames lost")
 
 
 def fault(rng, tl):
@@ -194,9 +202,9 @@ def fault(rng, tl):
         del tl[i:i + rng.randint(2, 10)]
     elif kind == "insert":
         t_prev = tl[i - 1][1] if i else tl[i][1] - 31
-        tl.insert(i, ((rng.randrange(32) & ~0x02) | caps, (t_prev + tl[i][1]) // 2))
+        tl.insert(i, ((rng.randrange(256) & ~0x02) | caps, (t_prev + tl[i][1]) // 2))
     elif kind == "substitute":
-        tl[i] = ((rng.randrange(32) & ~0x02) | caps, tl[i][1])
+        tl[i] = ((rng.randrange(256) & ~0x02) | caps, tl[i][1])
     elif kind == "caps":               # the user (or the Mac) changes Caps mid-frame
         tl = tl[:i] + [(v ^ 0x02, t) for v, t in tl[i:]]
     elif kind == "swap" and i + 1 < len(tl):
@@ -233,7 +241,7 @@ def test_faults(rng):
         if commits and not bad:
             recovered += 1
             kinds[kind] = kinds.get(kind, 0) + 1
-        t = t_end + 300
+        t = t_end + GAP_MS + 100       # the sender's rule: past the gap before a warm-up
         # The next clean frame always gets through.
         g = random_frame(rng)
         t = rx.warm(g["user"], t)
@@ -255,8 +263,9 @@ def test_garbage_after_preamble(rng):
     t += 500
     for i in range(20000):
         user = rng.randrange(8)
-        pre = [user ^ 0x18, user, user ^ 0x18] if rng.random() < 0.7 else [user ^ 0x05, user, user ^ 0x05]
-        junk = [rng.randrange(32) & ~0x02 | (user & 0x02) for _ in range(rng.randint(10, 300))]
+        m = rng.choice([0x18, 0x18, 0xE0, 0xE0, 0x05])
+        pre = [user ^ m, user, user ^ m]
+        junk = [rng.randrange(256) & ~0x02 | (user & 0x02) for _ in range(rng.randint(10, 300))]
         rx.feed(user, t)
         t += 300
         _, t = run_frame(rx, None, pre + junk, t, rng)
@@ -271,13 +280,13 @@ def test_garbage_after_preamble(rng):
 def test_human(rng):
     """Lock presses from any keyboard, single lights at 20 ms to 3 s apart (a
     report changes one light at a time when a person presses keys), plus the
-    odd simultaneous pair from a host restoring state: nothing ever commits,
-    and the bits 3-4 preamble never starts."""
+    odd simultaneous pair from a host restoring state, and the rare Compose or
+    Kana from a host that drives them: nothing ever commits."""
     rx, t, state = Rx(), 1000, 0
     rx.feed(0, t)
     for _ in range(50000):
         t += rng.randint(20, 3000)
-        state ^= rng.choice([0x01, 0x02, 0x04] * 10 + [0x05, 0x03, 0x06, 0x07])
+        state ^= rng.choice([0x01, 0x02, 0x04] * 10 + [0x05, 0x03, 0x06, 0x07, 0x08, 0x10])
         rx.feed(state, t)
         rx.poll(t + 1)
     st = rx.stats()
@@ -286,7 +295,7 @@ def test_human(rng):
 
 
 def test_timing(rng):
-    # A 200 ms pause mid-frame aborts (in feed, or in poll), and the next frame decodes.
+    # A pause past the gap mid-frame aborts (in feed, or in poll), and the next frame decodes.
     rx = Rx()
     rx.feed(0, 0)
     f = dict(payload=b"pause test", type=1, seq=1, profile=P1, user=0)
@@ -294,14 +303,25 @@ def test_timing(rng):
     t = 500
     for k, v in enumerate(w):
         if k == 20:
-            rx.poll(t + 160)
+            rx.poll(t + GAP_MS + 10)
             check("poll ends a stalled frame", not rx.busy())
-            t += 200
+            t += GAP_MS + 50
         rx.feed(v, t)
         t += 31
     check("pause aborts", rx.stats()["frames"] == 0 and rx.stats()["aborts"]["gap"] >= 1, f"{rx.stats()['aborts']}")
     got, t = run_frame(rx, f, w, t + 300, rng)
     check("frame after a pause", got and matches(rx.stats(), f))
+    # A Bluetooth hiccup inside the gap: the 366 ms write that lost a frame on
+    # 10-18 (write 34 of 109), and one at the limit, in every profile.
+    for prof in ALL:
+        for slow in (366, GAP_MS):
+            rx = Rx()
+            f = dict(payload=b"Hiccup Song Title Here", type=1, seq=5, profile=prof, user=0x02)
+            t = rx.warm(f["user"], 1000)
+            w = encode(**f)
+            tl = [(v, t + 31 * k + (slow - 31 if k >= len(w) // 3 else 0)) for k, v in enumerate(w)]
+            commits, wrong = feed_checked(rx, tl, f)
+            check(f"a {slow} ms write mid-frame, P{prof}", commits == 1 and not wrong, f"{rx.stats()['aborts']}")
     # Too slow: 140 ms a write stays under the gap but outlives 12 s.
     rx = Rx()
     rx.feed(0, 0)
@@ -328,8 +348,8 @@ def test_timing(rng):
     rx.feed(0, t + 300)
     got, t = run_frame(rx, f, encode(**f), t + 600, rng)
     check("frame after a link drop", got and matches(rx.stats(), f))
-    # Back to back: the next preamble needs 100 ms of quiet after the last trailer.
-    for quiet, want in ((50, 0), (150, 1)):
+    # Back to back: the next preamble needs the quiet after the last trailer.
+    for quiet, want in ((50, 0), (QUIET_MS + 50, 1)):
         rx = Rx()
         rx.feed(0, 0)
         a = dict(payload=b"first", type=1, seq=1, profile=P1, user=0)
@@ -343,7 +363,7 @@ def test_link_lost_everywhere(rng):
     """The link lost before each write of a frame, in turn: never a commit,
     and the next frame (after the sender's warm-up) always decodes."""
     bad = 0
-    for prof in (P0, P1, P2):
+    for prof in ALL:
         f = dict(payload=b"link lost here", type=4, seq=5, profile=prof, user=0x04)
         w = encode(**f)
         for k in range(len(w)):
@@ -363,12 +383,13 @@ def test_link_lost_everywhere(rng):
 
 
 def test_boundaries():
-    """Quiet 99/100 ms, gap 150/151 ms and lifetime 12000/12001 ms, in feed and
+    """Quiet 149/150 ms, the preamble's spacing 149/150 ms, gap 500/501 ms and
+    lifetime 12000/12001 ms, in feed and
     in poll, each once well clear of the 32-bit timer's wrap and once with the
     wrap falling inside the interval under test (codex, flash 2h verify)."""
     W = 1 << 32
     q = dict(payload=b"q", type=1, seq=0, profile=P1, user=0)
-    for quiet, want in ((99, 0), (100, 1)):
+    for quiet, want in ((QUIET_MS - 1, 0), (QUIET_MS, 1)):
         for t0 in (1000, W - 31 - quiet // 2):          # the wrap inside the quiet
             rx = Rx()
             rx.feed(0x08, t0)
@@ -376,8 +397,25 @@ def test_boundaries():
             tl = [(v, t0 + 31 + quiet + 31 * k) for k, v in enumerate(encode(**q))]
             commits, _ = feed_checked(rx, tl, q)
             check(f"quiet {quiet} ms (t0 {t0 % W:#x})", commits == want, f"{commits}")
+    # The preamble's second transition late: at QUIET_MS it starts a new preamble
+    # instead, so the frame is lost (in feed), and poll gives up the preamble.
+    for prof in (P0, P1, P3):
+        q = dict(payload=b"spacing", type=1, seq=0, profile=prof, user=0)
+        for space, want in ((QUIET_MS - 1, 1), (QUIET_MS, 0)):
+            for t in (1331, W - 31 - space // 2):
+                rx = Rx()
+                rx.warm(0, t - 331)
+                tl = [(v, t + 31 * k + (space - 31 if k >= 1 else 0)) for k, v in enumerate(encode(**q))]
+                commits, _ = feed_checked(rx, tl, q)
+                check(f"preamble spacing {space} ms P{prof} (t {t % W:#x})", commits == want, f"{commits}")
+                rx = Rx()
+                rx.warm(0, t - 331)
+                rx.feed(tl[0][0], tl[0][1])
+                rx.poll(tl[0][1] + space)
+                check(f"preamble given up by poll at {space} ms P{prof} (t {t % W:#x})", rx.busy() == bool(want),
+                      f"busy {rx.busy()}")
     g = dict(payload=b"gap", type=1, seq=0, profile=P1, user=0)
-    for gap, want in ((150, 1), (151, 0)):
+    for gap, want in ((GAP_MS, 1), (GAP_MS + 1, 0)):
         for t in (1331, W - 31 * 9 - gap // 2):          # the wrap inside the gap
             rx = Rx()
             rx.warm(0, t - 331)
@@ -399,11 +437,11 @@ def test_boundaries():
             rx = Rx()
             rx.warm(0, t - 331)
             # Evenly spread so the trailer's last write lands `life` ms after the
-            # preamble's first, every gap under 150 ms.
+            # preamble's first, every gap well under the limit.
             tl = [(v, t + (life * k) // (n - 1)) for k, v in enumerate(w)]
             commits, _ = feed_checked(rx, tl, f)
             check(f"lifetime {life} ms in feed (t {t % W:#x})", commits == want, f"{commits}")
-            # Poll's lifetime check: the frame still running, last write < 150 ms ago.
+            # Poll's lifetime check: the frame still running, its last write recent.
             rx = Rx()
             rx.warm(0, t - 331)
             for v, tt in tl[:-3]:
@@ -421,11 +459,13 @@ GOLDEN = {
          3, 26, 10, 18, 2, 10, 18, 19, 18, 10, 18, 2],
     P2: [26, 2, 26, 27, 2, 10, 3, 11, 27, 11, 10, 18, 11, 2, 10, 2, 10, 14, 7, 15, 26, 19, 27, 26, 19,
          27, 18, 11, 18, 3, 10, 2],
+    P3: [226, 2, 226, 194, 90, 250, 18, 226, 10, 58, 18, 218, 146, 250, 218, 74, 90, 18, 218, 98, 170,
+         226, 10, 2],
 }
 
 
 def test_golden():
-    for prof in (P0, P1, P2):
+    for prof in ALL:
         w = encode(b"AK820", type=1, seq=42, profile=prof, user=0x02)
         if GOLDEN[prof] is None:
             print(f"     golden P{prof}: {w}")
@@ -444,7 +484,8 @@ def test_timer_wrap(rng):
 
 def report_sizes():
     text = bytes(range(48))
-    for prof, name in ((P0, "P0 Num+Scroll"), (P1, "P1 Num+bits 3-4"), (P2, "P2 four lights")):
+    for prof, name in ((P0, "P0 Num+Scroll"), (P1, "P1 Num+bits 3-4"), (P2, "P2 four lights"),
+                       (P3, "P3 bits 3-7")):
         for n in (29, 37, 48):
             w = len(encode(text[:n], profile=prof))
             print(f"     {name:16} {n:2}-byte payload: {w:3} writes, ~{w * 31 / 1000:.1f} s at 31 ms")

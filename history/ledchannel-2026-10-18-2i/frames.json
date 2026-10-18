@@ -1,0 +1,922 @@
+{
+ "frames": [
+  {
+   "profile": "P3",
+   "seq": 48,
+   "text": "Road Home Dream The Dr",
+   "writes": 52,
+   "ok": true,
+   "host_s": 1.85,
+   "board_anchor_to_commit_ms": 1484,
+   "receiver": {
+    "frames": 1,
+    "preambles": 1,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 3,
+     "type": 1,
+     "seq": 48,
+     "len": 22,
+     "payload": "526f616420486f6d6520447265616d20546865204472",
+     "anchor_ms": 20849,
+     "commit_ms": 22333
+    },
+    "board_ms": 23062
+   }
+  },
+  {
+   "profile": "P3",
+   "seq": 49,
+   "text": "Road Heart Road Blue Night Lov",
+   "writes": 65,
+   "ok": true,
+   "host_s": 2.42,
+   "board_anchor_to_commit_ms": 1859,
+   "receiver": {
+    "frames": 2,
+    "preambles": 2,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 3,
+     "type": 2,
+     "seq": 49,
+     "len": 30,
+     "payload": "526f616420486561727420526f616420426c7565204e69676874204c6f76",
+     "anchor_ms": 24205,
+     "commit_ms": 26064
+    },
+    "board_ms": 26768
+   }
+  },
+  {
+   "profile": "P3",
+   "seq": 50,
+   "text": "A Fire Dream Love Home Rai",
+   "writes": 59,
+   "ok": true,
+   "host_s": 1.96,
+   "board_anchor_to_commit_ms": 1707,
+   "receiver": {
+    "frames": 3,
+    "preambles": 3,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 3,
+     "type": 3,
+     "seq": 50,
+     "len": 26,
+     "payload": "41204669726520447265616d204c6f766520486f6d6520526169",
+     "anchor_ms": 27716,
+     "commit_ms": 29423
+    },
+    "board_ms": 30138
+   }
+  },
+  {
+   "profile": "P3",
+   "seq": 51,
+   "text": "Of Road Song Dream Night A Night To",
+   "writes": 74,
+   "ok": true,
+   "host_s": 2.75,
+   "board_anchor_to_commit_ms": 2217,
+   "receiver": {
+    "frames": 4,
+    "preambles": 4,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 3,
+     "type": 1,
+     "seq": 51,
+     "len": 35,
+     "payload": "4f6620526f616420536f6e6720447265616d204e696768742041204e6967687420546f",
+     "anchor_ms": 31209,
+     "commit_ms": 33426
+    },
+    "board_ms": 34125
+   }
+  },
+  {
+   "profile": "P3",
+   "seq": 52,
+   "text": "Road Blue Night Road Love Roa",
+   "writes": 64,
+   "ok": true,
+   "host_s": 2.41,
+   "board_anchor_to_commit_ms": 1832,
+   "receiver": {
+    "frames": 5,
+    "preambles": 5,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 3,
+     "type": 2,
+     "seq": 52,
+     "len": 29,
+     "payload": "526f616420426c7565204e6967687420526f6164204c6f766520526f61",
+     "anchor_ms": 35211,
+     "commit_ms": 37043
+    },
+    "board_ms": 37766
+   }
+  },
+  {
+   "profile": "P3",
+   "seq": 53,
+   "text": "Heart In Road Home Fire A Li",
+   "writes": 62,
+   "ok": true,
+   "host_s": 2.16,
+   "board_anchor_to_commit_ms": 1829,
+   "receiver": {
+    "frames": 6,
+    "preambles": 6,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 3,
+     "type": 3,
+     "seq": 53,
+     "len": 28,
+     "payload": "486561727420496e20526f616420486f6d6520466972652041204c69",
+     "anchor_ms": 38856,
+     "commit_ms": 40685
+    },
+    "board_ms": 41379
+   }
+  },
+  {
+   "profile": "P1",
+   "seq": 16,
+   "text": "Blue In Dream And Of Dream Light To ",
+   "writes": 126,
+   "ok": true,
+   "host_s": 4.09,
+   "board_anchor_to_commit_ms": 3746,
+   "receiver": {
+    "frames": 1,
+    "preambles": 1,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 1,
+     "type": 1,
+     "seq": 16,
+     "len": 36,
+     "payload": "426c756520496e20447265616d20416e64204f6620447265616d204c6967687420546f20",
+     "anchor_ms": 42862,
+     "commit_ms": 46608
+    },
+    "board_ms": 47308
+   }
+  },
+  {
+   "profile": "P1",
+   "seq": 17,
+   "text": "Dream Love Blue In Rai",
+   "writes": 86,
+   "ok": true,
+   "host_s": 2.76,
+   "board_anchor_to_commit_ms": 2553,
+   "receiver": {
+    "frames": 2,
+    "preambles": 2,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 1,
+     "type": 2,
+     "seq": 17,
+     "len": 22,
+     "payload": "447265616d204c6f766520426c756520496e20526169",
+     "anchor_ms": 48226,
+     "commit_ms": 50779
+    },
+    "board_ms": 51472
+   }
+  },
+  {
+   "profile": "P1",
+   "seq": 18,
+   "text": "The Love A And Fire S",
+   "writes": 83,
+   "ok": true,
+   "host_s": 2.77,
+   "board_anchor_to_commit_ms": 2413,
+   "receiver": {
+    "frames": 3,
+    "preambles": 3,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 1,
+     "type": 3,
+     "seq": 18,
+     "len": 21,
+     "payload": "546865204c6f7665204120416e6420466972652053",
+     "anchor_ms": 52366,
+     "commit_ms": 54779
+    },
+    "board_ms": 55468
+   }
+  },
+  {
+   "profile": "P1",
+   "seq": 19,
+   "text": "Rain Dream Heart Fire Love ",
+   "writes": 100,
+   "ok": true,
+   "host_s": 3.17,
+   "board_anchor_to_commit_ms": 2927,
+   "receiver": {
+    "frames": 4,
+    "preambles": 4,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 1,
+     "type": 1,
+     "seq": 19,
+     "len": 27,
+     "payload": "5261696e20447265616d2048656172742046697265204c6f766520",
+     "anchor_ms": 56382,
+     "commit_ms": 59309
+    },
+    "board_ms": 60041
+   }
+  },
+  {
+   "profile": "P1",
+   "seq": 20,
+   "text": "And Night Home Blue Light Heart In Th",
+   "writes": 129,
+   "ok": true,
+   "host_s": 4.03,
+   "board_anchor_to_commit_ms": 3777,
+   "receiver": {
+    "frames": 5,
+    "preambles": 5,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 1,
+     "type": 2,
+     "seq": 20,
+     "len": 37,
+     "payload": "416e64204e6967687420486f6d6520426c7565204c6967687420486561727420496e205468",
+     "anchor_ms": 60868,
+     "commit_ms": 64645
+    },
+    "board_ms": 65365
+   }
+  },
+  {
+   "profile": "P1",
+   "seq": 21,
+   "text": "Blue Song Song Dream Fire Ligh",
+   "writes": 109,
+   "ok": true,
+   "host_s": 3.48,
+   "board_anchor_to_commit_ms": 3224,
+   "receiver": {
+    "frames": 6,
+    "preambles": 6,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 1,
+     "type": 3,
+     "seq": 21,
+     "len": 30,
+     "payload": "426c756520536f6e6720536f6e6720447265616d2046697265204c696768",
+     "anchor_ms": 66370,
+     "commit_ms": 69594
+    },
+    "board_ms": 70270
+   }
+  },
+  {
+   "profile": "P2",
+   "seq": 32,
+   "text": "Road And Of Of Dream R",
+   "writes": 67,
+   "ok": true,
+   "host_s": 2.31,
+   "board_anchor_to_commit_ms": 1933,
+   "receiver": {
+    "frames": 1,
+    "preambles": 1,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 2,
+     "type": 1,
+     "seq": 32,
+     "len": 22,
+     "payload": "526f616420416e64204f66204f6620447265616d2052",
+     "anchor_ms": 71874,
+     "commit_ms": 73807
+    },
+    "board_ms": 74518
+   }
+  },
+  {
+   "profile": "P2",
+   "seq": 33,
+   "text": "Home Song Light Road Love Of Fire Ho",
+   "writes": 96,
+   "ok": true,
+   "host_s": 3.08,
+   "board_anchor_to_commit_ms": 2833,
+   "receiver": {
+    "frames": 2,
+    "preambles": 2,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 2,
+     "type": 2,
+     "seq": 33,
+     "len": 36,
+     "payload": "486f6d6520536f6e67204c6967687420526f6164204c6f7665204f66204669726520486f",
+     "anchor_ms": 75381,
+     "commit_ms": 78214
+    },
+    "board_ms": 78946
+   }
+  },
+  {
+   "profile": "P2",
+   "seq": 34,
+   "text": "Dream A The Heart And Hea",
+   "writes": 73,
+   "ok": true,
+   "host_s": 2.45,
+   "board_anchor_to_commit_ms": 2130,
+   "receiver": {
+    "frames": 3,
+    "preambles": 3,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 2,
+     "type": 3,
+     "seq": 34,
+     "len": 25,
+     "payload": "447265616d20412054686520486561727420416e6420486561",
+     "anchor_ms": 79864,
+     "commit_ms": 81994
+    },
+    "board_ms": 82686
+   }
+  },
+  {
+   "profile": "P2",
+   "seq": 35,
+   "text": "And The Rain Heart Rain A Dr",
+   "writes": 79,
+   "ok": true,
+   "host_s": 2.61,
+   "board_anchor_to_commit_ms": 2369,
+   "receiver": {
+    "frames": 4,
+    "preambles": 4,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 2,
+     "type": 1,
+     "seq": 35,
+     "len": 28,
+     "payload": "416e6420546865205261696e204865617274205261696e2041204472",
+     "anchor_ms": 83732,
+     "commit_ms": 86101
+    },
+    "board_ms": 86802
+   }
+  },
+  {
+   "profile": "P2",
+   "seq": 36,
+   "text": "Song Dream Night Fire Home To Hear",
+   "writes": 92,
+   "ok": true,
+   "host_s": 2.97,
+   "board_anchor_to_commit_ms": 2700,
+   "receiver": {
+    "frames": 5,
+    "preambles": 5,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 2,
+     "type": 2,
+     "seq": 36,
+     "len": 34,
+     "payload": "536f6e6720447265616d204e69676874204669726520486f6d6520546f2048656172",
+     "anchor_ms": 87735,
+     "commit_ms": 90435
+    },
+    "board_ms": 91166
+   }
+  },
+  {
+   "profile": "P2",
+   "seq": 37,
+   "text": "Rain The Fire And Dream N",
+   "writes": 73,
+   "ok": true,
+   "host_s": 2.69,
+   "board_anchor_to_commit_ms": 2145,
+   "receiver": {
+    "frames": 6,
+    "preambles": 6,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 2,
+     "type": 3,
+     "seq": 37,
+     "len": 25,
+     "payload": "5261696e20546865204669726520416e6420447265616d204e",
+     "anchor_ms": 92232,
+     "commit_ms": 94377
+    },
+    "board_ms": 95090
+   }
+  },
+  {
+   "profile": "P0",
+   "seq": 0,
+   "text": "Road Fire Song Song Drea",
+   "writes": 158,
+   "ok": true,
+   "host_s": 4.9,
+   "board_anchor_to_commit_ms": 4665,
+   "receiver": {
+    "frames": 1,
+    "preambles": 1,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 0,
+     "type": 1,
+     "seq": 0,
+     "len": 24,
+     "payload": "526f6164204669726520536f6e6720536f6e672044726561",
+     "anchor_ms": 96385,
+     "commit_ms": 101050
+    },
+    "board_ms": 101766
+   }
+  },
+  {
+   "profile": "P0",
+   "seq": 1,
+   "text": "Heart Rain Home Heart Of The ",
+   "writes": 183,
+   "ok": true,
+   "host_s": 5.79,
+   "board_anchor_to_commit_ms": 5426,
+   "receiver": {
+    "frames": 2,
+    "preambles": 2,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 0,
+     "type": 2,
+     "seq": 1,
+     "len": 29,
+     "payload": "4865617274205261696e20486f6d65204865617274204f662054686520",
+     "anchor_ms": 102879,
+     "commit_ms": 108305
+    },
+    "board_ms": 109005
+   }
+  },
+  {
+   "profile": "P0",
+   "seq": 2,
+   "text": "Love A Home Road To Of",
+   "writes": 148,
+   "ok": true,
+   "host_s": 4.62,
+   "board_anchor_to_commit_ms": 4383,
+   "receiver": {
+    "frames": 3,
+    "preambles": 3,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 0,
+     "type": 3,
+     "seq": 2,
+     "len": 22,
+     "payload": "4c6f7665204120486f6d6520526f616420546f204f66",
+     "anchor_ms": 109865,
+     "commit_ms": 114248
+    },
+    "board_ms": 114965
+   }
+  },
+  {
+   "profile": "P0",
+   "seq": 3,
+   "text": "Dream In In Light Night Love ",
+   "writes": 183,
+   "ok": true,
+   "host_s": 5.82,
+   "board_anchor_to_commit_ms": 5400,
+   "receiver": {
+    "frames": 4,
+    "preambles": 4,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 0,
+     "type": 1,
+     "seq": 3,
+     "len": 29,
+     "payload": "447265616d20496e20496e204c69676874204e69676874204c6f766520",
+     "anchor_ms": 115878,
+     "commit_ms": 121278
+    },
+    "board_ms": 122016
+   }
+  },
+  {
+   "profile": "P0",
+   "seq": 4,
+   "text": "Rain A Home Light Love",
+   "writes": 148,
+   "ok": true,
+   "host_s": 4.68,
+   "board_anchor_to_commit_ms": 4440,
+   "receiver": {
+    "frames": 5,
+    "preambles": 5,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 0,
+     "type": 2,
+     "seq": 4,
+     "len": 22,
+     "payload": "5261696e204120486f6d65204c69676874204c6f7665",
+     "anchor_ms": 122881,
+     "commit_ms": 127321
+    },
+    "board_ms": 128029
+   }
+  },
+  {
+   "profile": "P0",
+   "seq": 5,
+   "text": "Rain Road Light And Blue Song ",
+   "writes": 188,
+   "ok": true,
+   "host_s": 5.8,
+   "board_anchor_to_commit_ms": 5579,
+   "receiver": {
+    "frames": 6,
+    "preambles": 6,
+    "busy": false,
+    "aborts": {
+     "gap": 0,
+     "lifetime": 0,
+     "caps": 0,
+     "header_crc": 0,
+     "header": 0,
+     "range": 0,
+     "crc": 0,
+     "trailer": 0,
+     "reset": 0
+    },
+    "last": {
+     "profile": 0,
+     "type": 3,
+     "seq": 5,
+     "len": 30,
+     "payload": "5261696e20526f6164204c6967687420416e6420426c756520536f6e6720",
+     "anchor_ms": 128895,
+     "commit_ms": 134474
+    },
+    "board_ms": 135175
+   }
+  }
+ ],
+ "health": [
+  {
+   "profile": "P3",
+   "health_before": {
+    "count_ge_25ms": 0,
+    "loop_gap_max_ms": 10,
+    "blit_gap_max_ms": 0,
+    "rx_malformed": 0,
+    "uart_overrun": 0,
+    "uart_framing": 0
+   },
+   "health_after": {
+    "count_ge_25ms": 0,
+    "loop_gap_max_ms": 13,
+    "blit_gap_max_ms": 13,
+    "rx_malformed": 0,
+    "uart_overrun": 0,
+    "uart_framing": 0
+   }
+  },
+  {
+   "profile": "P1",
+   "health_before": {
+    "count_ge_25ms": 0,
+    "loop_gap_max_ms": 13,
+    "blit_gap_max_ms": 13,
+    "rx_malformed": 0,
+    "uart_overrun": 0,
+    "uart_framing": 0
+   },
+   "health_after": {
+    "count_ge_25ms": 0,
+    "loop_gap_max_ms": 13,
+    "blit_gap_max_ms": 13,
+    "rx_malformed": 0,
+    "uart_overrun": 1,
+    "uart_framing": 0
+   }
+  },
+  {
+   "profile": "P2",
+   "health_before": {
+    "count_ge_25ms": 0,
+    "loop_gap_max_ms": 13,
+    "blit_gap_max_ms": 13,
+    "rx_malformed": 0,
+    "uart_overrun": 1,
+    "uart_framing": 0
+   },
+   "health_after": {
+    "count_ge_25ms": 0,
+    "loop_gap_max_ms": 13,
+    "blit_gap_max_ms": 13,
+    "rx_malformed": 0,
+    "uart_overrun": 2,
+    "uart_framing": 0
+   }
+  },
+  {
+   "profile": "P0",
+   "health_before": {
+    "count_ge_25ms": 0,
+    "loop_gap_max_ms": 13,
+    "blit_gap_max_ms": 13,
+    "rx_malformed": 0,
+    "uart_overrun": 2,
+    "uart_framing": 0
+   },
+   "health_after": {
+    "count_ge_25ms": 0,
+    "loop_gap_max_ms": 13,
+    "blit_gap_max_ms": 13,
+    "rx_malformed": 0,
+    "uart_overrun": 3,
+    "uart_framing": 0
+   }
+  }
+ ]
+}
