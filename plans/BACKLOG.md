@@ -122,7 +122,14 @@ a Claude Code hook. Ideas worth taking:
         trick of disk-activity LED tools: sets one keyboard's lights without
         moving the lock state, but untested on Windows 11 and on a BLE
         keyboard, and Windows may reassert the lights on any lock change;
-     3. toggling the real lock keys: global, the side effects above. No.
+     3. toggling the real lock keys: global, the side effects above. Few
+        machines have two keyboards, so the other keyboards' lights are
+        cosmetic; the lock *state* is not, for the seconds a frame lasts:
+        Scroll Lock moves Excel's arrows and is a hotkey in software KVMs
+        (Synergy's cursor lock), Num Lock turns some laptops' letter keys
+        into digits, and the toggles are injected keystrokes apps can see.
+        Workable as a last resort if frames go only while the user is idle
+        (`GetLastInputInfo`) and the state is restored after each.
      A Windows probe first, finding the board without enumerating HID (the
      daemon's finder already does), and only if a Windows PC uses the
      keyboard wirelessly: over the cable, raw HID already does all of it.
