@@ -96,10 +96,19 @@ prompt [`review-prompt-flash2h-verify2.txt`](review-prompt-flash2h-verify2.txt))
 | 2 | should fix: the 5A promotion leaves a select retry pending, which can reselect a live link | **Fixed:** the promotion now retires pending actions as `5B 32` does (a bounce survives). Every build: it is link machinery, not the channel. |
 | 3 | the reset is safe (no keystroke or TX state touched); the A6 classification holds for normal callers (the instrumented `HC_DRIVE` can send any profile byte); the host fixes are right | Agreed. |
 
-**Third verify** on `9cbb1209df`: [`review-codex-flash2h-verify3-2026-10-18.md`](review-codex-flash2h-verify3-2026-10-18.md),
-prompt [`review-prompt-flash2h-verify3.txt`](review-prompt-flash2h-verify3.txt).
-Built as `via-dev-9cbb1209df-20261018-114306.bin`, token `0x9ac7aafa`; daily
-`via-daily-9cbb1209df-20261018-114327.bin`.
+**Third verify** on `9cbb1209df` ([verbatim](review-codex-flash2h-verify3-2026-10-18.md),
+prompt [`review-prompt-flash2h-verify3.txt`](review-prompt-flash2h-verify3.txt)): both
+fixes correct, nothing new; one older gap.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | must fix (strict isolation): `5B 32` kept the receiver's candidate, so a reconnect whose down state was lost could finish an old link's frame | **Fixed in `4652a87470`, as codex specified:** reset on `5B 32`, which comes once per link-up (`docs/wireless.md`), so it never cuts a live frame. |
+| 2 | the TX checks, the frame layout, battery polls exempt, main-loop context, the promotion mirroring `5B 32` (it clears a pending pair too, as `5B 32` does) | Agreed. |
+
+**The build to flash:** `via-dev-4652a87470-20261018-114709.bin`, token
+`0x5d53643c`; daily `via-daily-4652a87470-20261018-114730.bin`. Firmware
+commits `3dcbc8b34c`, `b05e7cbc4e`, `19152be2e3`, `9cbb1209df`, `4652a87470`
+are local, **not pushed**.
 
 ## 2026-10-15
 
