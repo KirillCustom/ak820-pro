@@ -46,13 +46,18 @@ uint32_t ch582_battery_age_ms(void) { return seen ? now_ms - last_recv : UINT32_
 uint16_t ch582_battery_reports(void) { return reports; }
 bool     ch582_is_usb(void) { return false; }
 bool     ch582_is_connected(void) { return true; }
-void     display_set_alert(const char *m) { n_alerts++; snprintf(last_alert, sizeof last_alert, "%s", m); }
-static char last_status[32] = "";
+/* display.c notes a message when the band first paints it; the sim's band
+ * paints every message the moment it is posted, so the post is the paint. */
 static uint32_t msg_at;       /* when the band last showed a new message */
 static bool     msg_seen, debug_open;
+void     display_set_alert(const char *m) {
+    n_alerts++; snprintf(last_alert, sizeof last_alert, "%s", m);
+    msg_at = now_ms; msg_seen = true;
+}
+static char last_status[32] = "";
 void     display_set_param_status(const char *s) {
     snprintf(last_status, sizeof last_status, "%s", s);
-    msg_at = now_ms; msg_seen = true;   /* as display.c's note_message */
+    msg_at = now_ms; msg_seen = true;
 }
 bool     display_message_recent(uint32_t ms) { return msg_seen && now_ms - msg_at < ms; }
 bool     display_debug_active(void) { return debug_open; }
@@ -1339,6 +1344,8 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "l_announce"))   l_announce();
     else if (!strcmp(s, "l_persisted"))  l_persisted();
     else if (!strcmp(s, "l_minimal"))    l_minimal();
+    else if (!strcmp(s, "l_minimal_enter")) l_minimal_enter();
+    else if (!strcmp(s, "l_minimal_owed"))  l_minimal_owed();
     else if (!strcmp(s, "c_rate"))        c_rate();
     else if (!strcmp(s, "c_uneven"))      c_uneven();
     else if (!strcmp(s, "c_wrap"))        c_wrap();

@@ -41,3 +41,5 @@ uint8_t rgb_matrix_get_mode(void);
 void    rgb_matrix_mode_noeeprom(uint8_t mode);
 void    rgb_matrix_reinit_effect(void);
 #define RGB_MATRIX_LED_COUNT 82
+/* config.h's band overlay hold, which power.c's low notice waits out. */
+#define PARAM_OVERLAY_HOLD_MS 2000
