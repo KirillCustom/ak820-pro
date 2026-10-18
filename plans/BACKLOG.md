@@ -1,5 +1,25 @@
 # Backlog — known, accepted, or deferred items
 
+## From the manual's distillation (docs/sn32f299.md, 2026-10-18): five things to check
+
+Found while writing [`docs/sn32f299.md`](../docs/sn32f299.md); none verified
+on the board, none urgent:
+
+- **battery.md's "free pins" list is partly wrong.** B6/B7 are the CH582F's
+  UART and B10/B11 the external flash's data lines, assigned through the pin
+  mux rather than by name; the flash is on SPI1, not on SPI0's MISO. Recheck
+  the list (and any doc that says the flash shares SPI0) before using a pin.
+- **SysTick's priority may be 0, the highest**, above UART2: ChibiOS's
+  default of 8 seems to overflow the M0's 2-bit field. Reading `SCB->SHPR[1]`
+  on the board (a dev hook) settles it; see docs/leds.md's priority table.
+- **ChibiOS's GPIO interrupt handler can lose edges**: it reads the flags,
+  then clears all of them (the SPI0 lost-completion pattern). Unused here
+  (`PAL_USE_CALLBACKS` is off); a wake handler must clear only what it read.
+- **The package pitch disagrees**: the manual's LQFP80 is 0.4 mm, battery.md
+  records the clone as 0.5 mm.
+- **The reference repo's README gives P1.2 as both the encoder's A pin and
+  the flash's WP#.**
+
 ## Community: who is building on this, and when to reach out (2026-10-10)
 
 **TOUCH BASE WITH fpb once the battery work and the power ladder are close to
