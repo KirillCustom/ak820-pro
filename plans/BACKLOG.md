@@ -38,7 +38,9 @@ on 09-24 and built on `ak820pro-jdlien` (merge base `44e7314e65`): branches
 the personal one with Italian commit messages. Its `docs/notify.md` describes
 host notifications on the LCD, with questions answered from the keyboard and
 a Claude Code hook. Ideas worth taking:
-1. ⭐ **A host-to-board data channel over the air.** The only thing the CH582F
+1. ⭐ **A host-to-board data channel over the air.** **Built to a proven
+   transport and parked (10-18):**
+   [`LOCK-LED-CHANNEL-PLAN.md`](LOCK-LED-CHANNEL-PLAN.md). The only thing the CH582F
    forwards from host to board is the keyboard-LED bitmap (`5A <leds>`). It
    toggles Num and Scroll Lock (keys this board lacks) as bits: ~10 ms a bit,
    CRC-8, each frame sent twice. Measured 42/42 frames intact at 8-40 ms a bit
@@ -46,8 +48,7 @@ a Claude Code hook. Ideas worth taking:
    host side is Linux-only: driving one keyboard's LEDs from macOS or Windows
    is "the open question". **For us:** clock sync and now-playing without the
    cable (both are USB raw HID today), at ~100 bit/s.
-   **Assessed 10-10 (JD asked about the drawbacks). Worth one experiment,
-   Mac only:**
+   **Assessed 10-10, drawbacks included. Worth one experiment, Mac only:**
    - **Host side effects depend on the OS.** On Linux each keyboard's LEDs
      are separate, so the system lock state never moves (proven by
      quill4gen7). On macOS no system-wide Num or Scroll behaviour depends on

@@ -109,36 +109,45 @@ Four things from that work that bite outside it:
 Measured results and audit findings from completed work: [`history/`](history/).
 ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 
-## Current state (2026-10-15)
+## Current state (2026-10-18)
 
-**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-15
-— RESUME HERE"). **The INA228 power logger is on the pack and recording
-(10-15),** with the keyboard back in daily use, the harness led out of its
-case ([docs/test-bench.md](docs/test-bench.md), "The power logger"):
-- **current and charge** from the INA228 on the pack's + lead (the charge
-  register is gap-free; use it for mAh); **pack voltage from the MAX17048**
-  (`vcell_mv`). ⚠️ The INA228's own VBUS reads ~5% (~214 mV) low, cause
-  unknown: not the harness, the jumper or the wiring.
-- ⚠️ The shunt was first wired backwards; fixed at the terminal block (10-15).
-  `power_log.py`'s `SHUNT_SIGN` exists if it is ever reversed again.
-- **Next:** the per-load current map (Phase 2's step 2: the lighting is
-  hands-free over VIA's channel, the screen needs JD's keys or a dev hook),
-  then a whole cycle with the logger (the plan's calibration run). Phase 2
-  itself stays note-taking until JD says build.
-- **Phase 1b is closed (10-14)**: design and measurements in
-  [docs/battery.md](docs/battery.md) ("The gauge as built, Phase 1b").
-- **On the board: flash 2e**, `efd5b0f74a` (a `dev` build, token
-  `0x71163528`, since 19:30 10-11); firmware merged and pushed at
-  `3e18c70a74`, pinned in `deps.lock`. **Flashing needs no hands:**
-  `./build.sh dev`, then `./flash.sh <artifact>` ("Build & flash", below).
+**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-18
+— RESUME HERE"). Two workstreams, Phase 2 first:
+- **Phase 2, being built (10-18): an accurate gauge, a time-left estimate,
+  the power ladder.** R1-R4 are done (the per-load map, the USB offset, a
+  logged drain and charge: 4011.6 mAh, 15,579 mWh to the RGB cut at JD's
+  settings). A1: the gauge reads up to 13.7 points low on the plateau
+  (70-80%, where 15 mV spans 85-70%), within 2.5 below 20%. No voltage table
+  can fix that, so the plateau gets an energy count from FULL with the
+  board's modelled draw. Next: A3, A4, A7, A8
+  ([`plans/POWER-CAMPAIGN-PLAN.md`](plans/POWER-CAMPAIGN-PLAN.md)), the plan,
+  codex, the flashes.
+- **The lock-LED channel (host-to-board data over Bluetooth) is parked**
+  with its transport proven: 24/24 frames on the board, and profile P3 moves
+  no light ([`plans/LOCK-LED-CHANNEL-PLAN.md`](plans/LOCK-LED-CHANNEL-PLAN.md)
+  has the resume list; what the module forwards is in
+  [docs/wireless.md](docs/wireless.md)).
+- **On the board: flash 2i**, `112942fa63` (a `dev` build, token
+  `0x081daec1`, since 15:18 10-18). ⚠️ **Firmware commits 2f-2i
+  (`523744c30f`..`112942fa63`) are local on `ak820pro-jdlien`, not pushed**,
+  and `deps.lock` still pins `3e18c70a74`, so a fresh `setup.sh` builds Phase
+  1b's firmware, not this.
+- **The power logger stays on the pack** (INA228 + MAX17048,
+  [docs/test-bench.md](docs/test-bench.md), "The power logger"): current and
+  charge from the INA228, voltage from `vcell_mv`. ⚠️ The INA228's VBUS reads
+  ~5% low, and the MAX17048's own SOC is up to 22 points off: use neither.
+- **Flashing needs no hands:** `./build.sh dev`, then `./flash.sh <artifact>`
+  ("Build & flash", below). ⚠️ Keep the slider on BT or 2.4G. ⚠️ JD is often
+  busy: one action per message. ⚠️ **Test display changes with a track
+  playing** ([docs/display.md](docs/display.md)).
 
-**The bench runs trials without JD's hands:** a USB relay on the keyboard's
-5 V, plus `uhubctl` on its data
-([`docs/test-bench.md`](docs/test-bench.md)). ⚠️ Keep the slider on BT or 2.4G.
-⚠️ JD is often busy: one action per message.
-⚠️ **Test display changes with a track playing**: the page-exit and overlay
-stalls of 10-11 needed one, and every idle test missed them
-([docs/display.md](docs/display.md)).
+## Earlier state (2026-10-15)
+
+The INA228 power logger went onto the pack (its shunt first wired
+backwards, fixed at the terminal block); R1 mapped the loads (73.5 mA at
+JD's settings, 28.3 with the RGB off, the screen ~1 mA at his level) and R2
+the USB data offset (1.7 mA); R3, the logged cycle, started that night on
+flash 2f.
 
 ## Earlier state (2026-10-14)
 

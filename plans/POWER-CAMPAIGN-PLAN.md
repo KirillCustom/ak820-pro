@@ -5,9 +5,8 @@ feature's draw, a power ladder designed on numbers, and a runtime estimate.**
 This plan is the measurement half of that, run on the bench with no hands but
 JD using the keyboard as usual. It replaces inference with measurement in
 [`BATTERY-GAUGE-PLAN.md`](BATTERY-GAUGE-PLAN.md) (the calibration run, Phase
-2's step 2, gate 5) and does not change that plan's agreed order: **nothing in
-Phase 2 is built until JD says build**, and every flash gets a codex review
-first.
+2's step 2, gate 5) and does not change that plan's agreed order. **Build authorized 10-18**;
+every flash gets a codex review first.
 
 ## What the bench can measure now
 
@@ -181,8 +180,7 @@ today, ~380 with the lights out, single to tens of mAh in a real standby).
 2. **A time-left readout** (A7): the board knows its own settings, so with
    A4's model it can estimate its draw, and with the level its time left.
    Shown on the camera page first, then wherever JD wants it.
-3. **The power ladder** (Phase 2's agreed order, steps 3-5), sized by A8,
-   only when JD says build.
+3. **The power ladder** (Phase 2's agreed order, steps 3-5), sized by A8.
 4. Optional: activity in the battery log (A8's 1-minute rung); a dev hook for
    the BT link states.
 

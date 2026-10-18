@@ -165,6 +165,26 @@ state, so a wrong link state silently drops LED updates. Also **not a bug**:
 macOS tracks Caps per HID device, so the laptop's Caps LED and the AK820's
 never sync; capitalisation is global, indicators are per-device.
 
+## The keyboard-LED report as a data path (measured 2026-10-17/18)
+
+Over the air, the only host-to-board path is the keyboard's LED output
+report (report 2, one byte), which the module forwards as `5A <byte> <sum>`.
+Measured from JD's Mac over BT (flashes 2g-2i, `scripts/ledchannel_test.py`;
+the channel built on it is
+[`plans/LOCK-LED-CHANNEL-PLAN.md`](../plans/LOCK-LED-CHANNEL-PLAN.md)):
+
+- **The whole byte arrives**, the padding bits 5-7 included. The `5A` case's
+  guard `(d & ~0x1F) == 0` keeps those bytes out of QMK's LED state and out of
+  the `LINKING` promotion.
+- **Every change arrives three times**, 0-5 ms apart, and **a repeat of the
+  same value is not forwarded** (the Mac sends it; it never reaches the board).
+- **No merging:** written back to back, one per ~30 ms, every one delivered.
+  After even a 10 ms pause each write takes ~150 ms, and the first after idle
+  130-376 ms; one 366 ms write was seen mid-burst.
+- **The Mac's own Caps report zeroes bits 3-4.** A locked Mac refuses every
+  write (`0xe00002e2`).
+- UART overruns rose by a few during long bursts: harmless with three copies.
+
 ## Host switch: clear the outgoing host's report first
 
 `bt_ui_mode_slider()` calls `clear_keyboard()` before routing flips (analysis

@@ -11,6 +11,17 @@ reviews and every disposition:
 [`plans/BATTERY-GAUGE-REFINE-PLAN.md`](../plans/BATTERY-GAUGE-REFINE-PLAN.md)
 ("As built" holds every measurement).
 
+> **State (2026-10-18): Phase 2 is being built**: an accurate gauge, a
+> time-left estimate and the power ladder
+> ([`plans/POWER-CAMPAIGN-PLAN.md`](../plans/POWER-CAMPAIGN-PLAN.md),
+> [`plans/BATTERY-GAUGE-PLAN.md`](../plans/BATTERY-GAUGE-PLAN.md)). The logged
+> cycle (R3/R4) measured the gauge against the pack's real energy for the
+> first time: **up to 13.7 points low on the plateau** (70-80%), within 7
+> below 60% and 2.5 below 20%, never more than 0.3 high. **4011.6 mAh, 15,579
+> mWh to the RGB cut** at JD's settings (309 mW mean); 3972.4 mAh back in over
+> 9.90 h ([`history/battery-2026-10-15-drain-2f/`](../history/battery-2026-10-15-drain-2f/README.md)).
+> On JD's unit: flash 2i (`112942fa63`, `dev`).
+>
 > **State (2026-10-14): Phase 1b is closed.** Its last two per-event checks,
 > "Battery low" and the RGB cut, passed on the 10-12/14 drain (no pass ≥ 25 ms
 > at either). Merged into `ak820pro-jdlien`
@@ -56,6 +67,11 @@ reviews and every disposition:
   within 4.6 points low from 52% to the cut and up to **7.2 low** on the flat
   top, erring low throughout (never more than 0.4 high). So ±5% holds
   everywhere but 70-85%.
+- **Against the logger's measured energy (10-15 to 10-18)** it was worse on
+  the plateau: up to **13.7 points low** at 70-80% (mean −10.1), means of
+  −1.9 to −4.9 from 60% to 20%, within 2.5 below 20%. The plateau moves ~1 mV
+  a point, so `5C`'s ~10 mV and a cycle's drift each cost ~10 points there:
+  Phase 2 counts energy across it instead.
 - **It is blind at both ends:** above ~4.036 V (the top ~10% of runtime) and
   below ~3.161 V. While charging, the charge current inflates the reading, so
   **the charging display is a model** of the charge, bounded by the voltage,
@@ -262,6 +278,7 @@ and ~11% on the 4.00-4.02 V plateau**, where ~20% of the runtime passes in
 | one `5C` count | 8.75 mV | the raw step; the mean resolves ~0.1 count |
 | the curve | refitted on both runs; **leave-one-out: 0.54-0.59 points rms below 3.95 V, 3.1-3.2 rms (worst ±8.9) on the plateau** | **the dominant term**, and the plateau is its weak part |
 | the curve over a third cycle (10-09 to 10-11) | **within ±2.5 points from 52% to the cut (mean −0.2); up to −8.3 on the flat top (70-85%), mean −2.2 over the soak** | measured: Phase 1b's accuracy, below |
+| the curve over a fifth cycle, against the logger's energy (10-15 to 10-18) | **up to −13.7 on the plateau (70-80% mean −10.1); means −1.9 to −4.9 from 60% to 20%; within 2.5 below 20%; never above +0.3** | measured: R3, A1 (`scripts/r3_level.py`) |
 | the curve over a fourth cycle (10-12 to 10-14) | **−0.2 to −4.6 points from 52% to the cut (mean −1.6; −0.2 to −2.0 below 30%); up to −7.2 on the flat top (mean −5.1); never above +0.4** | measured: the second whole cycle, below |
 | temperature, 10 °C swing | ±1.5-3%, from generic NMC figures | unmeasured here |
 | cell ageing, a year | ±5%, drifting | unmeasured |

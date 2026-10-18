@@ -501,8 +501,10 @@ architectural; some may be the screen, which is fixable.
 ### Phase 2: the agreed order (JD, 2026-10-06)
 
 Agreed when JD asked whether the board was ready for the ladder (it was not
-yet), and recorded while Phase 2 is still in note-taking mode. **Nothing here
-is built until JD says so.**
+yet), and recorded while Phase 2 was in note-taking mode. **Build authorized
+10-18**, with the gauge and a time-left estimate first
+([`POWER-CAMPAIGN-PLAN.md`](POWER-CAMPAIGN-PLAN.md), "What follows in
+firmware"); each flash still gets a codex review.
 
 1. **Finish Phase 1b first** (`BATTERY-GAUGE-REFINE-PLAN.md`): flash 2 after
    B3, with C2 (the RTC period's writes) and the D fix (the battery stalls).

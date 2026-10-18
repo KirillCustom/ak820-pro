@@ -28,13 +28,14 @@ power work** (the ladder, an accurate gauge, a runtime estimate).
 
 ### Two workstreams, and their order (10-18)
 
-**1. Phase 2, first:** an accurate gauge, a time-left estimate, the ladder.
+**1. Phase 2, first, build authorized:** an accurate gauge, a time-left
+estimate, the ladder.
 Done: R1-R4 and A1/A2 (the gauge reads up to 13.7 points low on the plateau,
 where 15 mV spans 85-70%, so the fix is counting energy down from FULL with
 the board's modelled draw there and reading the voltage below ~3.98 V). Next,
 desk work: A3 (the charge), A4 (the load model), A7 (the hybrid gauge and
 time-left, replayed on R3 and drains 2c-2e), A8 (the ladder's sizing); then a
-plan, codex, JD's build. Then flashes: the gauge and time-left, R5 (a drain
+plan and codex. Then flashes: the gauge and time-left, R5 (a drain
 at another load), the `Fn`+`B` modes, light sleep, the reserve, gate 5.
 
 **2. The lock-LED channel, parked:** the transport is proven (24/24 frames,

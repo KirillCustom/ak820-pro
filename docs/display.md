@@ -365,6 +365,15 @@ lock). Third slot shared: Scroll Lock wins when set, but macOS never sets it,
 so in practice it is the Fn indicator. Redraws on the 10 Hz tick so Caps shows
 immediately.
 
+- **Scroll Lock shows settled** (flash 2g, every build): a change shows once
+  it has held 1.5 s (`SCR_SETTLE_MS`), or at once within 500 ms of the
+  board's own `KC_SCRL`, so traffic on the LED report never repaints the
+  band. In dev builds a lock-LED frame in progress holds it
+  ([`plans/LOCK-LED-CHANNEL-PLAN.md`](../plans/LOCK-LED-CHANNEL-PLAN.md)).
+- ⚠️ **The CAPS paint is the suspect for the last passes ≥ 25 ms** (one on
+  10-17 and one on 10-18, each in a window that toggled Caps; an inference,
+  not measured). To measure with `Fn`+`D`'s probe and a track playing.
+
 - "WIN", not "GUI": the label names the only context where GUI-lock is
   meaningful (Windows fullscreen gaming). Accessor stays `lock_state_gui()`.
 - The padlock is drawn from rectangles because glyphs have no colour.
