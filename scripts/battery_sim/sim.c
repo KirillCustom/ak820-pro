@@ -48,7 +48,14 @@ bool     ch582_is_usb(void) { return false; }
 bool     ch582_is_connected(void) { return true; }
 void     display_set_alert(const char *m) { n_alerts++; snprintf(last_alert, sizeof last_alert, "%s", m); }
 static char last_status[32] = "";
-void     display_set_param_status(const char *s) { snprintf(last_status, sizeof last_status, "%s", s); }
+static uint32_t msg_at;       /* when the band last showed a new message */
+static bool     msg_seen, debug_open;
+void     display_set_param_status(const char *s) {
+    snprintf(last_status, sizeof last_status, "%s", s);
+    msg_at = now_ms; msg_seen = true;   /* as display.c's note_message */
+}
+bool     display_message_recent(uint32_t ms) { return msg_seen && now_ms - msg_at < ms; }
+bool     display_debug_active(void) { return debug_open; }
 /* QMK's conversion, for the dim hook: s = 0 (white) is all the sim needs. */
 rgb_t    hsv_to_rgb(hsv_t c) { rgb_t r = {c.v, c.v, c.v}; return r; }
 static uint8_t power_mode_p1;   /* kb_eeconfig's power mode + 1, 0 = unset */
@@ -1331,6 +1338,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "l_lights_cut")) l_lights_cut();
     else if (!strcmp(s, "l_announce"))   l_announce();
     else if (!strcmp(s, "l_persisted"))  l_persisted();
+    else if (!strcmp(s, "l_minimal"))    l_minimal();
     else if (!strcmp(s, "c_rate"))        c_rate();
     else if (!strcmp(s, "c_uneven"))      c_uneven();
     else if (!strcmp(s, "c_wrap"))        c_wrap();

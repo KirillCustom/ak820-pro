@@ -49,7 +49,10 @@ static void l_modes(void) {
     idle_ms = 120000; ltick(); expect_stage(POWER_STAGE_LIGHTS_OFF, 0, 4, 255, "Saver, 2 min");
     idle_ms = 300000; ltick(); expect_stage(POWER_STAGE_SCREEN_OFF, 0, 0, 255, "Saver, 5 min");
     power_cycle_mode();
-    CHECK(power_mode() == POWER_MODE_FULL, "Saver -> Full, got %d", power_mode());
+    CHECK(power_mode() == POWER_MODE_MINIMAL, "Saver -> Minimal, got %d", power_mode());
+    CHECK(!strcmp(last_status, "Minimal mode"), "overlay '%s'", last_status);
+    power_cycle_mode();
+    CHECK(power_mode() == POWER_MODE_FULL, "Minimal -> Full, got %d", power_mode());
     idle_ms = 86400000u; ltick(); expect_stage(POWER_STAGE_ACTIVE, 255, 0xFF, 255, "Full, a day idle");
     power_cycle_mode();
     CHECK(power_mode() == POWER_MODE_NORMAL, "Full -> Normal, got %d", power_mode());
@@ -75,7 +78,7 @@ static void l_low_cap(void) {
     last_status[0] = 0;
     idle_ms = 30000; ltick(); expect_stage(POWER_STAGE_DIM, 255, 0xFF, 64, "low, Normal, 30 s");
     CHECK(last_status[0] == 0, "said once, then '%s'", last_status);
-    power_cycle_mode(); power_cycle_mode();   /* Normal -> Saver -> Full */
+    power_cycle_mode(); power_cycle_mode(); power_cycle_mode();   /* Normal -> Saver -> Minimal -> Full */
     CHECK(power_mode() == POWER_MODE_FULL, "mode %d", power_mode());
     idle_ms = 120000; ltick(); expect_stage(POWER_STAGE_LIGHTS_OFF, 0, 4, 255, "low, Full, 2 min");
 }
@@ -118,6 +121,31 @@ static void l_announce(void) {
     CHECK(!strcmp(last_status, "Normal power"), "overlay '%s'", last_status);
     uint8_t m = 0xFF;
     CHECK(kb_eeconfig_get_power_mode(&m) && m == POWER_MODE_NORMAL, "persisted %u", m);
+}
+
+/* Minimal: dark on battery even while typing; the backlight lights for 4 s
+ * after a message and while Fn+D's pages are open (JD, 10-18); USB is Full. */
+static void l_minimal(void) {
+    kb_eeconfig_set_power_mode(POWER_MODE_MINIMAL);
+    power_init();
+    on_battery_mid();
+    idle_ms = 0; ltick();
+    expect_stage(POWER_STAGE_SCREEN_OFF, 0, 0, 255, "Minimal, typing");
+    display_set_param_status("Brightness 5");   /* a key's overlay */
+    ltick();
+    CHECK(bkl_cap == 0xFF && scale == 0, "lit for the message, RGB still off: cap %u scale %u", bkl_cap, scale);
+    lrun_s(3);
+    CHECK(bkl_cap == 0xFF, "still lit at 3 s: cap %u", bkl_cap);
+    lrun_s(2);
+    CHECK(bkl_cap == 0, "dark again after 4 s: cap %u", bkl_cap);
+    debug_open = true; ltick();
+    CHECK(bkl_cap == 0xFF, "lit while Fn+D's page is open: cap %u", bkl_cap);
+    lrun_s(30);
+    CHECK(bkl_cap == 0xFF, "for as long as it is open: cap %u", bkl_cap);
+    debug_open = false; ltick();
+    CHECK(bkl_cap == 0, "dark when it closes: cap %u", bkl_cap);
+    become_full(); ltick();
+    expect_stage(POWER_STAGE_ACTIVE, 255, 0xFF, 255, "Minimal on USB");
 }
 
 static void l_persisted(void) {
