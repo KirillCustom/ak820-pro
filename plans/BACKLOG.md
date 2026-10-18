@@ -123,8 +123,34 @@ a Claude Code hook. Ideas worth taking:
      sent. Input Monitoring holds only while the session is unlocked, as the
      F19 listener is blind then (`docs/test-bench.md`). For the daemon: no
      clock or now-playing over the air while the Mac is locked, so resync on
-     unlock. Its three tests (repeats, the unnamed bits, async writes) rerun
-     at the first unlock after 06:00 10-18.
+     unlock. Its three tests (repeats, the unnamed bits, async writes) ran
+     again unlocked at 08:02 10-18, below.
+   - **The stall hazard above is real: one pass >= 25 ms during these
+     tests.** The guard's count went from 0 (23:45:51 10-17) to 1 (23:50:52):
+     `loop_gap_max_ms` 25, marked `blit`. That window holds `pace 200`
+     (Scroll Lock toggled ~33 times a second) and `hold`'s two Caps presses;
+     the guard reads every 5 min, so which one is not known, but the burst
+     means one band repaint per toggle (an inference). The settled indicator
+     above removes it: one repaint per settled change.
+     (`history/battery-2026-10-15-drain-2f/README.md`.)
+   - **Repeats are sent, Mac side.** `night`, 08:02:29 10-18: a write of the
+     value already set took as long as a change (18 repeats median 29.7 ms,
+     6 changes 30.2; 27.5-42.1). macOS does not drop a repeat; it goes out
+     and is acknowledged. Whether the module passes a repeated `5A` on to the
+     SN32 is still unknown.
+   - **Bits 3-4 are sent too, Mac side.** `0x08`, `0x10` and `0x18` each
+     took a full acknowledged write (medians 30.0, 30.1, 29.8 ms; `0x04`
+     29.8), so a raw report carries the whole byte. Whether the module
+     forwards them is the hook's to say.
+   - **Async writes do not beat the link.** 200
+     `IOHIDDeviceSetReportWithCallback` writes were all accepted in 11.2 ms
+     and all completed successfully, the last at 6226.9 ms: **32.1/s**, the
+     same as synchronous (33.1/s). The ceiling is one acknowledged write per
+     ~31 ms, not the Mac's call overhead. So the budget is ~32 reports/s:
+     with all 5 bits forwarded and repeats counted, 5 bits per report is
+     ~160 bit/s, a 30-character title in ~2 s. With 3 bits and change coding
+     it is ~2.8 bits per report, ~90 bit/s (both inferences from the Mac-side
+     times).
    - **Where it would live: the Rust daemon (`ak820-agent/`).** It already
      owns now-playing and the clock on both OSes, and only one process may
      run clock transactions, so a clock over the air cannot be a separate

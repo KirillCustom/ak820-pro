@@ -1,6 +1,7 @@
 # R3: the logged drain on flash 2f (from 2026-10-15 23:37:59)
 
-`plans/POWER-CAMPAIGN-PLAN.md`, R3/R4. Running unattended: in progress.
+`plans/POWER-CAMPAIGN-PLAN.md`, R3/R4. Running unattended: the RGB cut at
+02:01:22 10-18 after 50.39 h; charging since 02:06:53.
 
 **Start boundary** (codex's must-fix 3): `bench_trial.py --full` topped the
 pack up to the charger's termination (FULL 23:27:19, two CHRG-high reads 5
@@ -63,3 +64,29 @@ battery).
   (an estimate).
 - Logged before it: **3139.3 mAh over 40.08 h** (mean 78.3 mA), `vcell`
   4187.5 to 3781.3 mV.
+
+**The cut, 10-18.** The logger saw the RGB cut between **02:01:22 and
+02:01:23** (90.4 mA, then 37.3; `vcell` 3387.5 mV just before it; the
+board's `5C` read 3399 mV at the trial's 02:00:52 poll). That is **50.39 h**
+from relay 2 off (drain 2e: 50.35-50.43 h). The trial saw `lights_cut` at
+its 02:05:52 poll, dumped the RAM log at 02:05:53
+(`log-20261018-0205-rgbcut.csv`, 311 entries) and turned relay 2 on at
+02:06:53 (the logger: -565 mA at 02:06:54); FULL-ON 02:07:03. Between the
+cut and the relay the board drew 35.2-37.3 mA.
+- **Charge to the cut: ~4012 mAh** (mean ~79.6 mA): 3139.3 mAh logged
+  before the outage, 771.3 mAh on the restarted register (16:57:12 10-17 to
+  the cut), and ~101 mAh bridged over the 1.244 h hole. The bridge is an
+  estimate: 81.9 mA (the 10 min before the hole) gives 101.9 mAh, and the
+  register's own mean from its restart to the recorder's first row (80.5 mA
+  over 13.5 min) gives 100.1.
+- **One pass >= 25 ms, and the lock-LED probe was hammering the board when
+  it happened.** The guard's count went from 0 (23:45:51 10-17) to 1
+  (23:50:52) and stayed 1 to the cut (02:05:54: `loop_gap_max_ms` 25,
+  marked `blit`; `blit_gap_max_ms` 25, up from 22 at 20:50). That window
+  holds the probe's 200 back-to-back writes (23:46:30-23:46:36, Scroll Lock
+  toggled ~33 times a second while JD typed) and its 30 s hold with two
+  Caps Lock presses (23:48:30-23:49:00); its later writes, from 23:51:15,
+  were all refused by the locked Mac. The guard reads every 5 minutes, so it
+  cannot say which of the two did it. Every lock-band change repaints the
+  band, so the burst is the likelier one (an inference, not measured).
+  The load itself is not something the drain does.
