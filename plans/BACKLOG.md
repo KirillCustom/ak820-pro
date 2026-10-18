@@ -133,6 +133,10 @@ a Claude Code hook. Ideas worth taking:
      means one band repaint per toggle (an inference). The settled indicator
      above removes it: one repaint per settled change.
      (`history/battery-2026-10-15-drain-2f/README.md`.)
+   - **Rule for the encoding (codex, flash 2g): never leave Scroll Lock
+     changed for 1.5 s at a stretch inside a frame**, pauses and retries
+     included. The settled indicator restarts its clock only on a Scroll Lock
+     transition, so a frame that holds the bit flipped that long shows SCR.
    - **Repeats are sent, Mac side.** `night`, 08:02:29 10-18: a write of the
      value already set took as long as a change (18 repeats median 29.7 ms,
      6 changes 30.2; 27.5-42.1). macOS does not drop a repeat; it goes out

@@ -1,6 +1,6 @@
 # Current status
 
-Updated 2026-10-15 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
+Updated 2026-10-18 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
 [`CRASH-HUNT-PLAN.md`](CRASH-HUNT-PLAN.md). **Phase 1b is closed (10-14). The
 INA228 power logger is on the pack and recording (10-15)**; next is using it,
 below.
@@ -15,7 +15,44 @@ loop stopped next time. The crash hunt adds what they cannot say (a CPU fault
 versus a hang, the PC, stack depth, why blits time out) and tries to provoke
 the next reset instead of waiting for it.
 
-## 2026-10-15 — RESUME HERE
+## 2026-10-18 — RESUME HERE
+
+**R3 is done but for its charge** (cut 02:01:22 10-18 after 50.39 h,
+~4012 mAh; [`../history/battery-2026-10-15-drain-2f/`](../history/battery-2026-10-15-drain-2f/README.md)).
+The trial ends at FULL. **Next: flash 2g, then the lock-LED channel's
+hands-free tests** (`plans/BACKLOG.md`, quill4gen7 item 1).
+
+### Flash 2g: the 5A trace and the settled SCR (10-18)
+
+Why: what reaches the board of the LED byte a host writes over BLE (which of
+the five bits, whether repeats, how close together) can only be read on the
+board, and the channel's toggling repainted the lock band (one pass >= 25 ms
+during the 10-17 probe tests). Two changes:
+- **dev builds only, `HC_DEVHOOK` ops 7-9:** every checksum-valid `5A` frame
+  in a 52-slot ring {byte, ms since the previous}, with frame and accepted
+  counts. Host: `scripts/devhook.py leds [reset | json]`.
+- **every build:** the LCD shows Scroll Lock once it has held 1.5 s, or at
+  once within 500 ms of the board's own `KC_SCRL` (`indicators.c`).
+
+Firmware `4aa5e6b443` (local on `ak820pro-jdlien` on top of 2f, **not
+pushed**: JD's call), built as `via-dev-4aa5e6b443-20261018-101206.bin`,
+token `0x859cb24f`; `daily` builds clean too (`via-daily-4aa5e6b443-20261018-101236.bin`).
+The tests: `scripts/ledchannel_test.py` (width, high, repeats, speed, random)
+with the LED probe's new `seq` and `aseq` modes.
+
+**Codex review** ([verbatim](review-codex-flash2g-2026-10-18.md), prompt
+[`review-prompt-flash2g.txt`](review-prompt-flash2g.txt)): no must-fix.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | should fix: an unanswered `KC_SCRL` press stays armed, and ~49.7 days on the timer's wrap makes it look recent | **Fixed:** `update_leds()` disarms it once its 500 ms pass. |
+| 2 | should fix: op 7 plus four op-8 reads are not one snapshot; op 8's reply does not say which page it is | **Fixed:** each page now echoes its number (13 entries a page, so the ring is 52, not 56); `devhook.py` reads the header, the pages, the header again, and retries if the count moved. |
+| 3 | should fix: only a Scroll Lock transition restarts the settle clock, so "a frame never shows" holds only if the frame never leaves Scroll Lock changed for 1.5 s | **Fixed (comment) and carried to the encoding:** a rule for the channel's design, recorded in BACKLOG. |
+| 4 | should fix (plan): the prose's width and repeat sequences exceed the ring | The runner already used shorter ones (32 and 18); now within 52 with room, and `random` cut to 44. |
+| 5 | should fix (plan): a 10 ms sleep after a ~30 ms synchronous write tests ~40 ms between starts, not 10 | **Fixed:** the runner reports the measured start-to-start spacing; `speed-async` (the probe's new `aseq`, every write issued at once) is the fastest this Mac can send. |
+| 6 | notes: context all main loop; ring, gap, bounds and LE layout fine; raw vs accepted kept apart; reset keeps `host_leds`; the header's `host_leds` is the radio's even in cable mode; nothing dev-only leaks; the 25 ms budget untouched but not proven; missing frames could be UART loss or checksum rejects | Agreed. The runner reads `count_ge_25ms`, `rx_malformed` and the UART overrun and framing counts before and after every test. Slider on BT for the tests. |
+
+## 2026-10-15
 
 **Where things stand: the INA228 power logger is on the pack and recording,
 and the keyboard is back in JD's daily use with it attached.** Phase 1b stays

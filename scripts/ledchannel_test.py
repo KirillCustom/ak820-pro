@@ -1,0 +1,154 @@
+"""The lock-LED channel's hands-free test (plans/BACKLOG.md, quill4gen7 item 1):
+what reaches the board of the LED bytes this Mac writes over Bluetooth.
+
+    venv/bin/python scripts/ledchannel_test.py [--out DIR] [TEST ...]
+
+TEST is width, high, repeats, speed or random (default: all five, in that
+order). Each one resets the board's 5A trace (`scripts/devhook.py leds reset`,
+over the cable), has the LED probe write a sequence over BLE (`seq` mode), then
+reads the trace back and compares:
+  width    0x01..0x1F then 0x00, 200 ms apart: which of the five bits arrive
+  high     0x20, 0x40, 0x80, 0xE0, 0x24, each then 0x00: does the module mask
+           the three padding bits, or pass them for the board to reject
+  repeats  each value three times, 200 ms apart: is a repeat forwarded
+  speed    Scroll Lock toggled 40 times, each write waiting for the last and
+           then 40, 30, 20, 10 or 0 ms more (a write itself takes ~30 ms, so
+           the starts are ~70 down to ~30 ms apart: the report gives the
+           measured spacing), then the 40 issued at once without waiting, the
+           fastest this Mac can send: do frames merge
+  random   44 values over Num, Scroll and bits 3-4, each unlike the last,
+           back to back: the channel's error rate at full speed
+Needs flash 2g (the trace; the slider on BT, linked), the probe app
+(scripts/build-led-probe.sh) and the Mac unlocked (locked, it refuses every
+write). Caps (0x02) shows CAPS on the LCD while it is set. The board's stall
+and link-error counters are read before and after each test (ak820health.py),
+since a missing frame can also be a UART overrun or a checksum reject. Writes a
+JSON per test to DIR (default history/ledchannel-<date>/).
+"""
+import json, os, random, subprocess, sys, time
+
+ROOT = "/Users/jdlien/code/ak820-pro"
+APP = os.path.expanduser("~/Applications/AK820 LED Probe.app")
+LOG = os.path.expanduser("~/Library/Logs/ak820pro/ledprobe.log")
+PY = os.path.join(ROOT, "venv/bin/python")
+RING = 52
+
+
+def devhook(*args):
+    r = subprocess.run([PY, os.path.join(ROOT, "scripts/devhook.py"), "leds", *args],
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        sys.exit(f"devhook.py leds {' '.join(args)}: {(r.stderr or r.stdout).strip()}")
+    return json.loads(r.stdout) if args == ("json",) else None
+
+
+def health():
+    r = subprocess.run([PY, os.path.join(ROOT, "hostagent/ak820health.py"), "--stalls", "--json"],
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        sys.exit(f"ak820health.py: {(r.stderr or r.stdout).strip()}")
+    h = json.loads(r.stdout)
+    return {"count_ge_25ms": h["count_ge_25ms"], "loop_gap_max_ms": h["loop_gap_max_ms"],
+            "blit_gap_max_ms": h["blit_gap_max_ms"], "rx_malformed": h["rx_malformed"],
+            "uart_overrun": h["link"]["uart_overrun"], "uart_framing": h["link"]["uart_framing"]}
+
+
+def send(gap_ms, vals):
+    """Run the probe (seq, or aseq when gap_ms is None); return each write's
+    start time for seq or completion time for aseq, in epoch seconds."""
+    start = os.path.getsize(LOG) if os.path.exists(LOG) else 0
+    mode = ["aseq"] if gap_ms is None else ["seq", str(gap_ms)]
+    subprocess.run(["open", "-n", "-W", "-a", APP, "--args", *mode,
+                    *[f"0x{v:02x}" for v in vals]], check=True, timeout=600)
+    with open(LOG) as f:
+        f.seek(start)
+        lines = f.read().splitlines()
+    if gap_ms is None:
+        writes = [l for l in lines if " aseq " in l and "->" in l]
+        t0 = next(float(l.split()[0]) for l in lines if "aseq: " in l)
+        times = sorted(t0 + float(l.rsplit(" at ", 1)[1].split()[0]) / 1000 for l in writes)
+    else:
+        writes = [l for l in lines if ": seq " in l and "->" in l]
+        times = [float(l.split()[0]) - float(l.rsplit(" in ", 1)[1].split()[0]) / 1000 for l in writes]
+    bad = [l for l in writes if "-> 0x00000000" not in l]
+    if len(writes) != len(vals) or bad:
+        sys.exit(f"the probe wrote {len(writes)} of {len(vals)}, {len(bad)} refused:\n" +
+                 "\n".join((bad or lines)[-5:]))
+    return times
+
+
+def dedupe(vals):
+    return [v for i, v in enumerate(vals) if i == 0 or v != vals[i - 1]]
+
+
+def run(name, gap_ms, vals, out):
+    if len(vals) > RING:
+        sys.exit(f"{name}: {len(vals)} writes, more than the ring's {RING}")
+    before = health()
+    devhook("reset")
+    times = send(gap_ms, vals)
+    time.sleep(0.5)   # any frame still in flight
+    tr = devhook("json")
+    after = health()
+    delta = {k: after[k] - before[k] for k in ("count_ge_25ms", "rx_malformed", "uart_overrun", "uart_framing")}
+    iv = sorted(round((b - a) * 1000, 1) for a, b in zip(times, times[1:]))
+    got = [e["byte"] for e in tr["seq"]]
+    gaps = [e["gap_ms"] for e in tr["seq"][1:] if e["gap_ms"] is not None]
+    # Which model fits what arrived: every write; only changes; only the low
+    # three bits (and then only changes, since masking makes repeats).
+    low3 = [v & 0x07 for v in vals]
+    fits = [m for m, want in (("every write", vals), ("changes only", dedupe(vals)),
+                              ("low 3 bits", low3), ("low 3 bits, changes only", dedupe(low3)),
+                              ("low 5 bits, changes only", dedupe([v & 0x1F for v in vals])))
+            if got == want]
+    res = {"test": name, "gap_ms": gap_ms, "sent": vals, "received": got,
+           "frames": tr["frames"], "accepted": tr["accepted"], "fits": fits,
+           "rx_gap_ms": {"min": min(gaps, default=None), "median": sorted(gaps)[len(gaps) // 2] if gaps else None,
+                         "max": max(gaps, default=None)},
+           "host_interval_ms": {"min": iv[0], "median": iv[len(iv) // 2], "max": iv[-1]} if iv else None,
+           "health_before": before, "health_after": after, "health_delta": delta,
+           "trace": tr, "at": time.strftime("%Y-%m-%d %H:%M:%S")}
+    with open(os.path.join(out, f"{name}.json"), "w") as f:
+        json.dump(res, f, indent=1)
+    print(f"{name:14} sent {len(vals):2}, received {tr['frames']:2} (accepted {tr['accepted']:2}); "
+          f"fits: {', '.join(fits) or 'NONE'}; rx gaps {res['rx_gap_ms']['min']}-{res['rx_gap_ms']['max']} ms "
+          f"(median {res['rx_gap_ms']['median']}), sent every {iv[len(iv) // 2] if iv else '-'} ms (median); "
+          f"stalls +{delta['count_ge_25ms']}, overruns +{delta['uart_overrun']}, malformed +{delta['rx_malformed']}")
+    if not fits:
+        print(f"{'':14} sent     {' '.join(f'{v:02x}' for v in vals)}\n{'':14} received {' '.join(f'{v:02x}' for v in got)}")
+    time.sleep(2)   # let the band's settled Scroll Lock catch up between tests
+    return res
+
+
+def main():
+    args = sys.argv[1:]
+    out = os.path.join(ROOT, "history", "ledchannel-" + time.strftime("%Y-%m-%d"))
+    if args[:1] == ["--out"]:
+        if len(args) < 2: sys.exit(__doc__)
+        out, args = args[1], args[2:]
+    tests = args or ["width", "high", "repeats", "speed", "random"]
+    if any(t not in ("width", "high", "repeats", "speed", "random") for t in tests):
+        sys.exit(__doc__)
+    os.makedirs(out, exist_ok=True)
+    for t in tests:
+        if t == "width":
+            run("width", 200, list(range(1, 32)) + [0], out)
+        elif t == "high":
+            run("high", 200, [x for v in (0x20, 0x40, 0x80, 0xE0, 0x24) for x in (v, 0)], out)
+        elif t == "repeats":
+            run("repeats", 200, [x for v in (0x04, 0x00, 0x01, 0x00, 0x08, 0x00) for x in (v, v, v)], out)
+        elif t == "speed":
+            toggles = [0x04 if i % 2 == 0 else 0x00 for i in range(40)]
+            for gap in (40, 30, 20, 10, 0):
+                run(f"speed-{gap}", gap, toggles, out)
+            run("speed-async", None, toggles, out)
+        elif t == "random":
+            rng, usable, vals = random.Random(820), (0x01, 0x04, 0x08, 0x10), []
+            while len(vals) < 43:
+                v = sum(b for b in usable if rng.random() < 0.5)
+                if not vals or v != vals[-1]: vals.append(v)
+            run("random", 0, vals + ([0] if vals[-1] else []), out)
+
+
+if __name__ == "__main__":
+    main()

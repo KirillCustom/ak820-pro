@@ -25,6 +25,13 @@
 //   hold [s] [delay_s]  Scroll Lock on over BLE for s seconds (default 30), then off
 //   night [delay_s]  unattended, over BLE: repeated values, the two unnamed
 //                    LED bits, and 200 writes issued without waiting, all timed
+//   seq gap_ms v...  the LED bytes v (decimal or 0x hex, 0-255) over BLE in
+//                    order, each waiting for the last and then gap_ms more (0:
+//                    back to back); for scripts/ledchannel_test.py, which reads
+//                    what the board received (flash 2g's 5A trace)
+//   aseq v...        the same bytes issued at once without waiting
+//                    (IOHIDDeviceSetReportWithCallback): the fastest this Mac
+//                    can send, since a synchronous write waits ~30 ms for the link
 //
 // Logs to ~/Library/Logs/ak820pro/ledprobe.log. Started by `open` (so TCC sees
 // this app, not whatever shell started it); built and signed by
@@ -332,7 +339,75 @@ case "night":
     asyncTest(dev, id, 200)
     IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone))
     Probe.note("night: done")
+case "seq":
+    // A sequence, for comparison against the board's 5A trace. Every write is
+    // logged ("seq: ... -> result in ms") with its completion time.
+    let gap = args.count > 1 ? Double(args[1]) ?? -1 : -1
+    let vals: [UInt8] = args.dropFirst(2).compactMap { a in
+        let v = a.hasPrefix("0x") ? Int(a.dropFirst(2), radix: 16) : Int(a)
+        return v.flatMap { (0...255).contains($0) ? UInt8($0) : nil }
+    }
+    guard gap >= 0, !vals.isEmpty, vals.count == args.count - 2 else {
+        Probe.note("seq: usage: seq gap_ms v... (each v 0-255, decimal or 0x hex); stopping")
+        exit(64)
+    }
+    guard let (dev, id) = openTarget(targets[1]), id == 2 else {
+        Probe.note("seq: need the BLE device open with LEDs in report 2; stopping")
+        exit(3)
+    }
+    Probe.note(String(format: "seq: %d writes, gap %.0f ms", vals.count, gap))
+    let t0 = Date().timeIntervalSince1970
+    var ms: [Double] = []
+    for (i, v) in vals.enumerated() {
+        ms.append(setLeds(targets[1], dev, id, v, "seq \(i)"))
+        if gap > 0 { Thread.sleep(forTimeInterval: gap / 1000) }
+    }
+    let total = Date().timeIntervalSince1970 - t0
+    Probe.note(String(format: "seq: done, %d writes in %.2f s, median %.1f ms each", vals.count, total, median(ms)))
+    IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone))
+case "aseq":
+    // Issued in order without waiting; each completion is logged with its
+    // index ("aseq i (0xVV) -> result at T ms" from the first issue).
+    let vals: [UInt8] = args.dropFirst().compactMap { a in
+        let v = a.hasPrefix("0x") ? Int(a.dropFirst(2), radix: 16) : Int(a)
+        return v.flatMap { (0...255).contains($0) ? UInt8($0) : nil }
+    }
+    guard !vals.isEmpty, vals.count == args.count - 1 else {
+        Probe.note("aseq: usage: aseq v... (each v 0-255, decimal or 0x hex); stopping")
+        exit(64)
+    }
+    guard let (dev, id) = openTarget(targets[1]), id == 2 else {
+        Probe.note("aseq: need the BLE device open with LEDs in report 2; stopping")
+        exit(3)
+    }
+    let cb: IOHIDReportCallback = { ctx, result, _, _, _, report, _ in
+        let i = Int(bitPattern: ctx) - 1
+        let at = (Date().timeIntervalSince1970 - Async.t0) * 1000
+        Async.done.append(at)
+        Probe.note(String(format: "aseq %d (0x%02x) -> 0x%08x at %.1f ms", i, report[1], result, at))
+    }
+    IOHIDDeviceScheduleWithRunLoop(dev, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+    var bufs: [UnsafeMutablePointer<UInt8>] = []
+    var issued = 0
+    Probe.note("aseq: \(vals.count) writes")
+    Async.t0 = Date().timeIntervalSince1970
+    for (i, v) in vals.enumerated() {
+        let b = UnsafeMutablePointer<UInt8>.allocate(capacity: 2)   // must outlive the write
+        b[0] = UInt8(id); b[1] = v
+        bufs.append(b)
+        let r = IOHIDDeviceSetReportWithCallback(dev, kIOHIDReportTypeOutput, CFIndex(id), b, 2, 5.0, cb,
+                                                 UnsafeMutableRawPointer(bitPattern: i + 1))
+        if r == kIOReturnSuccess { issued += 1 } else { Probe.note(String(format: "aseq %d refused: 0x%08x", i, r)) }
+    }
+    let deadline = Date().addingTimeInterval(20)
+    while Async.done.count < issued && Date() < deadline { CFRunLoopRunInMode(.defaultMode, 0.05, true) }
+    IOHIDDeviceUnscheduleFromRunLoop(dev, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+    Probe.note(String(format: "aseq: done, %d of %d issued, %d completed, the last at %.1f ms",
+                      issued, vals.count, Async.done.count, Async.done.max() ?? .nan))
+    // Freed only once every callback is in: a late one would read freed memory.
+    if Async.done.count == issued { bufs.forEach { $0.deallocate() } }
+    IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone))
 default:
-    Probe.note("unknown mode \(mode); use check, run, pace, hold or night")
+    Probe.note("unknown mode \(mode); use check, run, pace, hold, night, seq or aseq")
     exit(64)
 }
