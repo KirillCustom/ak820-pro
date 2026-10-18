@@ -51,6 +51,7 @@ RELAY = os.path.join(ROOT, "scripts", "usb_relay.py")
 BATT = os.path.join(ROOT, "hostagent", "ak820battery.py")
 
 GET_VALUE, SET_VALUE, RGB_CH = 0x08, 0x07, 3
+POWER_FULL = 0   # power.c's POWER_MODE_FULL
 BRIGHTNESS, EFFECT, SPEED, COLOR = 1, 2, 3, 4
 HEALTH_CH, HC_DEVHOOK = 0x13, 0x76
 
@@ -128,6 +129,17 @@ def lcd(h, op, arg=0):
     level, top, on, eff, saved = r[4:9]
     return {"level": level, "max": top, "on": bool(on), "effective": eff,
             "saved": saved - 1 if saved else None}
+
+
+def power_mode(h, mode=None):
+    """The ladder's mode over HC_DEVHOOK op 14 (Phase 2): set it if `mode` is
+    given; returns the mode now, or None from firmware without the op (no
+    ladder: nothing can dim the lights mid-hold)."""
+    try:
+        r = xfer(h, [SET_VALUE, HEALTH_CH, HC_DEVHOOK, 14, 0 if mode is None else 1, mode or 0] + [0] * 26)
+    except SystemExit:   # xfer's "unhandled": no op 14, so no ladder
+        return None
+    return r[4]
 
 
 def set_lcd(h, want, jd):
@@ -209,9 +221,10 @@ def main():
     h = ak820text.open_device()
     try:
         jd_rgb, jd_lcd = read_rgb(h), lcd(h, 6)
+        jd_mode = power_mode(h)
     finally:
         h.close()
-    say(f"start: lighting {jd_rgb}, screen {jd_lcd}")
+    say(f"start: lighting {jd_rgb}, screen {jd_lcd}, power mode {jd_mode}")
     if a.dry_run:
         return
     os.makedirs(out, exist_ok=True)
@@ -221,6 +234,14 @@ def main():
     was_on = relay_on()
     steps = []
     try:
+        if jd_mode is not None:
+            # The ladder would dim an idle board's lights mid-hold: Full Power
+            # for the map, JD's mode back in the finally.
+            h = ak820text.open_device()
+            try:
+                say(f"power mode Full for the map: {power_mode(h, POWER_FULL)}")
+            finally:
+                h.close()
         if was_on:
             run([PY, RELAY, "off", "2"])
             for _ in range(9):
@@ -257,10 +278,12 @@ def main():
             try:
                 set_rgb(h, dict(jd_rgb))
                 set_lcd(h, None, jd_lcd)
-                back = (read_rgb(h), lcd(h, 6))
+                if jd_mode is not None:
+                    power_mode(h, jd_mode)
+                back = (read_rgb(h), lcd(h, 6), power_mode(h))
             finally:
                 h.close()
-            say(f"restored: lighting {back[0]}, screen {back[1]}")
+            say(f"restored: lighting {back[0]}, screen {back[1]}, power mode {back[2]}")
         finally:
             if was_on:
                 run([PY, RELAY, "on", "2"])

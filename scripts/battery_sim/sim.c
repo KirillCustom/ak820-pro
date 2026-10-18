@@ -60,7 +60,30 @@ bool kb_eeconfig_get_power_mode(uint8_t *m) {
 void kb_eeconfig_set_power_mode(uint8_t m) { power_mode_p1 = (uint8_t)(m + 1u); }
 static uint8_t bkl_cap = 0xFF;
 void     display_set_backlight_cap(uint8_t c) { bkl_cap = c; }
-uint8_t  display_backlight_effective(void) { return 10; }
+static uint8_t sim_bkl = 10;   /* the user's backlight level; a replay sets it per entry */
+uint8_t  display_backlight_effective(void) { return sim_bkl; }
+static const uint8_t bkl_duty_sim[24] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+                                         12, 14, 16, 18, 20, 23, 26, 29, 33, 37, 42, 48};
+uint8_t  display_backlight_duty(void) {
+    uint8_t l = display_backlight_effective();
+    if (bkl_cap < l) l = bkl_cap;
+    return bkl_duty_sim[l];
+}
+static int      rgb_restarts;
+static uint8_t  rgb_mode = 2;
+uint8_t  rgb_matrix_get_mode(void) { return rgb_mode; }
+void     rgb_matrix_mode_noeeprom(uint8_t m) { rgb_mode = m; rgb_restarts++; }
+static bool     usb_configured;
+bool     battery_usb_configured(void) { return usb_configured; }
+/* The committed frames' drive: the sim's LED buffer is uniform, `drive_sum`
+ * per frame (all 246 channels), scaled as the driver would. */
+static uint32_t drive_sum = 82u * 3u * 255u;   /* full white */
+static uint32_t drive_last_ms;
+uint64_t sn32f2xx_led_drive_take(uint32_t now) {
+    uint64_t r = (uint64_t)(scale ? (drive_sum * (scale + 1u)) >> 8 : 0u) * (uint32_t)(now - drive_last_ms);
+    drive_last_ms = now;
+    return r;
+}
 uint32_t sn32f2xx_led_load(void) { return scale ? 82u * 3u * 255u / 2u : 0u; }
 void     sn32f2xx_set_power_scale(uint8_t s) { scale = s; }
 
@@ -506,10 +529,27 @@ static void log_cadence(void) {
     run_s(300);
     battery_log_read(0, out);
     CHECK((out[1] | out[2] << 8) == 0, "no entry in the first 5 min (was an instant one at boot)");
-    run_s(301);
+#if BATTERY_LOG_VERSION >= 6
+    run_s(300);
     battery_log_read(0, out);
-    CHECK((out[1] | out[2] << 8) == 1, "one entry at 10 min: %u", out[1] | out[2] << 8);
-#if BATTERY_LOG_VERSION >= 5
+    CHECK((out[1] | out[2] << 8) == 0, "none at 10 min either: the period is 15 (v6)");
+    run_s(301);
+#else
+    run_s(301);
+#endif
+    battery_log_read(0, out);
+    CHECK((out[1] | out[2] << 8) == 1, "one entry after one period: %u", out[1] | out[2] << 8);
+#if BATTERY_LOG_VERSION >= 6
+    uint8_t cfg[8];
+    battery_cfg(0, 0, 0, cfg);
+    CHECK((cfg[6] | cfg[7] << 8) == 900, "period 900 s, from HC_BATTCFG: %u", cfg[6] | cfg[7] << 8);
+    CHECK(out[0] == 6, "log v6: %u", out[0]);
+    /* The period's modelled energy in vdd_min's place: the sim's load is full
+     * white (179.2 + 9.5 mW), the backlight at level 10 (8.1) and the base
+     * (106.9): 303.8 mW, 75.9 mWh over 899 s on the pack. */
+    unsigned ex = out[11 + 2] | out[11 + 3] << 8;
+    CHECK(ex >= 750 && ex <= 765, "the period's modelled energy ~759 x 0.1 mWh: %u", ex);
+#elif BATTERY_LOG_VERSION >= 5
     uint8_t cfg[8];
     battery_cfg(0, 0, 0, cfg);
     CHECK((cfg[6] | cfg[7] << 8) == 600, "period 600 s, from HC_BATTCFG: %u", cfg[6] | cfg[7] << 8);
@@ -519,9 +559,13 @@ static void log_cadence(void) {
     CHECK(out[0] == 4, "log v4: %u", out[0]);
 #endif
     vdd_mv = 0;
+#if BATTERY_LOG_VERSION >= 6
+    run_s(30 * 60);
+#else
     run_s(20 * 60);
+#endif
     battery_log_read(2, out);
-    CHECK((out[1] | out[2] << 8) == 3, "two more entries through a 20 min ADC outage: %u", out[1] | out[2] << 8);
+    CHECK((out[1] | out[2] << 8) == 3, "two more entries through two periods of ADC outage: %u", out[1] | out[2] << 8);
 #if BATTERY_LOG_VERSION >= 5
     enum { H = 11 };   /* v5: version, count, idx, since, written */
 #else
@@ -735,6 +779,7 @@ typedef struct {
     double   c5_mean;
     int      c5_n, c5_min, c5_max, c5_single;
     int      level_pm;     /* the logged level, per mille, -1 if none */
+    int      led_pm, bkl;  /* the entry's LED drive and backlight, -1 if not logged */
     bool     chg_end, chg_any, ext_end;
     /* what the replay showed at the interval's end */
     uint16_t r_level;
@@ -791,7 +836,8 @@ static bool rp_load(const char *path) {
     int i_t = rp_col(h, hn, "time"), i_va = rp_col(h, hn, "vdd_avg"), i_vm = rp_col(h, hn, "vdd_min");
     int i_mean = rp_col(h, hn, "c5_mean"), i_n = rp_col(h, hn, "c5_n"), i_mn = rp_col(h, hn, "c5_min"),
         i_mx = rp_col(h, hn, "c5_max"), i_lvl = rp_col(h, hn, "level"), i_pct = rp_col(h, hn, "module_pct"),
-        i_chg = rp_col(h, hn, "charging"), i_ext = rp_col(h, hn, "external"), i_any = rp_col(h, hn, "flags_any");
+        i_chg = rp_col(h, hn, "charging"), i_ext = rp_col(h, hn, "external"), i_any = rp_col(h, hn, "flags_any"),
+        i_led = rp_col(h, hn, "led_pm"), i_bkl = rp_col(h, hn, "bkl");
     bool v34 = i_mean >= 0;
     rp_n = 0;
     while (fgets(line, sizeof line, f) && rp_n < RP_MAX) {
@@ -802,10 +848,14 @@ static bool rp_load(const char *path) {
         memset(r, 0, sizeof *r);
         snprintf(r->time, sizeof r->time, "%s", c[i_t]);
         r->t_s = rp_epoch(c[i_t]);
-        r->vdd_avg = atoi(c[i_va]); r->vdd_min = atoi(c[i_vm]);
+        /* v6 logs have no vdd_min (the period's energy took its place, codex):
+         * no dip then. */
+        r->vdd_avg = atoi(c[i_va]); r->vdd_min = i_vm >= 0 ? atoi(c[i_vm]) : r->vdd_avg;
         r->v34 = v34;
         r->chg_end = atoi(c[i_chg]) != 0;
         r->level_pm = -1;
+        r->led_pm   = (i_led >= 0 && c[i_led][0]) ? atoi(c[i_led]) : -1;
+        r->bkl      = (i_bkl >= 0 && c[i_bkl][0]) ? atoi(c[i_bkl]) : -1;
         if (v34) {
             r->c5_n = atoi(c[i_n]);
             r->c5_mean = c[i_mean][0] ? atof(c[i_mean]) : -1.0;
@@ -1145,6 +1195,7 @@ static void c5_equivalence(void) {
 #include "model.c"   /* Phase 1b, B2: the charging model's scenarios (flash 2) */
 #ifdef POWER_HAS_MODES
 #include "ladder.c"  /* Phase 2: the power modes */
+#include "count.c"   /* Phase 2: the energy count */
 #endif
 #endif
 
@@ -1237,6 +1288,8 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "m_slow_charge")) m_slow_charge();
     else if (!strcmp(s, "m_reseat_up")) m_reseat_up();
     else if (!strcmp(s, "m_reseat_down")) m_reseat_down();
+    else if (!strcmp(s, "m_reseat_up_plateau")) m_reseat_up_plateau();
+    else if (!strcmp(s, "m_reseat_down_steep")) m_reseat_down_steep();
     else if (!strcmp(s, "m_reseat_clamp")) m_reseat_clamp();
     else if (!strcmp(s, "m_reseat_unknown")) m_reseat_unknown();
     else if (!strcmp(s, "m_reseat_lost")) m_reseat_lost();
@@ -1259,6 +1312,22 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "l_lights_cut")) l_lights_cut();
     else if (!strcmp(s, "l_announce"))   l_announce();
     else if (!strcmp(s, "l_persisted"))  l_persisted();
+    else if (!strcmp(s, "c_rate"))        c_rate();
+    else if (!strcmp(s, "c_uneven"))      c_uneven();
+    else if (!strcmp(s, "c_wrap"))        c_wrap();
+    else if (!strcmp(s, "c_hold"))        c_hold();
+    else if (!strcmp(s, "c_ratchet"))     c_ratchet();
+    else if (!strcmp(s, "c_floor_cut"))   c_floor_cut();
+    else if (!strcmp(s, "c_time_left"))   c_time_left();
+    else if (!strcmp(s, "c_load_step"))   c_load_step();
+    else if (!strcmp(s, "c_usb_data"))    c_usb_data();
+    else if (!strcmp(s, "c_stale"))       c_stale();
+    else if (!strcmp(s, "c_excursion"))   c_excursion();
+    else if (!strcmp(s, "c_bias"))        c_bias();
+    else if (!strcmp(s, "c_clamp_cross")) c_clamp_cross();
+    else if (!strcmp(s, "c_reboot"))      c_reboot();
+    else if (!strcmp(s, "c_replay_r3"))   c_replay_r3(argc > 2 ? argv[2] : "");
+    else if (!strcmp(s, "c_replay_2e"))   c_replay_2e(argc > 2 ? argv[2] : "");
 #endif
     else if (!strcmp(s, "baseline_0928"))      baseline_0928(argc > 2 ? argv[2] : "");
     else if (!strcmp(s, "baseline_1001"))      baseline_1001(argc > 2 ? argv[2] : "");

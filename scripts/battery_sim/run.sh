@@ -35,7 +35,7 @@ if grep -qE '^#define BATTERY_LOG_VERSION +([5-9]|[1-9][0-9])\b' "$build/battery
              m_ceil_hold30 m_ceil_60_29 m_ceil_60_30 m_ceil_clamp_hold m_ceil_clamp_entry m_ceil_clamp_exit \
              m_reports_lost_9 m_reports_lost_10 m_pause_short m_pause_before m_pause_after m_pause_after_unadopted m_handover_unplug_replug m_pause_relaxing \
              m_pause_missing m_pause_from_lost m_pause_from_unknown m_pause_then_unplug m_slow_charge \
-             m_reseat_up m_reseat_down m_reseat_clamp m_reseat_unknown m_reseat_lost m_reseat_missing \
+             m_reseat_up m_reseat_up_plateau m_reseat_down m_reseat_down_steep m_reseat_clamp m_reseat_unknown m_reseat_lost m_reseat_missing \
              m_reseat_replugs m_reseat_0929 m_full_fault m_full_holds"
     for s in $model_scenarios; do
         "$build/sim" "$s" || fail=1
@@ -57,8 +57,26 @@ fi
 
 # Phase 2: the power modes (ladder.c), against a power.h that has them.
 if grep -q '^#define POWER_HAS_MODES' "$build/power.h"; then
-    for s in l_normal l_modes l_usb l_low_cap l_val_cap l_lights_cut l_announce l_persisted; do
+    for s in l_normal l_modes l_usb l_low_cap l_val_cap l_lights_cut l_announce l_persisted \
+             c_rate c_uneven c_wrap c_hold c_ratchet c_floor_cut c_time_left c_load_step c_usb_data \
+             c_stale c_excursion c_bias c_clamp_cross c_reboot; do
         "$build/sim" "$s" || fail=1
+    done
+    # The drains, replayed through the firmware: R3 to the cut, 2e to its reboot.
+    "$build/sim" c_replay_r3 "$hist/battery-2026-10-15-drain-2f/log-20261018-0205-rgbcut.csv" || fail=1
+    "$build/sim" c_replay_2e "$hist/battery-2026-10-12-drain-2e/log-20261014-0950-preswap.csv" || fail=1
+fi
+
+# Phase 2's sensitivity (report only, `run.sh --sensitivity`): both drains
+# replayed with the capacity wrong by -13, -5, +5 and +13%. A wrong capacity
+# is a wrong count, so this is the gauge's answer to a pack that has aged or a
+# model that is off; the plan reports it, it does not gate on it.
+if [ "${1:-}" = "--sensitivity" ] && grep -q '^#define POWER_HAS_MODES' "$build/power.h"; then
+    for e in 13554 14800 16358 17604; do
+        cc -std=c11 -O1 -w -DE_CAP_MWH=${e}u -I"$build" -o "$build/sim_$e" "$here/sim.c" "$build/battery.c" "$build/power.c" -lm
+        echo "--- capacity $e mWh (true 15579)"
+        "$build/sim_$e" c_replay_r3 "$hist/battery-2026-10-15-drain-2f/log-20261018-0205-rgbcut.csv" | grep -E 'worst|^ok' || true
+        "$build/sim_$e" c_replay_2e "$hist/battery-2026-10-12-drain-2e/log-20261014-0950-preswap.csv" | grep -E 'worst|^ok' || true
     done
 fi
 

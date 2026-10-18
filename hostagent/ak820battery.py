@@ -17,6 +17,8 @@ Three log formats exist:
     v5 (Phase 1b)    an 18-byte entry: v4 plus the charging model m and the
                      chg byte; the reply drops the period to fit, and the
                      host reads it once from HC_BATTCFG
+    v6 (Phase 2)     as v5, but vdd_min is the period's modelled battery
+                     energy (0.1 mWh, column e_mwh), and the period is 15 min
 v3+ firmware says so in HC_CONN byte 31 (BATTERY_PROTO_VERSION, 3 or 4), and
 the log reply's first byte says which of v3/v4; older firmware leaves the
 host's own zero there. ⚠️ Never assume the period: a 10-minute log
@@ -41,7 +43,11 @@ import venv_bootstrap  # noqa: F401 -- re-execs under the repo venv if hid is mi
 from ak820health import open_device
 
 SET_VALUE, HEALTH_CHANNEL = 0x07, 0x13
-HC_CONN, HC_BATTLOG, HC_BATTCFG = 0x02, 0x0A, 0x0B
+HC_CONN, HC_BATTLOG, HC_BATTCFG, HC_POWER = 0x02, 0x0A, 0x0B, 0x0F
+POWER_MODES = ["Full power", "Normal power", "Power saver"]
+POWER_STAGES = ["active", "dim", "lights off", "screen off"]
+COUNT_STATES = ["off (not on battery)", "counting", "counting at the clamp", "held below the band",
+                "relaxing after an unplug", "cut (0%)"]
 FLAGS_V2 = ["on_batt", "charging", "done", "rgb_on", "lights_cut", "slider_usb", "linked", "clamped"]
 FLAGS_V3 = ["on_batt", "charging", "done", "rgb_on", "lights_cut", "slider_usb", "linked", "external"]
 STATES = ["none", "battery", "charging", "full", "usb"]
@@ -73,6 +79,43 @@ def xfer(h, cmd, args=()):
         if rep[0] == SET_VALUE and rep[1] == HEALTH_CHANNEL and rep[2] == cmd:
             return bytes(rep)
     sys.exit(f"no reply to 0x{cmd:02x}")
+
+
+def power(h):
+    """Phase 2's HC_POWER reply, or None from firmware without it (which
+    answers the command as unhandled)."""
+    h.write(bytes([0x00, SET_VALUE, HEALTH_CHANNEL, HC_POWER] + [0x00] * 29))
+    for _ in range(5):
+        rep = h.read(32, 1000)
+        if not rep:
+            return None
+        if rep[1] == HEALTH_CHANNEL and rep[2] == HC_POWER:
+            return bytes(rep) if rep[0] == SET_VALUE and rep[3] == 1 else None
+    return None
+
+
+def i16(b, i):
+    v = u16(b, i)
+    return v - 0x10000 if v & 0x8000 else v
+
+
+def power_status(h):
+    r = power(h)
+    if r is None:
+        return
+    mode, stage, cs = r[4], r[5], r[6]
+    lvl, now, avg, mins, left, e = u16(r, 7), u32(r, 9), u32(r, 13), u16(r, 17), u16(r, 19), u32(r, 21)
+    lo, hi, batt = i16(r, 25), i16(r, 27), r[29]
+    pick = lambda names, i: names[i] if i < len(names) else str(i)
+    print(f"power mode   {pick(POWER_MODES, mode)}, stage {pick(POWER_STAGES, stage)}")
+    if not batt:
+        print("draw         - (on USB: the count and time left are for the pack)")
+        return
+    print(f"draw         {now / 1000:.1f} mW now, average {avg / 1000:.1f} mW over {mins} min")
+    print(f"time left    {'-' if left == 0xFFFF else f'{left // 60} h {left % 60:02d} min'}"
+          f"{'  (young: under an hour of average)' if mins < 60 and left != 0xFFFF else ''}")
+    band = "-" if lo < 0 or hi < 0 else f"{lo / 10:.1f}..{hi / 10:.1f} %"
+    print(f"count        {pick(COUNT_STATES, cs)}; band {band}; energy since FULL {e / 10:.1f} mWh")
 
 
 def flags_str(f, names):
@@ -111,6 +154,7 @@ def status(h):
               f"STDBY {'low' if not r[20] & 2 else 'high'}")
         print(f"led drive    {u16(r, 28) / 10:.1f} % of maximum")
         print(f"flags        {flags_str(f, FLAGS_V3)}")
+        power_status(h)
         return fmt
     print(f"vdd          {u16(r, 12)} mV  (raw {u16(r, 14)}, since boot {u16(r, 16)}..{u16(r, 18)} mV)")
     print(f"charger pins CHRG {'low (charging)' if not r[20] & 1 else 'high'}, "
@@ -159,11 +203,16 @@ def decode_entry(e, ver):
     # holds there; c5_mean then covers only the reports before saturation.
     pack = "" if mean is None or c5_min == 0 or c5_max == 100 \
         else f"{(mean + FIT_OFFSET) / FIT_SLOPE * 1000:.0f}"
-    row = {"vdd_avg": u16(e, 0), "vdd_min": u16(e, 2),
+    row = {"vdd_avg": u16(e, 0)}
+    if ver >= 6:
+        row["e_mwh"] = f"{u16(e, 2) / 10:.1f}"   # the period's modelled battery energy
+    else:
+        row["vdd_min"] = u16(e, 2)
+    row.update({
            "c5_mean": "" if mean is None else f"{mean:.2f}", "c5_n": c5_n,
            "c5_min": "" if not c5_n else c5_min, "c5_max": "" if not c5_n else c5_max,
            "pack_mv": pack, "level": level,
-           "led_pm": u16(e, 12), "bkl": e[14]}
+           "led_pm": u16(e, 12), "bkl": e[14]})
     row.update({name: (e[9] >> i) & 1 for i, name in enumerate(FLAGS_V3)})
     row["flags_any"] = flags_str(e[10], FLAGS_V3)
     if ver >= 5:
@@ -186,10 +235,10 @@ def dump_v3(h):
     for _ in range(3):
         first = xfer(h, HC_BATTLOG, [0, 0])
         ver, count, _, since, period, written, _ = parse_reply(first)
-        if ver not in (3, 4, 5):
+        if ver not in (3, 4, 5, 6):
             sys.exit(f"unexpected log format {ver}")
         if period is None:
-            # v5: the firmware's period, from HC_BATTCFG [10..11] -- never assumed.
+            # v5+: the firmware's period, from HC_BATTCFG [10..11] -- never assumed.
             period = u16(xfer(h, HC_BATTCFG, [0]), 10)
             if not period:
                 sys.exit("HC_BATTCFG gave no log period")

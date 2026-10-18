@@ -312,16 +312,16 @@ static void m_delayed_unplug(void) { delayed(true); }
 
 /* The reply in a 29-byte buffer guarded on both sides; the period comes from
  * battery_cfg; the entry carries m and chg. */
-static void m_log_v5(void) {
+static void m_log_v5(void) {   /* the name is run.sh's; it checks v6 now */
     u_target = tgt_m_minus; u_delta = -100;
     model_from(400, u_follow);
-    run_s(11 * 60);
+    run_s(16 * 60);
     uint8_t buf[2 + 29 + 2];
     memset(buf, 0xA5, sizeof buf);
     battery_log_read(0, buf + 2);
     CHECK(buf[0] == 0xA5 && buf[1] == 0xA5 && buf[31] == 0xA5 && buf[32] == 0xA5, "the reply stays inside its 29 bytes");
     const uint8_t *o = buf + 2;
-    CHECK(o[0] == 5, "log v5: %u", o[0]);
+    CHECK(o[0] == BATTERY_LOG_VERSION, "log v%u: %u", BATTERY_LOG_VERSION, o[0]);
     uint16_t count = (uint16_t)(o[1] | o[2] << 8), written = (uint16_t)(o[9] | o[10] << 8);
     CHECK(count >= 1 && written == count, "count %u written %u", count, written);
     const uint8_t *e = o + 11;
@@ -329,7 +329,7 @@ static void m_log_v5(void) {
     CHECK((chg & 7) == ST_MODEL && m != 0xFF, "the entry's chg state MODEL and m %u: chg %02x", m, chg);
     uint8_t cfg[8];
     battery_cfg(0, 0, 0, cfg);
-    CHECK((cfg[6] | cfg[7] << 8) == 600, "the period from HC_BATTCFG: %u", cfg[6] | cfg[7] << 8);
+    CHECK((cfg[6] | cfg[7] << 8) == 900, "the period from HC_BATTCFG: %u", cfg[6] | cfg[7] << 8);
 }
 
 /* 661 reports of 99, then 100s: c5_max must reach 100 with the saturated bit
@@ -341,7 +341,7 @@ static void m_log_saturated(void) {
     for (int i = 0; i < 661; i++) deliver(99);
     for (int i = 0; i < 20; i++) deliver(100);
     for (int i = 0; i < 5; i++) deliver(1);   /* each would still fit the sum */
-    run_s(10 * 60);
+    run_s(15 * 60);
     uint8_t o[29];
     battery_log_read(0, o);
     const uint8_t *e = o + 11;
@@ -533,18 +533,27 @@ static void m_pause_before(void) {
     run_s(2);
     CHECK(battery_chg_state() == ST_MODEL, "continues: %u", battery_chg_state());
 }
+static int  band_expect(int counted);   /* below, with the re-seat's cases */
+static bool band_ok(int got, int counted);
+
 static void m_pause_after(void) {
-    synthetic("a pause past PAUSE_S until a relaxed level is adopted, the pack reading 150 above the display");
+    synthetic("a pause past PAUSE_S until a relaxed level is adopted, the pack reading 300 above the display");
     u_target = tgt_m_minus; u_delta = -100;
     model_from(300, u_follow);
     run_s(5 * 60);
     uint16_t held = battery_level_permille();
-    u_target = tgt_fixed; tgt_fixed_pm = held + 150;   /* adoption must show */
+    /* Phase 2: the adoption keeps a known level inside the band, so the pack
+     * must read far enough above it to show: 300 pm. */
+    u_target = tgt_fixed; tgt_fixed_pm = held + 300;
     pause_for(BATTERY_PAUSE_S + 30);   /* >= 5 reports past RELAX_S: one relaxed estimate */
     run_s(2);
     uint16_t adopted = battery_level_permille();
-    CHECK(battery_chg_state() == ST_NONE && abs((int)adopted - (held + 150)) <= 12,
-          "handed over, the relaxed level adopted: %u, %u (held %u)", battery_chg_state(), adopted, held);
+    /* Raised to the band's lower edge: above where it was held, never past
+     * the relaxed pack's own level (the edge is below it). The estimate the
+     * handover used is gone by now, so not band_ok(). */
+    CHECK(battery_chg_state() == ST_NONE && adopted > held + 150 && adopted <= held + 300,
+          "handed over, raised toward the relaxed level: %u, %u (held %u, the pack %u-worth)", battery_chg_state(),
+          adopted, held, held + 300);
     run_s(50);
     CHECK(battery_chg_state() == ST_NONE, "requalifying: %u", battery_chg_state());
     run_s(15);
@@ -665,8 +674,9 @@ static void m_pause_then_unplug(void) {
     u_target = tgt_fixed; tgt_fixed_pm = 450;
     vdd_mv = 3900;
     run_s(BATTERY_RELAX_S + 40);
-    CHECK(abs((int)battery_level_permille() - 450) <= 12, "re-seated at 450 (once, upward allowed): %u",
-          battery_level_permille());
+    int want = band_expect(battery_level_permille());
+    CHECK(band_ok(battery_level_permille(), battery_level_permille()),
+          "re-seated into the band at 450-worth: %u (band says ~%d)", battery_level_permille(), want);
 }
 
 /* --- LOST, the re-seat, FULL ---------------------------------------------------- */
@@ -689,9 +699,40 @@ static void m_slow_charge(void) {
     printf("  LOST at %u s (%.1f h)\n", lost_second, lost_second / 3600.0);
 }
 
-/* The re-seat: unplug after a real session; resolved by the first estimate
- * from reports RELAX_S after the unplug. */
-static void reseat_case(int l0, int relaxed_pm, int expect) {
+/* Phase 2's re-seat (PHASE2-BUILD-PLAN.md, section 1): a known level is kept
+ * inside the voltage band, else moved to its nearer edge. The band: the curve
+ * at the pack's mV -12 and +12, widened 15 pm. Computed here from the
+ * firmware's own curve and estimate, so the test is the rule, not a copy. */
+static int band_at(int counted, int mv) {
+    int lo = (int)battery_curve_pm((uint16_t)(mv - BATTERY_BAND_MV_DOWN)) - BATTERY_BAND_PM;
+    int hi = (int)battery_curve_pm((uint16_t)(mv + BATTERY_BAND_MV_UP)) + BATTERY_BAND_PM;
+    if (lo < 0) lo = 0;
+    if (hi > 1000) hi = 1000;
+    return counted < lo ? lo : counted > hi ? hi : counted;
+}
+static int band_expect(int counted) { return band_at(counted, battery_pack_mv()); }
+/* The verdict over the estimate +-3 mV: on the flat stretches a tenth of a 5C
+ * count (~0.9 mV) moves the band ~12 pm, and the estimate the re-seat used is
+ * gone by the time the test looks. True if `got` is within 3 pm of it. */
+static bool band_ok(int got, int counted) {
+    int mv = battery_pack_mv(), lo = 1000, hi = 0;
+    for (int d = -3; d <= 3; d++) {
+        int v = band_at(counted, mv + d);
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+    }
+    return got >= lo - 3 && got <= hi + 3;
+}
+
+/* The draw counted through RELAX_S at the sim's load (303.8 mW, 1790 s):
+ * 9.7 pm. */
+#define RELAX_DROP_MAX 12
+
+/* The re-seat: unplug after a real session; the level counts down from the
+ * model's through RELAX_S (codex: holding it lost ~1 point), then the first
+ * estimate from reports RELAX_S after the unplug bounds it. `expect` < 0: the
+ * band's verdict. */
+static int reseat_case(int l0, int relaxed_pm, int expect) {
     u_target = tgt_m_minus; u_delta = -100;
     model_from(l0, u_follow);
     run_s(90);
@@ -699,14 +740,37 @@ static void reseat_case(int l0, int relaxed_pm, int expect) {
     vdd_mv = 3900; chrg_low = false;
     uint16_t at_unplug = battery_level_permille();
     run_s(BATTERY_RELAX_S - 10);
-    CHECK(battery_level_permille() == at_unplug, "owed, held through RELAX_S: %u -> %u", at_unplug,
-          battery_level_permille());
+    uint16_t counted = battery_level_permille();
+    CHECK(counted < at_unplug && at_unplug - counted <= RELAX_DROP_MAX,
+          "counted down through RELAX_S (~10 pm at ~304 mW): %u -> %u", at_unplug, counted);
     run_s(40);
-    CHECK(abs((int)battery_level_permille() - expect) <= 12, "re-seated from %u to %d-worth: %u", at_unplug, expect,
+    int want = expect >= 0 ? expect : band_expect(counted);
+    int got  = battery_level_permille();
+    CHECK(expect >= 0 ? abs(got - want) <= 3 : band_ok(got, counted), "re-seated from %u (counted %u) to ~%d: %d",
+          at_unplug, counted, want, got);
+    return counted;
+}
+static void m_reseat_up(void) {
+    synthetic("charging at ~300, the relaxed pack worth 600: up to the band's lower edge");
+    int counted = reseat_case(300, 600, -1);
+    CHECK(battery_level_permille() > counted, "the upward move: %d -> %u", counted, battery_level_permille());
+}
+static void m_reseat_up_plateau(void) {
+    synthetic("charging at ~700, the relaxed pack worth 850: on the plateau the band keeps it");
+    int counted = reseat_case(700, 850, -1);
+    CHECK(abs((int)battery_level_permille() - counted) <= 3, "kept: %d -> %u", counted, battery_level_permille());
+}
+static void m_reseat_down(void) {
+    synthetic("charging at ~850, the relaxed pack worth 700: on the plateau the band keeps it");
+    int counted = reseat_case(850, 700, -1);
+    CHECK(abs((int)battery_level_permille() - counted) <= 3, "kept, not 700: %d -> %u", counted, battery_level_permille());
+}
+static void m_reseat_down_steep(void) {
+    synthetic("charging at ~450, the relaxed pack worth 300: where the curve is steep the band moves it");
+    int counted = reseat_case(450, 300, -1);
+    CHECK(battery_level_permille() < counted, "down to the band's upper edge: %d -> %u", counted,
           battery_level_permille());
 }
-static void m_reseat_up(void) { synthetic("charging at ~700, the relaxed pack worth 850"); reseat_case(700, 850, 850); }
-static void m_reseat_down(void) { synthetic("charging at ~850, the relaxed pack worth 700"); reseat_case(850, 700, 700); }
 static void m_reseat_clamp(void) {
     synthetic("charging at ~880, the pack still at the clamp long after the unplug");
     reseat_case(880, 5000, 905);
@@ -740,10 +804,13 @@ static void m_reseat_missing(void) {
     stopped = 1;
     vdd_mv = 3900; chrg_low = false;
     run_s(BATTERY_RELAX_S + 5 * 60);   /* stale until well past RELAX_S */
-    CHECK(battery_level_permille() == l, "owed while stale: %u", battery_level_permille());
+    uint16_t counted = battery_level_permille();
+    CHECK(counted < l && l - counted <= 15, "owed while stale, the count running: %u -> %u", l, counted);
     stopped = 0; u_target = tgt_fixed; tgt_fixed_pm = 520;
     run_s(60);
-    CHECK(abs((int)battery_level_permille() - 520) <= 12, "then resolved: %u", battery_level_permille());
+    int want = band_expect(counted);
+    CHECK(band_ok(battery_level_permille(), counted), "then resolved into the band at 520-worth: %u (band ~%d)",
+          battery_level_permille(), want);
 }
 static void m_reseat_replugs(void) {
     synthetic("unplug 30 s, replug 30 s, three times, then stay unplugged");
@@ -758,9 +825,13 @@ static void m_reseat_replugs(void) {
     uint16_t l = battery_level_permille();
     vdd_mv = 3900; chrg_low = false;
     run_s(BATTERY_RELAX_S - 10);
-    CHECK(battery_level_permille() == l, "still owed, RELAX_S restarted at the last unplug: %u", battery_level_permille());
+    uint16_t counted = battery_level_permille();
+    CHECK(counted < l && l - counted <= RELAX_DROP_MAX, "still owed, RELAX_S restarted at the last unplug: %u -> %u", l,
+          counted);
     run_s(40);
-    CHECK(abs((int)battery_level_permille() - 520) <= 12, "resolved once: %u", battery_level_permille());
+    int want = band_expect(counted);
+    CHECK(band_ok(battery_level_permille(), counted), "resolved once, into the band: %u (band ~%d)",
+          battery_level_permille(), want);
 }
 /* 09-29: the first post-unplug reports were still at the clamp, and the old
  * code spent the re-seat on them. Here they fall inside RELAX_S. */
@@ -775,9 +846,15 @@ static void m_reseat_0929(void) {
     vdd_mv = 3900; chrg_low = false;
     run_s(60);
     phase0929 = 1;
-    run_s(BATTERY_RELAX_S + 40);
-    CHECK(abs((int)battery_level_permille() - 760) <= 12, "re-seated from the voltage, not the clamp: %u",
-          battery_level_permille());
+    run_s(BATTERY_RELAX_S - 70);
+    uint16_t counted = battery_level_permille();
+    run_s(110);
+    /* Phase 2: the band at 760-worth, applied to the counted level; never the
+     * clamp's lift to 905, which spending the re-seat on the clamp reports
+     * would have given. */
+    CHECK(battery_level_permille() < 900 && band_ok(battery_level_permille(), counted),
+          "re-seated from the voltage, not the clamp: %u (counted %u, band ~%d)", battery_level_permille(), counted,
+          band_expect(counted));
 }
 
 /* FULL is a heuristic: a charger fault with 5C clamped reads FULL. */

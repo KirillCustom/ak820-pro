@@ -42,7 +42,7 @@ static void l_modes(void) {
     on_battery_mid();
     power_cycle_mode();
     CHECK(power_mode() == POWER_MODE_SAVER, "Normal -> Saver, got %d", power_mode());
-    CHECK(!strcmp(last_status, "Power: Saver"), "overlay '%s'", last_status);
+    CHECK(!strcmp(last_status, "Power saver"), "overlay '%s'", last_status);
     uint8_t m = 0xFF;
     CHECK(kb_eeconfig_get_power_mode(&m) && m == POWER_MODE_SAVER, "persisted %u", m);
     idle_ms = 30000;  ltick(); expect_stage(POWER_STAGE_DIM, 255, 0xFF, 64, "Saver, 30 s");
@@ -71,7 +71,7 @@ static void l_low_cap(void) {
     vdd_mv = 3900; c5 = 62;   /* ~3.70 V: ~11% on the curve */
     lrun_s(30);
     CHECK(battery_level_permille() <= 150, "level %u pm, want <= 150", battery_level_permille());
-    CHECK(!strcmp(last_status, "Low: saving power"), "overlay '%s'", last_status);
+    CHECK(!strcmp(last_status, "Saving power"), "overlay '%s'", last_status);
     last_status[0] = 0;
     idle_ms = 30000; ltick(); expect_stage(POWER_STAGE_DIM, 255, 0xFF, 64, "low, Normal, 30 s");
     CHECK(last_status[0] == 0, "said once, then '%s'", last_status);
@@ -115,7 +115,7 @@ static void l_announce(void) {
     lrun_s(2);
     CHECK(last_status[0] == 0, "nothing before 3 s, got '%s'", last_status);
     lrun_s(2);
-    CHECK(!strcmp(last_status, "Power: Normal"), "overlay '%s'", last_status);
+    CHECK(!strcmp(last_status, "Normal power"), "overlay '%s'", last_status);
     uint8_t m = 0xFF;
     CHECK(kb_eeconfig_get_power_mode(&m) && m == POWER_MODE_NORMAL, "persisted %u", m);
 }

@@ -210,7 +210,9 @@ def main():
                 log.row("VBUS-DROP", b, f"supply {b['supply']} during the full charge")
             stopped = stopped + 1 if b and b["supply"] == "external" and b["chrg"] == "high" else 0
         log.row("FULL", b, "CHRG high on USB, two reads 5 min apart")
-        time.sleep(600)
+        # One log period and a minute, so the dump holds a whole entry at FULL:
+        # 15 min from log v6 (Phase 2), 10 before (codex).
+        time.sleep(960)
         log.read("full-end")
         dump(log, outdir, "full")
     log.row("done", None, "")

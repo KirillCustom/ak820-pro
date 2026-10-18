@@ -17,10 +17,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 A = os.path.join(HERE, "..", "assets-src", "current")
 FONTS = {"clock": ("Iosevka-Regular-30.png", 15, 22), "status": ("Iosevka-Medium-20.png", 10, 23)}
 # display.c cam_lines[]: (font, cols, y)
-LINES = [("clock", 8, 4), ("clock", 7, 32), ("clock", 8, 64), ("status", 11, 98)]
-CASES = [("3.712V", "58%", "14:03:27", "5C 62@3"),
-         (">4.036V", "100%", "09:41:05", "5C 100@1"),
-         ("<3.161V", "3%", "23:58:40", "5C 0@2"),
+LINES = [("clock", 8, 4), ("clock", 8, 32), ("clock", 8, 64), ("status", 11, 98)]
+CASES = [("3.712V", "58% 31h", "14:03:27", "5C 62@3"),
+         (">4.036V", "100%~51h", "09:41:05", "5C 100@1"),
+         ("3.996V", "85% 4d", "02:15:00", "5C 95@2"),
+         ("3.452V", "3% <1h", "23:58:40", "5C 33@2"),
+         ("<3.161V", "0%", "23:58:40", "5C 0@2"),
          ("-.---V", "--%", "--:--:--", "5C --")]
 
 

@@ -42,7 +42,7 @@ RUN = os.path.join(HERE, "..", "history", "battery-2026-09-28-drain")
 LOGS = ["log-20260929-1356.csv",    # v3: 09-28 15:47 boot -> 09-29 13:48
         "log-20260930-1956.csv",    # v4: 09-29 13:58 flash -> 09-30 19:48
         "log-20261001-0503.csv"]    # v4: 09-30 20:44 reboot -> 10-01 04:54
-PERIOD_H = 10 / 60
+PERIOD_H = 10 / 60   # historical: runs 1 and 2 are v3-v4 logs at 10 min; v6 logs (15 min) need this generalized
 
 # 5C -> pack mV: the fitted line (docs/battery.md).
 SLOPE, OFFSET = 114.22, 361.04
