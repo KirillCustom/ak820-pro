@@ -1,0 +1,12 @@
+You are verifying a last fix before a firmware flash (AK820 Pro, QMK on an SN32F299 Cortex-M0). Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify anything.
+
+Your verify pass of Phase 2 (plans/review-codex-phase2-verify-2026-10-18.md) found one firmware must-fix and some should-fixes. They are fixed in firmware commit d3e8389858 (git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show d3e8389858) and hub commit ac62835 (git -C /Users/jdlien/code/ak820-pro show ac62835; the dispositions are in plans/PHASE2-BUILD-PLAN.md, "Codex's verify (10-18) and what changed").
+
+Check, citing file:line:
+1. The must-fix: supply_changed in keyboards/a_jazz/ak820pro/battery.c now floors every known level (or zeroes it under a latched cut) on entering battery. Is any path left where the pack shows 0% above the cut, or a level is lifted after a latched cut? Does the change break anything (the re-seat owed from a session, a brief replug, the charging model's close, a boot)?
+2. The clamped boot restoring the below-band marker (890) as itself: correct with level_save_point and kb_eeconfig's encoding, and any case where restoring 890 is worse than the 950 guess?
+3. The custom effects' once-a-frame resets (rgb_matrix_kb.inc) and the re-init while disabled (power.c): correct, and safe?
+4. The simulator's new and tightened cases (scripts/battery_sim: count.c c_floor_entry, c_clamp_marker, c_hold_stale; model.c m_pause_missing; the ramp's 3-point limit) and bench_trial.py's header check.
+5. Anything else that should stop this dev build being flashed for the board checks the plan lists.
+
+Rank findings must-fix / should-fix / note; say plainly what is fine. Be brief where it is fine.
