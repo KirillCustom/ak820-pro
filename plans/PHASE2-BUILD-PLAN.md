@@ -79,10 +79,22 @@ are kept apart:
 - **the level's count**: `e_used` turned into pm, subject to the band below.
 
 **The band: the curve at both ends of the voltage's allowance** (codex
-must-fix 1). For a fresh estimate below the top clamp at `V`:
-`lower = max(0, curve(V − 12) − 15)`, `upper = min(1000, curve(V + 12) + 15)`
-pm, in signed arithmetic. 12 mV is an allowance from eight meter checks, not
-a proven bound. Then, each second:
+must-fix 1), **asymmetric** (as built, revision 3). For a fresh estimate
+below the top clamp at `V`:
+`lower = max(0, curve(V − 40) − 15)`, `upper = min(1000, curve(V + 25) + 15)`
+pm, in signed arithmetic (`BATTERY_BAND_MV_DOWN`, `_UP`, `_PM` in
+`battery.h`). Revision 2 had ±12 mV, from the meter checks; the firmware
+replay showed it too tight:
+- **Upward (the ratchet), 25 mV:** on R3 the board's `5C` read 10-25 mV
+  below the curve's voltage for the logged energy on the plateau (the pack's
+  plateau moves between cycles), and at ±12 the ratchet pulled a right count
+  down by 11 points (`battery_sim c_replay_r3`).
+- **Downward (the hold), 40 mV:** the pack's voltage **rises** when the load
+  falls (R1: 4170 → 4180 mV from 73 to 28 mA), so with the ladder an idle
+  board reads high, and a tight lower edge would pause the count through
+  every idle night: the level then high, the dangerous direction. So the hold
+  is a guard against a grossly over-counting model only.
+Then, each second:
 - **level above `upper`:** steps down toward `upper` by the existing ratchet
   (`STEP_DOWN_MEDIANS` estimates in a row, at most 1% a step). The count
   rebases there: no energy is "owed" after the correction.
@@ -248,6 +260,30 @@ Light sleep (step 4), the reserve (step 5), the radio and deep sleep (step
 5. The modes' persistence and the keymap binding, given VIA's stored keymap
    overrides the default one.
 6. Anything here that could stall the main loop or cost a keystroke.
+
+## As built (10-18), and what the build found
+
+Firmware `37b844b83c` (the modes) and `6fcd4af512` (the gauge, time left,
+`HC_POWER`, log v6); host `8399d33`, `83285fd`. `scripts/battery_sim`: 110
+cases pass, among them:
+- **both drains replayed through the firmware at one-second steps**, against
+  the time left (equal to the logged energy within 0.1 point at this load):
+  **R3 −2.4 / +1.0 points, 2e −1.2 / +1.4**, everywhere above the cut (the
+  gauge on the board: −13.8 and −7.3);
+- **with the capacity wrong** (`run.sh --sensitivity`): ±5% worst −3.6 /
+  +3.3; +13% worst +4.9 (the ratchet catches it); −13% worst −9.1 (the wide
+  lower edge does not: an aged pack reads low until a learning capacity comes);
+- the count's arithmetic (uneven ticks, the timer's wrap), the hold dropping
+  its energy, the ratchet easing at most 1% a step, the 1% floor and the cut's
+  0, stale reports, an excursion, a sustained bias on the plateau, the clamp
+  crossing, a reboot, the ladder's off stage in the count, USB data, time left
+  (young, frozen on USB);
+- the re-seat cases rewritten for the band: on the plateau a known level is
+  kept (`m_reseat_down`, `m_reseat_up_plateau`); where the curve is steep it
+  moves (`m_reseat_down_steep`, `m_reseat_up`).
+
+**The band changed** from revision 2's ±12 mV to 25 up / 40 down (above): the
+firmware replay found what the 10-minute Python replay could not.
 
 ## Codex's plan review (10-18) and what changed
 
