@@ -1,0 +1,6 @@
+Third verify before a flash. Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify anything.
+
+Your second verify of flash 2h is /Users/jdlien/code/ak820-pro/plans/review-codex-flash2h-verify2-2026-10-18.md (one must-fix: the receiver reset at enqueue only, not when a select or pair is transmitted or retransmitted; one should-fix: the 5A promotion left PA_SELECT pending). The fixes are firmware commit 9cbb1209df:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 9cbb1209df
+
+Check only: are both fixes complete and correct (tx_link_change_check before both sdWrite calls in ch582_tx_pump; the frame layout data[0] = cmd, data[1] = first param; the promotion now mirroring 5B 32's pending-action rule), and did they introduce anything new (for example a reset on every battery poll, a reset inside a context that is not the main loop, or a change to the link machinery's behaviour beyond retiring a stale select retry)? Also say whether, with these, any remaining path lets a frame begun on one link commit after the link changed. Rank must-fix / should-fix / note; be brief where things are fine.

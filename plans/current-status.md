@@ -87,9 +87,19 @@ prompt [`review-prompt-flash2h-verify.txt`](review-prompt-flash2h-verify.txt)): 
 | 4 | **must fix:** `frames_test` crashed (`KeyError` on the health record); stalls never failed it | **Fixed:** frames and health in separate lists; separate decode and 25 ms verdicts, either exits 1. A dry run with the compiled receiver standing in for the board: 18/18. |
 | 5 | should fix: the quiet and gap boundaries did not cross the wrap; poll-side boundaries untested; the reset test cannot see call sites | **Fixed:** every boundary in feed and in poll, each also with the wrap inside the interval. Call-site coverage stays a review item (verify 2). |
 
-**Second verify** on `19152be2e3`: [`review-codex-flash2h-verify2-2026-10-18.md`](review-codex-flash2h-verify2-2026-10-18.md),
-prompt [`review-prompt-flash2h-verify2.txt`](review-prompt-flash2h-verify2.txt).
-Built as `via-dev-19152be2e3-20261018-113702.bin`, token `0x92f635f5`.
+**Second verify** on `19152be2e3` ([verbatim](review-codex-flash2h-verify2-2026-10-18.md),
+prompt [`review-prompt-flash2h-verify2.txt`](review-prompt-flash2h-verify2.txt)): one must-fix.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | **must fix:** the reset ran when a select was queued, not when it went out (first send or retransmit), and old-link LED traffic can arrive while it waits behind other frames | **Fixed in `9cbb1209df`:** `tx_link_change_check()` before both writes in `ch582_tx_pump()`, the enqueue reset kept. A driver-level regression for the TX backlog would need the driver built on the host with HAL stubs: not added; covered by review. |
+| 2 | should fix: the 5A promotion leaves a select retry pending, which can reselect a live link | **Fixed:** the promotion now retires pending actions as `5B 32` does (a bounce survives). Every build: it is link machinery, not the channel. |
+| 3 | the reset is safe (no keystroke or TX state touched); the A6 classification holds for normal callers (the instrumented `HC_DRIVE` can send any profile byte); the host fixes are right | Agreed. |
+
+**Third verify** on `9cbb1209df`: [`review-codex-flash2h-verify3-2026-10-18.md`](review-codex-flash2h-verify3-2026-10-18.md),
+prompt [`review-prompt-flash2h-verify3.txt`](review-prompt-flash2h-verify3.txt).
+Built as `via-dev-9cbb1209df-20261018-114306.bin`, token `0x9ac7aafa`; daily
+`via-daily-9cbb1209df-20261018-114327.bin`.
 
 ## 2026-10-15
 
