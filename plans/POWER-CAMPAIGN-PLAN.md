@@ -81,8 +81,9 @@ the refit gauge (A1) and the runtime model (A7) are checked on data they were
 not fitted on, and it shows how the voltage curve moves with load.
 - **It could run on to the death.** Run 2 (10-04) timed the reserve,
   5 h 01 min from the cut, but had no logger. The pack log would add the
-  reserve's mAh and the voltage where the pack's protection opens, below
-  `5C`'s ~3.16 V clamp, where the board is blind for the last ~45-55 min.
+  reserve's mAh and the pack's voltage at the death (whichever goes first,
+  the board's regulator or the pack's protection; not known which). It is
+  below `5C`'s ~3.16 V clamp, so the board is blind for the last ~45-55 min.
   It costs ~5 h more and a brownout (the trial already dumps the RAM log at
   the cut). The trial needs a mode that keeps relay 2 off past the cut and
   calls the death from the logger's current, then turns the relay on. Not a
