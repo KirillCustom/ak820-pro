@@ -79,6 +79,14 @@ from 0% to FULL.
 the screen dim, so ~2 days with his lights changed. It is the validation run:
 the refit gauge (A1) and the runtime model (A7) are checked on data they were
 not fitted on, and it shows how the voltage curve moves with load.
+- **It could run on to the death.** Run 2 (10-04) timed the reserve,
+  5 h 01 min from the cut, but had no logger. The pack log would add the
+  reserve's mAh and the voltage where the pack's protection opens, below
+  `5C`'s ~3.16 V clamp, where the board is blind for the last ~45-55 min.
+  It costs ~5 h more and a brownout (the trial already dumps the RAM log at
+  the cut). The trial needs a mode that keeps relay 2 off past the cut and
+  calls the death from the logger's current, then turns the relay on. Not a
+  run of its own, and nothing waits on it.
 
 **R7, standby: the research now, the building later.**
 For "Two kinds of away" (`BATTERY-GAUGE-PLAN.md`): the long tier's savings
