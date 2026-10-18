@@ -65,6 +65,17 @@ a Claude Code hook. Ideas worth taking:
      bit, in bursts of 1-2 s. Only a constant stream would show.
    - **Limits:** ~100 bit/s, one way, each frame sent twice; timing to
      ~0.1 s at best (BLE connection-interval jitter), against ~3 ms on USB.
+   - **The module's BLE descriptor (read from the Mac's registry, 10-17):**
+     the only host-to-device report is the LED byte (report 2, 1 byte); there
+     are no feature reports. Everything else is input: a 6-key keyboard and a
+     120-key bitmap, system power keys, a 5-button mouse with wheel and pan,
+     consumer keys, an eject bit, and a Surface Dial collection. The LED field
+     is **5 bits** (Report Count 5 against usages 1-3), so macOS makes
+     controls for Num, Caps and Scroll only, but a raw output report can set
+     bits 3-4 too. If the module forwards them in `5A` (the board's guard
+     already accepts `d <= 0x1F`), the host owns 4 bits, not 2: 15 moves per
+     change, ~3.9 bits, against quill4gen7's 1. Unknown until the firmware can
+     show `host_leds`. Probe: `hostagent/ledprobe/`, `scripts/build-led-probe.sh`.
    - **The payoff:** clock sync and now-playing over BT. Off USB the clock
      drifts: it was 1.6 s off after 26 min on battery on 10-08.
    - **First step, one evening on the Mac, testing item 2 at the same time:**

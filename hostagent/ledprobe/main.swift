@@ -81,14 +81,14 @@ func findDevice(_ t: Target) -> IOHIDDevice? {
     return IOHIDDeviceCreate(kCFAllocatorDefault, found[0])
 }
 
-func ledElements(_ dev: IOHIDDevice) -> [UInt32: IOHIDElement] {
+// Every LED output element, in descriptor order. Not keyed by usage: the BLE
+// descriptor declares five bits against usages 1-3, so the last usage
+// (Scroll Lock) repeats, and a dictionary would keep the wrong bit.
+func ledElements(_ dev: IOHIDDevice) -> [IOHIDElement] {
     let match = [kIOHIDElementUsagePageKey: kHIDPage_LEDs] as CFDictionary
     let all = IOHIDDeviceCopyMatchingElements(dev, match, IOOptionBits(kIOHIDOptionsTypeNone)) as? [IOHIDElement] ?? []
-    var out: [UInt32: IOHIDElement] = [:]
-    for e in all where IOHIDElementGetType(e) == kIOHIDElementTypeOutput {
-        out[IOHIDElementGetUsage(e)] = e
-    }
-    return out
+    return all.filter { IOHIDElementGetType($0) == kIOHIDElementTypeOutput }
+              .sorted { IOHIDElementGetCookie($0) < IOHIDElementGetCookie($1) }
 }
 
 // The last value set, from the cache: kIOHIDDeviceGetValueWithoutUpdate
@@ -101,7 +101,7 @@ func lastValue(_ dev: IOHIDDevice, _ e: IOHIDElement) -> String {
                                  : String(format: "? (0x%08x)", r)
 }
 
-func openTarget(_ t: Target) -> (IOHIDDevice, [UInt32: IOHIDElement])? {
+func openTarget(_ t: Target) -> (IOHIDDevice, Int)? {
     guard let dev = findDevice(t) else {
         Probe.note("\(t.name): device not found")
         return nil
@@ -114,20 +114,26 @@ func openTarget(_ t: Target) -> (IOHIDDevice, [UInt32: IOHIDElement])? {
         return nil
     }
     let leds = ledElements(dev)
-    let desc = leds.keys.sorted().map { u -> String in
-        let e = leds[u]!
-        return "\(ledNames[u] ?? "led\(u)")=\(lastValue(dev, e)) (report \(IOHIDElementGetReportID(e)))"
+    let desc = leds.map { e -> String in
+        let u = IOHIDElementGetUsage(e)
+        return "\(ledNames[u] ?? "led\(u)")#\(IOHIDElementGetCookie(e))=\(lastValue(dev, e))"
     }.joined(separator: " ")
-    Probe.note("\(t.name): opened \(product) over \(transport); LED outputs: \(desc.isEmpty ? "none" : desc)")
-    return (dev, leds)
+    let reportID = leds.first.map { Int(IOHIDElementGetReportID($0)) } ?? -1
+    Probe.note("\(t.name): opened \(product) over \(transport); LED outputs (report \(reportID)): \(desc.isEmpty ? "none" : desc)")
+    return (dev, reportID)
 }
 
-func setScroll(_ t: Target, _ dev: IOHIDDevice, _ e: IOHIDElement, _ on: Bool) {
-    let v = IOHIDValueCreateWithIntegerValue(kCFAllocatorDefault, e, mach_absolute_time(), on ? 1 : 0)
+// The whole LED byte as a raw output report, so the bit is exact: Scroll Lock
+// is bit 2 (0x04) in both descriptors. Caps goes out as 0, so leave Caps off.
+// With a report ID, macOS takes the ID as the buffer's first byte.
+func setScroll(_ t: Target, _ dev: IOHIDDevice, _ reportID: Int, _ on: Bool) {
+    let leds: UInt8 = on ? 0x04 : 0x00
+    let buf: [UInt8] = reportID == 0 ? [leds] : [UInt8(reportID), leds]
     let t0 = Date().timeIntervalSince1970
-    let r = IOHIDDeviceSetValue(dev, e, v)
+    let r = IOHIDDeviceSetReport(dev, kIOHIDReportTypeOutput, CFIndex(reportID), buf, buf.count)
     let ms = (Date().timeIntervalSince1970 - t0) * 1000
-    Probe.note(String(format: "%@: scroll %@ -> 0x%08x in %.1f ms", t.name, on ? "ON" : "off", r, ms))
+    Probe.note(String(format: "%@: scroll %@ (report %d, 0x%02x) -> 0x%08x in %.1f ms",
+                      t.name, on ? "ON" : "off", reportID, leds, r, ms))
 }
 
 func waitForAccess() {
@@ -158,22 +164,22 @@ case "check":
 case "run":
     let delay = args.count > 1 ? Double(args[1]) ?? 0 : 0
     let opened = targets.compactMap { t in openTarget(t).map { (t, $0.0, $0.1) } }
-    guard opened.count == 2, opened.allSatisfy({ $0.2[3] != nil }) else {
-        Probe.note("run: need both devices open with a Scroll Lock element; stopping")
+    guard opened.count == 2, opened[0].2 == 0, opened[1].2 == 2 else {
+        Probe.note("run: need both devices open, USB LEDs in report 0 and BLE in report 2; stopping")
         exit(3)
     }
-    let (usbT, usbDev, usbLeds) = opened[0]
-    let (bleT, bleDev, bleLeds) = opened[1]
+    let (usbT, usbDev, usbID) = opened[0]
+    let (bleT, bleDev, bleID) = opened[1]
     Probe.note(String(format: "run: starting in %.0f s", delay))
     Thread.sleep(forTimeInterval: delay)
-    setScroll(usbT, usbDev, usbLeds[3]!, true)
+    setScroll(usbT, usbDev, usbID, true)
     Thread.sleep(forTimeInterval: 20)
-    setScroll(usbT, usbDev, usbLeds[3]!, false)
+    setScroll(usbT, usbDev, usbID, false)
     Thread.sleep(forTimeInterval: 10)
     for _ in 0..<6 {
-        setScroll(bleT, bleDev, bleLeds[3]!, true)
+        setScroll(bleT, bleDev, bleID, true)
         Thread.sleep(forTimeInterval: 5)
-        setScroll(bleT, bleDev, bleLeds[3]!, false)
+        setScroll(bleT, bleDev, bleID, false)
         Thread.sleep(forTimeInterval: 5)
     }
     for (_, dev, _) in opened { IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone)) }
