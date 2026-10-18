@@ -343,10 +343,10 @@ firmware must-fix; `d3e8389858` cleared for the dev-board checks.**
 | # | finding (short) | disposition |
 |---|---|---|
 | 1 | the battery-entry floor fixed; no path left to 0% above the cut or a lift after it | Agreed. |
-| 2 | note: restoring 890 is right but lossy (a stale marker after a partial charge or a pack swap reads up to 9 low); a comment still says 90..100 | Accepted, inside the reboot scope the plan excludes; the comment fixed in the next firmware change. |
+| 2 | note: restoring 890 is right but lossy (a stale marker after a partial charge or a pack swap reads up to 9 low); a comment still says 90..100 | Accepted, inside the reboot scope the plan excludes; the comment fixed (`battery.c`, comment only, for the next flash). |
 | 3 | the RGB fixes sound | Agreed. |
-| 4 | should fix: `m_pause_missing` can pass on later idle reports without the adoption | **To fix** after the flash (host only): assert at the first qualifying estimate, then require MODEL on a resumed charge. |
-| 5 | note: 4011 mV is reachable (eight 97s and two 98s); the CSV check fine | **To add** after the flash: the boundary case. The earlier disposition was wrong. Also on the board: a quick disable, cap change, enable. |
+| 4 | should fix: `m_pause_missing` can pass on later idle reports without the adoption | **Fixed** after the flash (host only): the first change must be one step of over 100 pm, then a resumed charge must start MODEL. |
+| 5 | note: 4011 mV is reachable (eight 97s and two 98s); the CSV check fine | **Added** (`c_band_top_edge`: the estimate lands on 4011 mV exactly, no bound, no ratchet). The earlier disposition was wrong. Still to do on the board: a quick disable, cap change, enable. |
 
 ## Codex's plan review (10-18) and what changed
 

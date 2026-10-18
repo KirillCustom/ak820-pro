@@ -1346,6 +1346,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "c_clamp_cross")) c_clamp_cross();
     else if (!strcmp(s, "c_reboot"))      c_reboot();
     else if (!strcmp(s, "c_band_top"))       c_band_top();
+    else if (!strcmp(s, "c_band_top_edge"))  c_band_top_edge();
     else if (!strcmp(s, "c_floor_boot"))     c_floor_boot();
     else if (!strcmp(s, "c_cut_reseat"))     c_cut_reseat();
     else if (!strcmp(s, "c_hold_stale"))     c_hold_stale();

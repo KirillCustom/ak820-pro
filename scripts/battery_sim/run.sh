@@ -21,7 +21,7 @@ fail=0
 phase2="l_normal l_modes l_usb l_low_cap l_val_cap l_lights_cut l_announce l_persisted
         c_rate c_uneven c_wrap c_hold c_ratchet c_floor_cut c_time_left c_load_step c_usb_data
         c_stale c_excursion c_bias c_clamp_cross c_reboot
-        c_band_top c_floor_boot c_cut_reseat c_hold_stale c_handover_stays c_floor_entry c_clamp_marker"
+        c_band_top c_band_top_edge c_floor_boot c_cut_reseat c_hold_stale c_handover_stays c_floor_entry c_clamp_marker"
 r3="$hist/battery-2026-10-15-drain-2f/log-20261018-0205-rgbcut.csv"
 e2="$hist/battery-2026-10-12-drain-2e/log-20261014-0950-preswap.csv"
 for s in boot_battery boot_battery_clamp boot_usb_full discharge charge_log transitions \

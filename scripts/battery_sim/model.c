@@ -640,10 +640,22 @@ static void m_pause_missing(void) {
      * it and the adoption must visibly move it (codex, verify: inside the
      * band the test passed with no adoption at all). */
     stopped = 0; u_target = tgt_fixed; tgt_fixed_pm = held + 300;
-    run_s(60);
-    uint16_t adopted = battery_level_permille();
-    CHECK(adopted > held + 150 && adopted <= held + 300, "then adopted, raised toward the pack: %u (held %u)", adopted,
+    /* The adoption is ONE move at the first qualifying estimate; the idle walk
+     * that follows moves at most 10 pm a report, so a first change of more
+     * than 100 pm can only be the adoption (codex, verify 2). */
+    uint16_t first = held;
+    for (int k = 0; k < 120 && first == held; k++) {
+        run_s(1);
+        first = battery_level_permille();
+    }
+    CHECK(first > held + 150 && first <= held + 300, "adopted in one step, raised toward the pack: %u (held %u)", first,
           held);
+    /* A missed adoption leaves the held number held, and a resumed charge then
+     * opens UNKNOWN; an adopted one starts the model. */
+    vdd_mv = 4193; chrg_low = true;
+    run_s(80);
+    CHECK(battery_chg_state() == ST_MODEL, "a resumed charge starts the model from it: state %u",
+          battery_chg_state());
 }
 
 /* The handover from LOST and from UNKNOWN-CHG: a number once adopted. */

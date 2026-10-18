@@ -243,6 +243,26 @@ static void c_band_top(void) {
     CHECK(fabs(drop - PM_PER_HOUR / 6) <= 1.0, "no ratchet below the clamp's allowance: %.0f pm in 10 min", drop);
 }
 
+/* The exact boundary: an estimate of 4011 mV (eight 97s and two 98s, codex)
+ * puts the upward allowance at 4036 mV, the clamp: no bound. */
+static int edge_k;
+static int tgt_edge(void) { return (edge_k++ % 10) < 8 ? 97 : 98; }
+static void c_band_top_edge(void) {
+    become_full();
+    vdd_mv = 3900; c5 = 100;
+    run_s(30);
+    run_s(2 * 3600);
+    c5 = 0xFF; c5_src = tgt_edge;
+    run_s(300);
+    CHECK(battery_pack_mv() == 4011, "the estimate at the boundary, 4011 mV: %u", battery_pack_mv());
+    CHECK(battery_band_upper() == 1000, "no upper bound there: %d", battery_band_upper());
+    uint16_t l0 = battery_level_permille();
+    run_s(600);
+    double drop = l0 - battery_level_permille();
+    CHECK(fabs(drop - PM_PER_HOUR / 6) <= 1.0, "no ratchet at the boundary: %.0f pm in 10 min", drop);
+    c5_src = NULL;
+}
+
 /* A boot on battery above the cut never shows 0%: 5C 30 is 3424 mV, 4 pm on
  * the curve, shown as the 1% floor. */
 static void c_floor_boot(void) {
