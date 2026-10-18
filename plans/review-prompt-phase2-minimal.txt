@@ -1,0 +1,16 @@
+You are reviewing a small firmware change before it is flashed (AK820 Pro, QMK on an SN32F299 Cortex-M0, a CH582F radio on UART2). Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify anything.
+
+You reviewed Phase 2 three times (plans/review-codex-phase2-impl-2026-10-18.md, -verify-, -verify2-); d3e8389858 is on the board. This change adds a fourth power mode at JD's request, plus a comment-only commit before it:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 1ea968335f   (comment only)
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show ba9e3bda60   (Minimal mode)
+and the host side, hub commit 2cc57d9 (git -C /Users/jdlien/code/ak820-pro show 2cc57d9).
+
+Minimal mode, as JD asked: on battery the RGB and the screen's backlight are off even while typing (the ladder's thresholds are 0, so the stage is SCREEN_OFF at once); the backlight comes on at the user's level for 4 s after a message appears in the status band, and while Fn+D's pages are open, "so a user can see the message; otherwise it'll just seem broken". Messages are noted in graphics/display.c (note_message: the parameter overlay, an alert, a new link state with words, the pair gesture), and power.c lifts the backlight cap for them. The low-battery notice is skipped in Minimal.
+
+Check, citing file:line:
+1. Correctness: the cycle Full -> Normal -> Saver -> Minimal (persistence of value 3 in kb_eeconfig and its validity check, HC_DEVHOOK op 14's bounds, HC_POWER), the stage and caps in Minimal, the backlight lift (apply(), shown_lit, power_task's comparison), USB behaving as Full, the low cap and the lights cut in Minimal, the energy model seeing the lifted backlight.
+2. note_message's triggers: does every user-visible message the band can show light the screen once (including Fn+B's own overlay, the clock-mode and brightness overlays, the param overlay for lighting, alerts such as "Battery low" and "Low: RGB off", pairing, connecting, a failed link, "Connected"), and is there any path that keeps the screen lit indefinitely (a persisting or alternating message, a pair hint that never ends, the debug page)? Are messages shown elsewhere than the band (for example by other modules calling into display.c) that miss it?
+3. Anything that could cost a keystroke or the 25 ms budget, or a display repaint the backlight change causes.
+4. The simulator's l_minimal and the stubs: do they test what they claim?
+
+Rank findings must-fix / should-fix / note; say plainly what is fine. Be brief where it is fine.
