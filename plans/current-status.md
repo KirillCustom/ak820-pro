@@ -26,6 +26,38 @@ of 18 frames exact ([`LOCK-LED-CHANNEL-PLAN.md`](LOCK-LED-CHANNEL-PLAN.md),
 frames exact, P3 included** (below). **The channel is parked; next is the
 power work** (the ladder, an accurate gauge, a runtime estimate).
 
+### Phase 2 on the board (10-18, 16:54)
+
+**Built, reviewed three times by codex, flashed:** `d3e8389858` (dev, token
+`0x6d244bcd`), [`PHASE2-BUILD-PLAN.md`](PHASE2-BUILD-PLAN.md) has the design,
+every disposition and the host results (122 simulator cases; both recorded
+drains replayed through the firmware within +0.1 / +1.2 points at every
+second). The energy-count gauge, time left on the camera page, `HC_POWER`, log
+v6, the modes on `Fn`+`B` (bound in JD's VIA keymap and the default keymap).
+`1ea968335f` (a comment only) waits for the next flash.
+
+**Checked on the board, 10-18:**
+- `ladder_check.py`: all nine effects go to 0.0% drive at once on the off
+  stages and come back on the wake (Jellybean included); a quick disable,
+  cap change, enable: dimmed, then restored.
+
+**Queued tonight (no hands):** 00:30 the RGB curve map
+(`history/power-bench-2026-10-15/rgb-curve-20261019/`), then the forced-stage
+map (`stages-20261019/`), each ~25-45 min on battery, lights changing, then
+restored and the relay on.
+
+**Next, in order:**
+1. Fit the RGB model in buffer units from tonight's map (A and B in
+   `battery.c`; per colour if they differ); check the stage map's model
+   against the logger (within 5%).
+2. The wake/key test: relay off, Saver, the wake rig through the stages,
+   `keydrop_test.py`'s three counts. Needs the Mac unlocked and the keyboard
+   untouched ~10 min (JD's say-so).
+3. R5: a logged drain in Normal at JD's daily use, from a verified FULL
+   (JD's say-so; ~4-5 days): the gauge against the logged energy, the model
+   against the logger per 15 min, the runtime against R3 (uncontrolled).
+4. Then light sleep (measured first), the reserve, a learning capacity.
+
 ### Two workstreams, and their order (10-18)
 
 **1. Phase 2, first, build authorized:** an accurate gauge, a time-left

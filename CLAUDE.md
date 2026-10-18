@@ -113,8 +113,11 @@ ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 
 **Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-18
 — RESUME HERE"). Two workstreams, Phase 2 first:
-- **Phase 2, being built (10-18): an accurate gauge, a time-left estimate,
-  the power ladder.** R1-R4 are done (the per-load map, the USB offset, a
+- **Phase 2 is built and on the board (10-18, 16:54): an accurate gauge, a
+  time-left estimate, the power ladder** ([`plans/PHASE2-BUILD-PLAN.md`](plans/PHASE2-BUILD-PLAN.md),
+  three codex reviews; [docs/battery.md](docs/battery.md), "The gauge as
+  built, Phase 2"). Next: tonight's maps, the wake/key test, then R5 (a drain
+  in Normal at JD's use). R1-R4 are done (the per-load map, the USB offset, a
   logged drain and charge: 4011.6 mAh, 15,579 mWh to the RGB cut at JD's
   settings). A1: the gauge reads up to 13.7 points low on the plateau
   (70-80%, where 15 mV spans 85-70%), within 2.5 below 20%. No voltage table
@@ -127,11 +130,11 @@ ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
   no light ([`plans/LOCK-LED-CHANNEL-PLAN.md`](plans/LOCK-LED-CHANNEL-PLAN.md)
   has the resume list; what the module forwards is in
   [docs/wireless.md](docs/wireless.md)).
-- **On the board: flash 2i**, `112942fa63` (a `dev` build, token
-  `0x081daec1`, since 15:18 10-18). ⚠️ **Firmware commits 2f-2i
-  (`523744c30f`..`112942fa63`) are local on `ak820pro-jdlien`, not pushed**,
-  and `deps.lock` still pins `3e18c70a74`, so a fresh `setup.sh` builds Phase
-  1b's firmware, not this.
+- **On the board: Phase 2**, `d3e8389858` (a `dev` build, token
+  `0x6d244bcd`, since 16:54 10-18). ⚠️ **Firmware commits from flash 2f on
+  (`523744c30f`..) are local on `ak820pro-jdlien`, not pushed**, and
+  `deps.lock` still pins `3e18c70a74`, so a fresh `setup.sh` builds Phase 1b's
+  firmware, not this.
 - **The power logger stays on the pack** (INA228 + MAX17048,
   [docs/test-bench.md](docs/test-bench.md), "The power logger"): current and
   charge from the INA228, voltage from `vcell_mv`. ⚠️ The INA228's VBUS reads
