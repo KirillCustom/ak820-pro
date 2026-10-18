@@ -17,6 +17,13 @@ cp "$kb/battery.c" "$kb/battery.h" "$kb/power.c" "$kb/power.h" "$build/"
 cc -std=c11 -O1 -Wall -Wextra -Wno-unused-parameter -I"$build" \
    -o "$build/sim" "$here/sim.c" "$build/battery.c" "$build/power.c" -lm
 fail=0
+# Phase 2's scenarios (ladder.c, count.c) and the two drains they replay.
+phase2="l_normal l_modes l_usb l_low_cap l_val_cap l_lights_cut l_announce l_persisted
+        c_rate c_uneven c_wrap c_hold c_ratchet c_floor_cut c_time_left c_load_step c_usb_data
+        c_stale c_excursion c_bias c_clamp_cross c_reboot
+        c_band_top c_floor_boot c_cut_reseat c_hold_stale c_handover_stays"
+r3="$hist/battery-2026-10-15-drain-2f/log-20261018-0205-rgbcut.csv"
+e2="$hist/battery-2026-10-12-drain-2e/log-20261014-0950-preswap.csv"
 for s in boot_battery boot_battery_clamp boot_usb_full discharge charge_log transitions \
          no_pack protection critical brief_plug unplug_mid_charge countdown_ease stale ring_restart \
          burst restore_needs_evidence charger_fault chrg_gap boot_charging_rise full_then_replug \
@@ -52,19 +59,25 @@ if grep -qE '^#define BATTERY_LOG_VERSION +([5-9]|[1-9][0-9])\b' "$build/battery
     for s in $model_scenarios; do "$build/sim_san" "$s" > /dev/null 2>&1 || { echo "FAIL $s under the sanitizers"; san=1; }; done
     "$build/sim_san" m_replay_1001 "$hist/battery-2026-10-01-charge/log-20261001-1947.csv" > /dev/null 2>&1 \
         || { echo "FAIL m_replay_1001 under the sanitizers"; san=1; }
+    if grep -q '^#define POWER_HAS_MODES' "$build/power.h"; then
+        for s in $phase2; do "$build/sim_san" "$s" > /dev/null 2>&1 || { echo "FAIL $s under the sanitizers"; san=1; }; done
+        "$build/sim_san" c_replay_r3 "$r3" > /dev/null 2>&1 || { echo "FAIL c_replay_r3 under the sanitizers"; san=1; }
+    fi
     [ $san = 0 ] && echo "ok   the model's scenarios under ASan and UBSan" || fail=1
 fi
 
 # Phase 2: the power modes (ladder.c), against a power.h that has them.
 if grep -q '^#define POWER_HAS_MODES' "$build/power.h"; then
-    for s in l_normal l_modes l_usb l_low_cap l_val_cap l_lights_cut l_announce l_persisted \
-             c_rate c_uneven c_wrap c_hold c_ratchet c_floor_cut c_time_left c_load_step c_usb_data \
-             c_stale c_excursion c_bias c_clamp_cross c_reboot; do
+    for s in $phase2; do
         "$build/sim" "$s" || fail=1
     done
-    # The drains, replayed through the firmware: R3 to the cut, 2e to its reboot.
-    "$build/sim" c_replay_r3 "$hist/battery-2026-10-15-drain-2f/log-20261018-0205-rgbcut.csv" || fail=1
-    "$build/sim" c_replay_2e "$hist/battery-2026-10-12-drain-2e/log-20261014-0950-preswap.csv" || fail=1
+    # The drains, replayed through the firmware and scored every second: R3 to
+    # the cut, 2e to its reboot, each interval's reports interleaved, shuffled,
+    # and as the monotone ramp (a stress case, allowed 4 points).
+    for v in "" _shuf _ramp; do
+        "$build/sim" c_replay_r3$v "$r3" || fail=1
+        "$build/sim" c_replay_2e$v "$e2" || fail=1
+    done
 fi
 
 # Phase 2's sensitivity (report only, `run.sh --sensitivity`): both drains

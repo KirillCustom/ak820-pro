@@ -618,7 +618,11 @@ static void m_pause_relaxing(void) {
     run_s(BATTERY_PAUSE_S - BATTERY_RELAX_S + 60);
     uint16_t l = battery_level_permille();
     CHECK(battery_chg_state() == ST_NONE, "handed over: %u", battery_chg_state());
-    CHECK(abs((int)l - 400) <= 12, "adopted the settled 400-worth, not the relaxing 600: %u (held %u)", l, held);
+    /* Phase 2: the held level is inside the settled 400-worth band, so kept;
+     * the relaxing 600-worth estimate's band (lower edge ~530) would have
+     * raised it. */
+    CHECK(abs((int)l - (int)held) <= 3 && l < 500, "adopted from the settled estimate (kept), not the relaxing 600: %u (held %u)",
+          l, held);
 }
 
 /* Reports missing at PAUSE_S: hold until a qualifying estimate, then adopt. */
@@ -634,7 +638,8 @@ static void m_pause_missing(void) {
           held, battery_level_permille());
     stopped = 0; u_target = tgt_fixed; tgt_fixed_pm = 350;
     run_s(60);
-    CHECK(abs((int)battery_level_permille() - 350) <= 12, "then adopted: %u", battery_level_permille());
+    CHECK(band_ok(battery_level_permille(), held), "then adopted into the band at 350-worth: %u (held %u, band ~%d)",
+          battery_level_permille(), held, band_expect(held));
 }
 
 /* The handover from LOST and from UNKNOWN-CHG: a number once adopted. */
@@ -705,7 +710,10 @@ static void m_slow_charge(void) {
  * firmware's own curve and estimate, so the test is the rule, not a copy. */
 static int band_at(int counted, int mv) {
     int lo = (int)battery_curve_pm((uint16_t)(mv - BATTERY_BAND_MV_DOWN)) - BATTERY_BAND_PM;
-    int hi = (int)battery_curve_pm((uint16_t)(mv + BATTERY_BAND_MV_UP)) + BATTERY_BAND_PM;
+    /* Written from the rule, not copied from battery.c: an allowance reaching
+     * the clamp's 4036 mV is no upper bound (codex). */
+    int hi = mv + BATTERY_BAND_MV_UP >= 4036 ? 1000
+                                             : (int)battery_curve_pm((uint16_t)(mv + BATTERY_BAND_MV_UP)) + BATTERY_BAND_PM;
     if (lo < 0) lo = 0;
     if (hi > 1000) hi = 1000;
     return counted < lo ? lo : counted > hi ? hi : counted;
@@ -741,13 +749,15 @@ static int reseat_case(int l0, int relaxed_pm, int expect) {
     uint16_t at_unplug = battery_level_permille();
     run_s(BATTERY_RELAX_S - 10);
     uint16_t counted = battery_level_permille();
-    CHECK(counted < at_unplug && at_unplug - counted <= RELAX_DROP_MAX,
-          "counted down through RELAX_S (~10 pm at ~304 mW): %u -> %u", at_unplug, counted);
+    /* 303.8 mW over the RELAX_S - 10 s just run: 9.70 pm (codex: check it
+     * closely, not as "any drop up to 12"). */
+    CHECK(abs((int)(at_unplug - counted) - 10) <= 1, "counted down through RELAX_S (9.7 pm at 303.8 mW): %u -> %u",
+          at_unplug, counted);
     run_s(40);
-    int want = expect >= 0 ? expect : band_expect(counted);
+    int want = expect >= 0 ? expect : expect == -2 ? (int)counted : band_expect(counted);
     int got  = battery_level_permille();
-    CHECK(expect >= 0 ? abs(got - want) <= 3 : band_ok(got, counted), "re-seated from %u (counted %u) to ~%d: %d",
-          at_unplug, counted, want, got);
+    CHECK(expect >= 0 ? abs(got - want) <= 3 : expect == -2 ? abs(got - want) <= 1 : band_ok(got, counted),
+          "re-seated from %u (counted %u) to ~%d: %d", at_unplug, counted, want, got);
     return counted;
 }
 static void m_reseat_up(void) {
@@ -772,8 +782,10 @@ static void m_reseat_down_steep(void) {
           battery_level_permille());
 }
 static void m_reseat_clamp(void) {
-    synthetic("charging at ~880, the pack still at the clamp long after the unplug");
-    reseat_case(880, 5000, 905);
+    synthetic("charging at ~880, the pack still at the clamp long after the unplug: kept (no lift)");
+    int counted = reseat_case(880, 5000, -2);
+    CHECK(abs((int)battery_level_permille() - counted) <= 1, "kept at the clamp: %d -> %u", counted,
+          battery_level_permille());
 }
 static void m_reseat_unknown(void) {
     synthetic("an UNKNOWN-CHG session unplugged at the clamp");

@@ -72,17 +72,20 @@ uint8_t  display_backlight_duty(void) {
 static int      rgb_restarts;
 static uint8_t  rgb_mode = 2;
 uint8_t  rgb_matrix_get_mode(void) { return rgb_mode; }
-void     rgb_matrix_mode_noeeprom(uint8_t m) { rgb_mode = m; rgb_restarts++; }
+void     rgb_matrix_mode_noeeprom(uint8_t m) { rgb_mode = m; }
+void     rgb_matrix_reinit_effect(void) { rgb_restarts++; }
 static bool     usb_configured;
 bool     battery_usb_configured(void) { return usb_configured; }
 /* The committed frames' drive: the sim's LED buffer is uniform, `drive_sum`
  * per frame (all 246 channels), scaled as the driver would. */
 static uint32_t drive_sum = 82u * 3u * 255u;   /* full white */
 static uint32_t drive_last_ms;
-uint64_t sn32f2xx_led_drive_take(uint32_t now) {
-    uint64_t r = (uint64_t)(scale ? (drive_sum * (scale + 1u)) >> 8 : 0u) * (uint32_t)(now - drive_last_ms);
+uint64_t sn32f2xx_led_drive_take(uint32_t now, uint32_t *lit_ms) {
+    uint32_t dt  = now - drive_last_ms;
+    uint32_t sum = scale ? (drive_sum * (scale + 1u)) >> 8 : 0u;
     drive_last_ms = now;
-    return r;
+    if (lit_ms) *lit_ms = sum ? dt : 0u;
+    return (uint64_t)sum * dt;
 }
 uint32_t sn32f2xx_led_load(void) { return scale ? 82u * 3u * 255u / 2u : 0u; }
 void     sn32f2xx_set_power_scale(uint8_t s) { scale = s; }
@@ -239,7 +242,9 @@ static void discharge(void) {
             c5 = (uint8_t)(99 - (83u * into) / span);   /* 99 -> 16 */
         }
         if (s == clamp_s - 5) {
-            CHECK(battery_level_permille() == 905, "the countdown reaches its 90.5 floor as the clamp exits, got %u pm",
+            /* Phase 2: the count, unfloored: 1000 less 5.3 h at the sim's
+             * 303.8 mW (19.50 pm an hour). */
+            CHECK(abs((int)battery_level_permille() - 897) <= 2, "the count at the clamp's exit ~897, got %u pm",
                   battery_level_permille());
         }
         run_s(5);
@@ -788,6 +793,10 @@ typedef struct {
 static rp_row_t rp[RP_MAX];
 static int      rp_n;
 static void   (*rp_second_hook)(void);   /* called once a simulated second during a replay */
+/* How an interval's reports are ordered (codex: the monotone ramp is one
+ * admissible reconstruction, a stress case): 0 the ramp, 1 interleaved
+ * (low, high, next low, next high: dithered about the mean), 2 shuffled. */
+static int      rp_order;
 static int      rp_synth_lines;
 static int      rp_writes_before_full;   /* saved-level writes before the first FULL */
 static bool     rp_seen_full;
@@ -964,6 +973,19 @@ static void rp_play(int i) {
         c5 = 0xFF;   /* reports come only from the schedule below */
         bool asc = !i || rp[i - 1].c5_mean < 0 || r->c5_mean >= rp[i - 1].c5_mean;
         int n = rp_values(r, asc, vals);
+        if (rp_order == 1 && n > 2) {   /* interleave the sorted ramp from both ends */
+            static uint8_t tmp[RP_VALS_MAX];
+            memcpy(tmp, vals, (size_t)n);
+            if (tmp[0] > tmp[n - 1]) for (int k = 0; k < n / 2; k++) { uint8_t x = tmp[k]; tmp[k] = tmp[n - 1 - k]; tmp[n - 1 - k] = x; }
+            for (int k = 0, lo = 0, hi = n - 1; k < n; k++) vals[k] = (k & 1) ? tmp[hi--] : tmp[lo++];
+        } else if (rp_order == 2 && n > 2) {   /* a fixed-seed shuffle */
+            static unsigned seed = 820u;
+            for (int k = n - 1; k > 0; k--) {
+                seed = seed * 1103515245u + 12345u;
+                int j = (int)((seed >> 16) % (unsigned)(k + 1));
+                uint8_t x = vals[k]; vals[k] = vals[j]; vals[j] = x;
+            }
+        }
         if (i == 0 && n)
             rp_label("first interval: %.0f reports from %.0f, ascending (the plan's Note 1 opening)", r->time, n,
                      r->c5_min);
@@ -1326,8 +1348,17 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "c_bias"))        c_bias();
     else if (!strcmp(s, "c_clamp_cross")) c_clamp_cross();
     else if (!strcmp(s, "c_reboot"))      c_reboot();
-    else if (!strcmp(s, "c_replay_r3"))   c_replay_r3(argc > 2 ? argv[2] : "");
-    else if (!strcmp(s, "c_replay_2e"))   c_replay_2e(argc > 2 ? argv[2] : "");
+    else if (!strcmp(s, "c_band_top"))       c_band_top();
+    else if (!strcmp(s, "c_floor_boot"))     c_floor_boot();
+    else if (!strcmp(s, "c_cut_reseat"))     c_cut_reseat();
+    else if (!strcmp(s, "c_hold_stale"))     c_hold_stale();
+    else if (!strcmp(s, "c_handover_stays")) c_handover_stays();
+    else if (!strcmp(s, "c_replay_r3"))      c_replay_r3(argc > 2 ? argv[2] : "");
+    else if (!strcmp(s, "c_replay_r3_shuf")) c_replay_r3_shuf(argc > 2 ? argv[2] : "");
+    else if (!strcmp(s, "c_replay_r3_ramp")) c_replay_r3_ramp(argc > 2 ? argv[2] : "");
+    else if (!strcmp(s, "c_replay_2e"))      c_replay_2e(argc > 2 ? argv[2] : "");
+    else if (!strcmp(s, "c_replay_2e_shuf")) c_replay_2e_shuf(argc > 2 ? argv[2] : "");
+    else if (!strcmp(s, "c_replay_2e_ramp")) c_replay_2e_ramp(argc > 2 ? argv[2] : "");
 #endif
     else if (!strcmp(s, "baseline_0928"))      baseline_0928(argc > 2 ? argv[2] : "");
     else if (!strcmp(s, "baseline_1001"))      baseline_1001(argc > 2 ? argv[2] : "");

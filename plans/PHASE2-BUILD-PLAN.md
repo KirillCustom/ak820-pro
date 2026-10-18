@@ -101,15 +101,18 @@ Then, each second:
 - **level below `lower`:** the level holds; the count's pending energy is
   **discarded**, not banked, so the hold's end cannot drain the level in a
   rush (codex must-fix 6). `e_used` keeps counting.
-- **at the top clamp** (`5C` 100): `curve()` saturates at 900, which is no
-  upper bound; the only bound is "at least 90%" (as the countdown's floor is
-  today), and the count leads.
+- **at the top clamp** (`5C` 100), **and wherever the upward allowance
+  reaches it** (`V + 25 >= 4036 mV`): no upper bound. And no floor either (as
+  built): the old countdown's 90.5% floor held a level up and dropped its
+  energy, and under the ladder's light loads the pack stays clamped below 90%
+  true (codex, implementation review).
 
-**0% is the cut, explicitly** (codex must-fix 2). The count never takes the
-level below 10 pm (1%) on its own; **the protection's cut latching sets 0**
-(today only the critical-zero path does), and after it the panel shows
-`Low` and no time left: the reserve is outside the calibrated capacity. The
-whole-percent display rounds 10 pm to 1%.
+**0% is the cut, explicitly** (codex must-fix 2). No level on battery goes
+below 10 pm (1%) on its own -- the count, the first estimate and every
+adoption keep that floor -- and **the protection's cut latching sets 0**,
+which then wins over a pending re-seat and hides time left: the reserve is
+outside the calibrated capacity. The dashboard shows `Low` there, the camera
+page `0%`.
 
 **Anchors.**
 - **FULL** sets 1000 and zeroes the count's remainder.
@@ -135,9 +138,9 @@ no floating point.
 ### 2. Time left (codex should-fix 9)
 
 - **The draw it divides by:** each minute, that minute's integrated mean
-  power (from `e_used`), into an exponential average whose time constant
-  grows from 10 min to 12 h over the first 12 h on battery (`maturity`), so
-  the boot's first minutes do not bias a whole drain. Signed fixed point.
+  power, into the mean of the minutes so far, which becomes an exponential
+  average with a 12 h time constant from the 720th (as built), so the boot's
+  first minutes do not bias a whole drain. Signed.
 - **On USB:** hidden, and the average **frozen** (not reseeded), so a short
   charge does not reset what JD's pattern taught it.
 - **Shown:** `Fn`+`D`'s camera page, the level line, now 8 cells (`100% 51h`
@@ -148,10 +151,11 @@ no floating point.
 
 ### 3. Raw HID: a new command, `HC_POWER` (0x0F) (codex must-fix 7)
 
-`HC_CONN` is full, so the power figures get their own reply: mode, stage,
-`P_mW` now (0.1 mW), the average, time left (minutes, `0xFFFF` none),
-`e_used` since FULL (0.1 mWh), the count's state (normal / held / ratcheting
-/ clamp / cut), the band's edges, and the maturity. `ak820battery.py`
+`HC_CONN` is full, so the power figures get their own reply (as built,
+`hid_protocol.c` has the layout): mode, stage, the count's state (off /
+running, ratcheting included / clamp / held / relaxing / cut), the level, the
+draw now and its average (uW, u32), the average's minutes, time left (minutes,
+`0xFFFF` none), the energy since FULL (0.1 mWh), the band's edges. `ak820battery.py`
 prints it; the trial logs it each poll beside its existing level line.
 
 ### 4. The log, v6 (codex must-fix 7)
@@ -270,9 +274,12 @@ cases pass, among them:
   the time left (equal to the logged energy within 0.1 point at this load):
   **R3 −2.4 / +1.0 points, 2e −1.2 / +1.4**, everywhere above the cut (the
   gauge on the board: −13.8 and −7.3);
-- **with the capacity wrong** (`run.sh --sensitivity`): ±5% worst −3.6 /
-  +3.3; +13% worst +4.9 (the ratchet catches it); −13% worst −9.1 (the wide
-  lower edge does not: an aged pack reads low until a learning capacity comes);
+- **with the capacity wrong** (`run.sh --sensitivity`, scored every second
+  after the review's fixes): assumed −5% / −13% read low, worst −3.8 / −10.2
+  (an over-counting model; the wide lower edge does not catch it); assumed
+  +5% / +13% read high, worst +3.8 / +5.8 (**an aged pack is this case**:
+  the firmware assumes more than the pack holds; the band pulls it in near
+  the steep end). A learning capacity is the cure for ageing;
 - the count's arithmetic (uneven ticks, the timer's wrap), the hold dropping
   its energy, the ratchet easing at most 1% a step, the 1% floor and the cut's
   0, stale reports, an excursion, a sustained bias on the plateau, the clamp
@@ -284,6 +291,31 @@ cases pass, among them:
 
 **The band changed** from revision 2's ±12 mV to 25 up / 40 down (above): the
 firmware replay found what the 10-minute Python replay could not.
+
+### Codex's implementation review (10-18) and what changed
+
+[Verbatim](review-codex-phase2-impl-2026-10-18.md), prompt
+[`review-prompt-phase2-impl.txt`](review-prompt-phase2-impl.txt). Five
+firmware must-fixes, all taken, in `383a5ed578`; the simulator then 119
+cases, both drains scored **at every second** under three orderings of each
+entry's reports (interleaved, shuffled, the monotone ramp): **R3 +0.1 / +1.1,
+2e +0.3 / +1.2 points**, no second outside 3.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | **must fix:** `rgb_matrix_mode_noeeprom` on the same mode does not set the effect's init, so Jellybean keeps stale pixels | **Fixed:** `rgb_matrix_reinit_effect()`, a local hook in `quantum/rgb_matrix/rgb_matrix.c` (resets the effect's own state: accepted). On the board: each effect through the stages, the LED drive read back. |
+| 2 | **must fix:** the upper edge is 915 wherever `V + 25` passes the curve's top knot, ratcheting a right count down from 4011 mV | **Fixed:** unbounded there; the test's band helper written from the rule, not copied (`c_band_top`). |
+| 3 | **must fix:** a boot at 3424 mV shows 0% above the cut; a re-seat can lift a level after the cut latched; time left keyed on level 0, not the latch | **Fixed:** the 1% floor on every battery adoption; the latch wins over re-seats and hides time left (`c_floor_boot`, `c_cut_reseat`). |
+| 4 | **must fix:** a hold survives stale reports and freezes the level | **Fixed:** no fresh estimate, no hold (`c_hold_stale`). |
+| 5 | **must fix:** after a handover idle USB walks the level to the curve | **Fixed:** idle USB keeps a known level bounded by the band (`c_handover_stays`). |
+| 6 | **must fix (validation):** the replay was scored at entry ends only; the monotone ramp displaces the estimate ~10 mV | **Fixed:** scored every second, three orderings, the ramp as a stress case. 2e's reboot and the rest of its drain are not replayed (a reboot's accuracy is not claimed). |
+| 7 | should fix: the RGB intercept charged for a whole second if any LED lit | **Fixed:** the driver counts lit ms. |
+| 8 | should fix: the low notice re-armed at 20%, not by a charge; shown with the screen dark; delivered on USB | **Fixed:** re-armed by a real charging session; shown only with the backlight lit; dropped if the cap lapses. |
+| 9 | should fix: the trial and guard drop the new figures; the stages map's summary crashes, reads the screen before the stage settles, and Full alone does not stop the low cap | **Fixed:** the trial's CSV gains mode, stage, draw, average, time left, energy, count; the map's summary and screen read fixed, every state's stage held. The guard keeps to its health reads (the trial carries the power figures). |
+| 10 | should fix: `Fn`+`B` absent from the default keymap; restores never read back | **Fixed:** bound on JD's board (both Fn layers, read back), the default keymap regenerated from that dump, and `ak820keymap.py restore` now reads back and refuses a mismatch. |
+| — | the clamp's 90.5% floor assumes full-white load | **Fixed:** removed (above). |
+| — | ageing explained backwards | **Fixed** in the sensitivity line above. |
+| — | notes: the integration, holds, FULL, saved levels, the committed-frame accounting (no race), time left, the camera page, `HC_POWER`, log v6, DRIFT, compatibility, no dev leak, RAM (2,288 bytes above `.bss`; the stacks are separate): sound | Agreed. The per-second work includes two 64-bit divisions, not only the minute's: noted. Stack watermarks and the deferred EEPROM writes are checked on the board (`ak820health`), with the wake rig for keys. |
 
 ## Codex's plan review (10-18) and what changed
 

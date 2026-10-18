@@ -158,9 +158,17 @@ def cmd_restore(path):
         write_keymap(h, km)
         if doc.get("encoders"):
             write_encoders(h, doc["encoders"])
+        # Read it all back: a write that did not land must not pass for one
+        # (codex, Phase 2: flash.sh's `show` afterwards reads the FILE).
+        back = read_keymap(h, layers)
+        if back != km:
+            bad = next(i for i in range(len(km)) if back[i] != km[i]) // 2
+            raise SystemExit(f"read-back differs from {path} at keycode {bad} -- the restore did not land")
+        if doc.get("encoders") and read_encoders(h, layers) != doc["encoders"]:
+            raise SystemExit(f"encoder read-back differs from {path} -- the restore did not land")
     finally:
         h.close()
-    print(f"restored {len(km)} bytes across {doc['layers']} layers from {path}")
+    print(f"restored {len(km)} bytes across {doc['layers']} layers from {path}, read back and verified")
     print("(VIA reads the keymap at connect -- reload the tab to see it)")
 
 

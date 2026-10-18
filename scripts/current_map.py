@@ -285,8 +285,11 @@ def main():
             try:
                 set_rgb(h, dict(jd_rgb) if rgb is None else rgb)
                 st = set_lcd(h, screen, jd_lcd)
-                if stage is not None:
-                    force_stage(h, stage)
+                if jd_mode is not None:
+                    # Every state's stage held: the one it names, or active, so
+                    # neither the ladder nor its low-battery cap moves a load
+                    # mid-hold (codex: Full alone does not stop the cap).
+                    force_stage(h, 0 if stage is None else stage)
             finally:
                 h.close()
             t0 = time.time()
@@ -297,6 +300,7 @@ def main():
             h = ak820text.open_device()
             try:
                 model = model_mw(h)   # the last full second's model, inside the hold
+                st = lcd(h, 6)        # the screen as the stage left it, settled (codex)
             finally:
                 h.close()
             time.sleep(min(3, a.hold))
@@ -340,7 +344,8 @@ def main():
                                     if s.get("model_mw") else "") if m else "no data"))
     lines.append("")
     lines.append("state       mean of both passes (charge register), and pack power")
-    for name, _, _ in SETS[a.set]:
+    for st in SETS[a.set]:
+        name = st[0]
         ms = [m for m in by.get(name, []) if m]
         if ms:
             passes = ", ".join("%.2f" % m["q_ma"] for m in ms)

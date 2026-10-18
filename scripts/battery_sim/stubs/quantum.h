@@ -39,4 +39,5 @@ typedef struct { uint8_t h, s, v; } hsv_t;
 rgb_t hsv_to_rgb(hsv_t hsv);
 uint8_t rgb_matrix_get_mode(void);
 void    rgb_matrix_mode_noeeprom(uint8_t mode);
+void    rgb_matrix_reinit_effect(void);
 #define RGB_MATRIX_LED_COUNT 82

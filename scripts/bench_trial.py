@@ -37,7 +37,11 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 PY = os.path.join(ROOT, "venv", "bin", "python3")
 BATT = os.path.join(ROOT, "hostagent", "ak820battery.py")
 RELAY = os.path.join(ROOT, "scripts", "usb_relay.py")
-FIELDS = ["time", "epoch", "phase", "supply", "level", "pack_mv", "est_c5", "c5_last", "vdd_mv", "chrg", "flags", "note"]
+# Phase 2 (HC_POWER, through ak820battery's status): the power mode and the
+# ladder's stage, the modelled draw now and its average, time left, the
+# modelled energy since FULL and the count's state. Empty on older firmware.
+FIELDS = ["time", "epoch", "phase", "supply", "level", "pack_mv", "est_c5", "c5_last", "vdd_mv", "chrg", "flags",
+          "power_mode", "stage", "draw_mw", "avg_mw", "avg_min", "left_min", "e_mwh", "count", "note"]
 
 
 def now_s():
@@ -66,7 +70,19 @@ def read_board():
     m = re.search(r"(\d+) mV\s+\((?:estimate|median) 5C (\d+)", d.get("pack", ""))
     c = re.search(r"last (\d+)%", d.get("module", ""))
     v = re.search(r"(\d+) mV", d.get("vdd", ""))
+    pm = re.search(r"mode\s+(.+?), stage (.+)", d.get("power", ""))
+    dr = re.search(r"([\d.]+) mW now, average ([\d.]+) mW over (\d+) min", d.get("draw", ""))
+    tl = re.search(r"left\s+(\d+) h (\d+) min", d.get("time", ""))
+    en = re.search(r"energy since FULL ([\d.]+) mWh", d.get("count", ""))
     return {
+        "power_mode": pm.group(1) if pm else "",
+        "stage": pm.group(2) if pm else "",
+        "draw_mw": dr.group(1) if dr else "",
+        "avg_mw": dr.group(2) if dr else "",
+        "avg_min": dr.group(3) if dr else "",
+        "left_min": int(tl.group(1)) * 60 + int(tl.group(2)) if tl else "",
+        "e_mwh": en.group(1) if en else "",
+        "count": d.get("count", "").split(";")[0],
         "supply": d.get("supply", "").split()[0] if d.get("supply") else "",
         "level": d.get("level", ""),
         "pack_mv": m.group(1) if m else "",
