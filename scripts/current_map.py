@@ -27,10 +27,11 @@ screen goes over HC_DEVHOOK ops 4/5, which never persist either.
 Writes go out only between holds, and the HID handle is closed during each
 hold, so the daemon keeps its now-playing and clock traffic.
 
---set picks the states: `loads` (R1's ten, the default) or `rgb-curve` (white
-from 16 to 255 and red, green and blue alone, for the gauge's RGB power table,
-Phase 2's A4: R1 found 255 drawing far more than the line through 64 and 128
-predicts). Each state also records the board's own LED drive (`led drive`,
+--set picks the states: `loads` (R1's ten, the default), `rgb-curve` (white
+from 16 to 255 and red, green and blue alone, for the gauge's RGB model in
+buffer units: QMK's CIE curve makes values 64 and 128 drives of 12 and 48), or
+`stages` (Phase 2's ladder stages forced, at JD's lighting, a purple and an
+animated effect, each beside the board's own modelled draw from HC_POWER). Each state also records the board's own LED drive (`led drive`,
 per mille of the maximum) and the pack power (mA x vcell).
 """
 import argparse
@@ -79,7 +80,17 @@ RGB_CURVE = ([("jd", None, None), ("rgb off", {"effect": 0}, None)]
              + [_white(v) for v in (255, 254, 252, 248, 240, 224, 192, 160, 128, 96, 64, 48, 32, 16)]
              + [(f"{name} {v}", {"effect": 1, "h": h, "s": 255, "v": v}, None)
                 for v in (255, 128) for name, h in (("red", 0), ("green", 85), ("blue", 170))])
-SETS = {"loads": STATES, "rgb-curve": RGB_CURVE}
+# Phase 2: the ladder's stages forced (HC_DEVHOOK op 14), at JD's lighting and
+# at a coloured and an animated effect, each against the board's own modelled
+# draw (HC_POWER), which the summary sets beside the logger's. A 4th element
+# is the stage to force (0 active .. 3 screen off). Effect 3 is Cycle All
+# (animated); effect 1 at hue 191 is a saturated purple.
+PURPLE = {"effect": 1, "h": 191, "s": 255, "v": 255}
+CYCLE = {"effect": 3, "h": 0, "s": 255, "v": 255}
+STAGES = [(f"{who} {stg}", rgb, None, k)
+          for who, rgb in (("jd", None), ("purple", PURPLE), ("cycle", CYCLE))
+          for k, stg in enumerate(("active", "dim", "off", "dark"))]
+SETS = {"loads": STATES, "rgb-curve": RGB_CURVE, "stages": STAGES}
 
 
 def stamp():
@@ -129,6 +140,20 @@ def lcd(h, op, arg=0):
     level, top, on, eff, saved = r[4:9]
     return {"level": level, "max": top, "on": bool(on), "effective": eff,
             "saved": saved - 1 if saved else None}
+
+
+def force_stage(h, stage):
+    """Hold the ladder at `stage` (0..3), or release it (None): op 14 sub 2."""
+    xfer(h, [SET_VALUE, HEALTH_CH, HC_DEVHOOK, 14, 2, 0xFF if stage is None else stage] + [0] * 26)
+
+
+def model_mw(h):
+    """The board's modelled draw now (HC_POWER), mW, or None without it."""
+    try:
+        r = xfer(h, [SET_VALUE, HEALTH_CH, 0x0F])
+    except SystemExit:
+        return None
+    return (r[9] | r[10] << 8 | r[11] << 16 | r[12] << 24) / 1000.0
 
 
 def power_mode(h, mode=None):
@@ -253,21 +278,32 @@ def main():
         say("on battery")
         states = SETS[a.set]
         plan = states + states[::-1]
-        for i, (name, rgb, screen) in enumerate(plan):
+        for i, state in enumerate(plan):
+            name, rgb, screen = state[:3]
+            stage = state[3] if len(state) > 3 else None
             h = ak820text.open_device()
             try:
                 set_rgb(h, dict(jd_rgb) if rgb is None else rgb)
                 st = set_lcd(h, screen, jd_lcd)
+                if stage is not None:
+                    force_stage(h, stage)
             finally:
                 h.close()
             t0 = time.time()
             time.sleep(min(a.settle, a.hold))
             drive = led_drive()
             say(f"[{i + 1}/{len(plan)}] {name}: screen {st}, led drive {drive}")
-            time.sleep(max(0, a.hold - a.settle))
+            time.sleep(max(0, a.hold - a.settle - 3))
+            h = ak820text.open_device()
+            try:
+                model = model_mw(h)   # the last full second's model, inside the hold
+            finally:
+                h.close()
+            time.sleep(min(3, a.hold))
             t1 = time.time()
             steps.append({"i": i + 1, "name": name, "t0": t0, "t1": t1,
-                          "lcd_effective": st["effective"], "lcd_on": st["on"], "led_pm": drive})
+                          "lcd_effective": st["effective"], "lcd_on": st["on"], "led_pm": drive,
+                          "model_mw": model})
             with open(os.path.join(out, "steps.csv"), "w", newline="") as f:
                 w = csv.DictWriter(f, fieldnames=list(steps[0]))
                 w.writeheader()
@@ -279,6 +315,7 @@ def main():
                 set_rgb(h, dict(jd_rgb))
                 set_lcd(h, None, jd_lcd)
                 if jd_mode is not None:
+                    force_stage(h, None)
                     power_mode(h, jd_mode)
                 back = (read_rgb(h), lcd(h, 6), power_mode(h))
             finally:
@@ -298,7 +335,9 @@ def main():
         lines.append(f"{s['i']:2d} {s['name']:10s} " + (
             f"{m['q_ma']:7.2f} mA (samples {m['mean_ma']:7.2f}, sd {m['sd_ma']:.2f}) "
             f"vcell {m['vcell_mv']:.0f}, {m['q_ma'] * m['vcell_mv'] / 1000:6.1f} mW, "
-            f"led {s['led_pm']}" if m else "no data"))
+            f"led {s['led_pm']}" + (f", model {s['model_mw']:.1f} mW "
+                                    f"({(s['model_mw'] / (m['q_ma'] * m['vcell_mv'] / 1000) - 1) * 100:+.1f}%)"
+                                    if s.get("model_mw") else "") if m else "no data"))
     lines.append("")
     lines.append("state       mean of both passes (charge register), and pack power")
     for name, _, _ in SETS[a.set]:
