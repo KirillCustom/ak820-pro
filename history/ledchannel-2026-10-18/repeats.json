@@ -1,0 +1,181 @@
+{
+ "test": "repeats",
+ "gap_ms": 200,
+ "sent": [
+  4,
+  4,
+  4,
+  0,
+  0,
+  0,
+  1,
+  1,
+  1,
+  0,
+  0,
+  0,
+  8,
+  8,
+  8,
+  0,
+  0,
+  0
+ ],
+ "received": [
+  4,
+  4,
+  4,
+  0,
+  0,
+  0,
+  1,
+  1,
+  1,
+  0,
+  0,
+  0,
+  8,
+  8,
+  8,
+  0,
+  0,
+  0
+ ],
+ "frames": 18,
+ "accepted": 18,
+ "fits": [
+  "every write"
+ ],
+ "rx_gap_ms": {
+  "min": 0,
+  "median": 4,
+  "max": 5
+ },
+ "host_interval_ms": {
+  "min": 228.3,
+  "median": 495.7,
+  "max": 510.6
+ },
+ "health_before": {
+  "count_ge_25ms": 1,
+  "loop_gap_max_ms": 25,
+  "blit_gap_max_ms": 25,
+  "rx_malformed": 0,
+  "uart_overrun": 0,
+  "uart_framing": 0
+ },
+ "health_after": {
+  "count_ge_25ms": 1,
+  "loop_gap_max_ms": 25,
+  "blit_gap_max_ms": 25,
+  "rx_malformed": 0,
+  "uart_overrun": 0,
+  "uart_framing": 0
+ },
+ "health_delta": {
+  "count_ge_25ms": 0,
+  "rx_malformed": 0,
+  "uart_overrun": 0,
+  "uart_framing": 0
+ },
+ "trace": {
+  "frames": 18,
+  "accepted": 18,
+  "host_leds": 0,
+  "last": 0,
+  "age_ms": 1824,
+  "seq": [
+   {
+    "n": 0,
+    "byte": 4,
+    "gap_ms": null
+   },
+   {
+    "n": 1,
+    "byte": 4,
+    "gap_ms": 0
+   },
+   {
+    "n": 2,
+    "byte": 4,
+    "gap_ms": 5
+   },
+   {
+    "n": 3,
+    "byte": 0,
+    "gap_ms": null
+   },
+   {
+    "n": 4,
+    "byte": 0,
+    "gap_ms": 5
+   },
+   {
+    "n": 5,
+    "byte": 0,
+    "gap_ms": 0
+   },
+   {
+    "n": 6,
+    "byte": 1,
+    "gap_ms": null
+   },
+   {
+    "n": 7,
+    "byte": 1,
+    "gap_ms": 4
+   },
+   {
+    "n": 8,
+    "byte": 1,
+    "gap_ms": 1
+   },
+   {
+    "n": 9,
+    "byte": 0,
+    "gap_ms": null
+   },
+   {
+    "n": 10,
+    "byte": 0,
+    "gap_ms": 4
+   },
+   {
+    "n": 11,
+    "byte": 0,
+    "gap_ms": 1
+   },
+   {
+    "n": 12,
+    "byte": 8,
+    "gap_ms": null
+   },
+   {
+    "n": 13,
+    "byte": 8,
+    "gap_ms": 4
+   },
+   {
+    "n": 14,
+    "byte": 8,
+    "gap_ms": 1
+   },
+   {
+    "n": 15,
+    "byte": 0,
+    "gap_ms": null
+   },
+   {
+    "n": 16,
+    "byte": 0,
+    "gap_ms": 4
+   },
+   {
+    "n": 17,
+    "byte": 0,
+    "gap_ms": 1
+   }
+  ]
+ },
+ "at": "2026-10-18 12:19:54"
+}

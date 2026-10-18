@@ -177,6 +177,7 @@ def frames_test(out):
             seq = (prof * 16 + i) & 0xFF
             typ = 1 + i % 3
             w = encode(text, type=typ, seq=seq, profile=prof, user=0)
+            n0 = frames("json")["frames"]
             send(0, [0x08, 0x00])   # the warm-up, so the board has the baseline,
             time.sleep(0.3)         # then the quiet (the probe exits once its last write completes)
             t0 = time.time()
@@ -185,7 +186,7 @@ def frames_test(out):
             time.sleep(0.6)
             st = frames("json")
             l = st["last"]
-            good = (st["frames"] == i + 1 and not st["busy"] and l["seq"] == seq and l["type"] == typ
+            good = (st["frames"] == n0 + 1 and not st["busy"] and l["seq"] == seq and l["type"] == typ
                     and l["profile"] == prof and l["len"] == len(text)
                     and bytes.fromhex(l["payload"]) == text)
             ok += good

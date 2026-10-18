@@ -1,0 +1,405 @@
+{
+ "test": "speed-0",
+ "gap_ms": 0,
+ "sent": [
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0,
+  4,
+  0
+ ],
+ "received": [
+  4,
+  0,
+  0,
+  0,
+  4,
+  4,
+  4,
+  0,
+  0,
+  0,
+  4,
+  4,
+  4,
+  0,
+  0,
+  0,
+  4,
+  4,
+  4,
+  0,
+  0,
+  0,
+  4,
+  4,
+  4,
+  0,
+  0,
+  0,
+  4,
+  4,
+  4,
+  0,
+  0,
+  0,
+  4,
+  4,
+  4,
+  0,
+  0,
+  0,
+  4,
+  4,
+  4,
+  0,
+  0,
+  0,
+  4,
+  4,
+  4,
+  0,
+  0,
+  0
+ ],
+ "frames": 120,
+ "accepted": 120,
+ "fits": [],
+ "rx_gap_ms": {
+  "min": 0,
+  "median": 5,
+  "max": 27
+ },
+ "host_interval_ms": {
+  "min": 28.4,
+  "median": 30.1,
+  "max": 55.2
+ },
+ "health_before": {
+  "count_ge_25ms": 1,
+  "loop_gap_max_ms": 25,
+  "blit_gap_max_ms": 25,
+  "rx_malformed": 0,
+  "uart_overrun": 0,
+  "uart_framing": 0
+ },
+ "health_after": {
+  "count_ge_25ms": 1,
+  "loop_gap_max_ms": 25,
+  "blit_gap_max_ms": 25,
+  "rx_malformed": 0,
+  "uart_overrun": 0,
+  "uart_framing": 0
+ },
+ "health_delta": {
+  "count_ge_25ms": 0,
+  "rx_malformed": 0,
+  "uart_overrun": 0,
+  "uart_framing": 0
+ },
+ "trace": {
+  "frames": 120,
+  "accepted": 120,
+  "host_leds": 0,
+  "last": 0,
+  "age_ms": 641,
+  "seq": [
+   {
+    "n": 68,
+    "byte": 4,
+    "gap_ms": 1
+   },
+   {
+    "n": 69,
+    "byte": 0,
+    "gap_ms": 24
+   },
+   {
+    "n": 70,
+    "byte": 0,
+    "gap_ms": 5
+   },
+   {
+    "n": 71,
+    "byte": 0,
+    "gap_ms": 1
+   },
+   {
+    "n": 72,
+    "byte": 4,
+    "gap_ms": 25
+   },
+   {
+    "n": 73,
+    "byte": 4,
+    "gap_ms": 1
+   },
+   {
+    "n": 74,
+    "byte": 4,
+    "gap_ms": 4
+   },
+   {
+    "n": 75,
+    "byte": 0,
+    "gap_ms": 24
+   },
+   {
+    "n": 76,
+    "byte": 0,
+    "gap_ms": 4
+   },
+   {
+    "n": 77,
+    "byte": 0,
+    "gap_ms": 1
+   },
+   {
+    "n": 78,
+    "byte": 4,
+    "gap_ms": 25
+   },
+   {
+    "n": 79,
+    "byte": 4,
+    "gap_ms": 5
+   },
+   {
+    "n": 80,
+    "byte": 4,
+    "gap_ms": 0
+   },
+   {
+    "n": 81,
+    "byte": 0,
+    "gap_ms": 26
+   },
+   {
+    "n": 82,
+    "byte": 0,
+    "gap_ms": 4
+   },
+   {
+    "n": 83,
+    "byte": 0,
+    "gap_ms": 0
+   },
+   {
+    "n": 84,
+    "byte": 4,
+    "gap_ms": 24
+   },
+   {
+    "n": 85,
+    "byte": 4,
+    "gap_ms": 5
+   },
+   {
+    "n": 86,
+    "byte": 4,
+    "gap_ms": 1
+   },
+   {
+    "n": 87,
+    "byte": 0,
+    "gap_ms": 25
+   },
+   {
+    "n": 88,
+    "byte": 0,
+    "gap_ms": 5
+   },
+   {
+    "n": 89,
+    "byte": 0,
+    "gap_ms": 0
+   },
+   {
+    "n": 90,
+    "byte": 4,
+    "gap_ms": 25
+   },
+   {
+    "n": 91,
+    "byte": 4,
+    "gap_ms": 5
+   },
+   {
+    "n": 92,
+    "byte": 4,
+    "gap_ms": 0
+   },
+   {
+    "n": 93,
+    "byte": 0,
+    "gap_ms": 26
+   },
+   {
+    "n": 94,
+    "byte": 0,
+    "gap_ms": 0
+   },
+   {
+    "n": 95,
+    "byte": 0,
+    "gap_ms": 7
+   },
+   {
+    "n": 96,
+    "byte": 4,
+    "gap_ms": 21
+   },
+   {
+    "n": 97,
+    "byte": 4,
+    "gap_ms": 5
+   },
+   {
+    "n": 98,
+    "byte": 4,
+    "gap_ms": 1
+   },
+   {
+    "n": 99,
+    "byte": 0,
+    "gap_ms": 25
+   },
+   {
+    "n": 100,
+    "byte": 0,
+    "gap_ms": 5
+   },
+   {
+    "n": 101,
+    "byte": 0,
+    "gap_ms": 0
+   },
+   {
+    "n": 102,
+    "byte": 4,
+    "gap_ms": 25
+   },
+   {
+    "n": 103,
+    "byte": 4,
+    "gap_ms": 4
+   },
+   {
+    "n": 104,
+    "byte": 4,
+    "gap_ms": 1
+   },
+   {
+    "n": 105,
+    "byte": 0,
+    "gap_ms": 26
+   },
+   {
+    "n": 106,
+    "byte": 0,
+    "gap_ms": 1
+   },
+   {
+    "n": 107,
+    "byte": 0,
+    "gap_ms": 5
+   },
+   {
+    "n": 108,
+    "byte": 4,
+    "gap_ms": 24
+   },
+   {
+    "n": 109,
+    "byte": 4,
+    "gap_ms": 1
+   },
+   {
+    "n": 110,
+    "byte": 4,
+    "gap_ms": 4
+   },
+   {
+    "n": 111,
+    "byte": 0,
+    "gap_ms": 25
+   },
+   {
+    "n": 112,
+    "byte": 0,
+    "gap_ms": 4
+   },
+   {
+    "n": 113,
+    "byte": 0,
+    "gap_ms": 1
+   },
+   {
+    "n": 114,
+    "byte": 4,
+    "gap_ms": 27
+   },
+   {
+    "n": 115,
+    "byte": 4,
+    "gap_ms": 0
+   },
+   {
+    "n": 116,
+    "byte": 4,
+    "gap_ms": 4
+   },
+   {
+    "n": 117,
+    "byte": 0,
+    "gap_ms": 25
+   },
+   {
+    "n": 118,
+    "byte": 0,
+    "gap_ms": 1
+   },
+   {
+    "n": 119,
+    "byte": 0,
+    "gap_ms": 4
+   }
+  ]
+ },
+ "at": "2026-10-18 12:20:50"
+}

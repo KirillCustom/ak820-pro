@@ -131,6 +131,50 @@ bit/s, ~5.5 s.
 the messages it already sends over raw HID, used when the cable is absent; the
 board's decoder beside the 5A parser.
 
+## Measured on the board, flash 2h (12:20-12:30 10-18)
+
+`scripts/ledchannel_test.py`, all seven tests, Mac to board over Bluetooth;
+results in `history/ledchannel-2026-10-18/`.
+
+- **The module sends every change three times**, 0-5 ms apart (96 frames for
+  32 writes). Harmless to change coding (copies are repeats), and a lost copy
+  costs nothing.
+- **Width: all five LED bits arrive** (0x01-0x1F exact).
+- **High: the padding bits 5-7 arrive too** (0x20, 0x40, 0x80, 0xE0, 0x24
+  exact). The board's `d <= 0x1F` guard keeps them out of QMK's LED state (only
+  the 0x00s were accepted); the receiver gets them raw. So the module passes
+  the whole byte.
+- **Repeats do not arrive**: 18 writes (12 of them repeats) gave 6 changes x 3
+  copies. Change coding it is; plain values are out.
+- **Speed: no merging at any spacing**, back to back or issued at once; one
+  write per ~30 ms, every one delivered. A pause of even 10 ms between writes
+  makes each write take ~150 ms (the link slows when idle), so a frame's writes
+  go back to back.
+- **Random: 44 of 44 exact** at full speed (132 frames, 3 per value).
+- **Caps: the Mac's own Caps report zeroes bits 3-4** (0x18, then 0x02, then
+  0x00, and not restored). Aborting a frame on a Caps change is required.
+- **Frames: 17 of 18 committed exactly** (P2 6/6, P0 6/6, P1 5/6). The miss:
+  one write took 366 ms mid-frame (write 34 of 109), past the 150 ms gap limit.
+  Every other slow write (130-376 ms) was a frame's first, the link waking,
+  which the gap does not time. Anchor to commit: P2 1.9-2.9 s, P1 2.5 s, P0
+  4.4-6.5 s for 20-37-byte texts. (The test's count check cascaded after the
+  miss: fixed, it compares each frame's own delta.)
+- **Stalls:** one pass >= 25 ms, in the width test, the only test that toggles
+  Caps (the band's CAPS paint, ~2 a second); none in the 200-toggle Scroll
+  bursts, the frames or anything else; the 10-17 stall's window also held Caps
+  presses. So the Caps paint is the suspect, not the channel (an inference).
+  UART overruns +7 during the frames; harmless with three copies, still a
+  trend to watch.
+
+**What changes:**
+1. **The gap limit goes from 150 to 500 ms**, to ride out a Bluetooth hiccup
+   (366 ms seen); a lost write is still the CRC's to catch.
+2. **A new profile, P3: bits 3-7, base 31** (29 bits in 6 digits, ~4.8 bits a
+   write, ~155 bit/s): five data bits with Num, Caps and Scroll never touched,
+   so no light changes at all and no Scroll rule. The candidate default.
+3. The Caps paint's stall goes to the display work (`Fn`+`D`'s probe, a track
+   playing).
+
 ## The wire format (version 0, built 10-18)
 
 Approved by JD 10-18 after codex's review (below). The receiver is

@@ -1,0 +1,95 @@
+{
+ "test": "caps",
+ "received": [
+  24,
+  24,
+  24,
+  2,
+  2,
+  2,
+  0,
+  0,
+  0
+ ],
+ "bits_3_4_on_caps": "zeroed",
+ "probe_log": [
+  "1792347662.017 start: capsmix (pid 87534)",
+  "1792347662.052 ble: opened AK820 5.1-1 over Bluetooth Low Energy; LED outputs (report 2): num#1255=0 caps#1256=0 scroll#1257=0",
+  "1792347662.160 ble: capsmix bits 3-4 (report 2, 0x18) -> 0x00000000 in 108.2 ms",
+  "1792347662.681 capsmix: Mac Caps Lock ON -> 0x00000000",
+  "1792347663.538 capsmix: Mac Caps Lock off -> 0x00000000",
+  "1792347664.172 ble: capsmix clear (report 2, 0x00) -> 0x00000000 in 31.9 ms",
+  "1792347664.173 capsmix: done"
+ ],
+ "health_before": {
+  "count_ge_25ms": 1,
+  "loop_gap_max_ms": 25,
+  "blit_gap_max_ms": 25,
+  "rx_malformed": 0,
+  "uart_overrun": 0,
+  "uart_framing": 0
+ },
+ "health_after": {
+  "count_ge_25ms": 1,
+  "loop_gap_max_ms": 25,
+  "blit_gap_max_ms": 25,
+  "rx_malformed": 0,
+  "uart_overrun": 0,
+  "uart_framing": 0
+ },
+ "trace": {
+  "frames": 9,
+  "accepted": 9,
+  "host_leds": 0,
+  "last": 0,
+  "age_ms": 1233,
+  "seq": [
+   {
+    "n": 0,
+    "byte": 24,
+    "gap_ms": null
+   },
+   {
+    "n": 1,
+    "byte": 24,
+    "gap_ms": 1
+   },
+   {
+    "n": 2,
+    "byte": 24,
+    "gap_ms": 4
+   },
+   {
+    "n": 3,
+    "byte": 2,
+    "gap_ms": null
+   },
+   {
+    "n": 4,
+    "byte": 2,
+    "gap_ms": 21
+   },
+   {
+    "n": 5,
+    "byte": 2,
+    "gap_ms": 1
+   },
+   {
+    "n": 6,
+    "byte": 0,
+    "gap_ms": null
+   },
+   {
+    "n": 7,
+    "byte": 0,
+    "gap_ms": 1
+   },
+   {
+    "n": 8,
+    "byte": 0,
+    "gap_ms": 3
+   }
+  ]
+ },
+ "at": "2026-10-18 12:21:04"
+}
