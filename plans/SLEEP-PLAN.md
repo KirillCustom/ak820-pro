@@ -1,0 +1,207 @@
+# Sleep: light sleep's sizing build, and a deep-sleep experiment (10-18)
+
+Two rungs below the ladder's lights-off stages (`BATTERY-GAUGE-PLAN.md`,
+"A light sleep rung" and "Two kinds of away"):
+
+- **Light sleep** keeps the Bluetooth link and every keypress, so it can run
+  whenever the board is dark, in Normal. It goes after the MCU's wasted work.
+- **Deep sleep** is for the long away (a night, a weekend). JD's rule: **if a
+  keystroke cannot wake it, it is not worth having** -- but test it.
+
+Both are built as dev hooks first, off unless a raw-HID command turns them
+on, so the board behaves as today otherwise and tonight's maps and the
+baseline (`scripts/sleep_baseline.py`) measure the normal firmware.
+
+## What the board does today, dark
+
+From a read of the code (file:line in the firmware unless noted):
+
+- **The row ISR runs at full rate with the LEDs dark.** CT16B1 (`PWMD1`,
+  priority 3), period 256 ticks of 4.8 MHz, re-armed at the end of its own
+  body (`drivers/led/sn32f2xx.c:735-749`), so ~3,876/s at ~188 us: **72.8%
+  of the CPU**. `sn32f2xx_set_power_scale(0)` only zeroes the colours as they
+  are written (`sn32f2xx.c:901-915`); every ISR still disables and re-enables
+  15 PWM channels and writes 18 row pins (`update_pwm_channels`,
+  `sn32f2xx.c:490-560`). One key row is scanned every third ISR, so each key
+  is sampled every ~4.6 ms.
+- **The main loop never yields**: ~335 passes/s in the CPU the ISR leaves
+  (`quantum/main.c:48-76`, `housekeeping_task_kb`, `ak820pro.c:555-623`).
+- **WFI is off** (`config.h:244`, `CORTEX_ENABLE_WFI_IDLE FALSE`, with the
+  2026-08-28 history above it: turned off while chasing a hang it did not
+  cause). The idle thread exists but never runs. The board's ChibiOS config
+  already writes `SN_PMU->CTRL = 4` on idle entry and 0 on leave
+  (`platforms/chibios/boards/SN_SN32F290/configs/chconf.h:30-38`).
+- **The kernel is tickless** (`CH_CFG_ST_TIMEDELTA` 2, a 16-bit timer at
+  187.5 kHz), so nothing like a 1 kHz SysTick has to wake the core. What
+  does: the row ISR, the **20 kHz** CT16B3 tick (`indicators.c:132-175`: the
+  backlight's software PWM and the indicator LEDs; every 50 us), QMK's timer
+  overflow (~175 ms), the CH582F UART (priority 1), USB, the 1 Hz RTC.
+- **Measured dark** (lights out, screen dark, USB data up, on the pack):
+  27.51 mA (`minimal_check.py`, 17:32 10-18); R1's 27.3 mA with every light
+  out. Of that, the MCU's share is unknown: the radio, the regulator and the
+  panel's logic are in it too.
+
+## Light sleep: the sizing build
+
+**The question it answers:** how much of the 27.5 mA is the MCU's busy
+work, and what each step costs in keypresses. If the whole set saves less
+than ~2 mA (~7%), stop: light sleep is not worth its risk, and the work goes
+to the long-away tier.
+
+One new dev hook, `HC_DEVHOOK` op 14 **sub 3**: `arg` a bitmask, byte 6 the
+yield in ms. Each bit is honoured only while the RGB is dark (the driver's
+power scale 0: a dark stage or the lights cut), and dropped at once when it
+lights, so a wrong mask can never leave the LEDs dark or garbled.
+
+| bit | step | what it does | risk to a keypress |
+|---|---|---|---|
+| 0 | **scan-only ISR** | Blank the LED outputs once; lengthen PWMD1's period to 3,000 ticks (`pwmChangePeriodI`, 0.625 ms + a short body, ~1,500/s); each ISR scans ONE key row with its own row counter, so every key is sampled every ~3.9 ms (~250 full scans/s), under the debounce's 5 ms (codex, plan review 8). The LED row counters are left alone, and on exit the period goes back to 256 and the LED field resumes where it was. The flash-write guard and the end-of-ISR re-arm stay. | Sampling every ~3.9 ms against ~4.6 today, so `sym_defer_pk`'s 5 ms always ends on a fresh sample. The ISR body shrinks (no PWM work), so SPI0's DMA (same priority 3) sees shorter blocking. |
+| 1 | **yield** | `chThdSleepMilliseconds(n)` at the end of `housekeeping_task_kb`, after `watchdog_kick`, n = byte 6 (1-4). | Adds up to n ms between a scan and its consume. The CH582F's RX queue (128 B) drained 64 B a pass wants a pass every ~5.5 ms at full line rate (codex), so the ceiling is 4 ms; the knob's quadrature is polled at the pass rate (>= 200 Hz at 5 ms). |
+| 2 | **WFI** | `CH_CFG_IDLE_LOOP_HOOK` runs `__WFI()` while the bit is set (`config.h`'s global stays off). Only useful with bit 1, which gives the idle thread time. | A wake that never comes would stall the main loop until the next interrupt; the row ISR (bit 0 keeps it at ~1 kHz), UART and QMK's timer bound that. The PMU mode the idle hook selects (`CTRL = 4`) must be Sleep, not Deep-sleep: checked in the manual before the build (below). |
+| 3 | **stop the 20 kHz tick** | With the screen dark (`SCREEN_OFF`) and no indicator lit, stop CT16B3 (`gptStopTimer`), leaving the backlight and indicator pins low; restart it (and its MR0RST fix, `indicators.c:174`) the moment either is wanted. | None to keys. A lock LED that should light waits for the restart (one tick). |
+
+**Measured by** `scripts/sleep_sizing.py` (to write), hands-free: relay 2 off,
+the stage forced to `SCREEN_OFF`, then for each mask (0, 1, 3, 7, 15, and
+bit 1 at 2 and 5 ms): settle 20 s; the logger's current over 60 s (the
+charge register); health page 4 (ISR rate and body), page 3 (`rowgap`), the
+stall counters; then 200 presses at 40/60 ms and 200 at 25/40 ms through the
+wake rig, counted at the board. Mask 0 is the baseline again, on the same
+run. Restored in a `finally` (mask 0, the stage, relay 2 on).
+
+**Pass, per mask:** every press counted (`key_presses` = n, `raw_edges` =
+2n), `rowgap` <= 6 ms, no stall >= 25 ms, the link up throughout (no new
+ACK timeouts beyond the baseline's), no watchdog reset.
+
+**Then**, if it is worth it: the real rung (automatic in the dark stages and
+under the lights cut, so Minimal gets it while typing; a key change wakes the
+main loop from the ISR instead of a fixed sleep), its own codex review, and
+the gate: 10,000 presses, the first press after long idles, latency at the
+Mac within a few ms of the baseline.
+
+### What the manual says about WFI here (SN32F299 V1.8)
+
+`PMU_CTRL` (`0x40032040`) selects the mode a `WFI` enters: **4 is Sleep, 2
+is Deep-sleep** (pp. 74-75); 0 is a plain Cortex-M0 `WFI` (the core's clock
+gated, nothing else). ⚠️ **The USB transceiver turns itself off in Sleep and
+Deep-sleep** (p. 245, `USB_CFG.PHY_EN`). The bench reads the board over USB
+data while it runs on its pack, so bit 2 is a plain `WFI` with `PMU_CTRL` 0:
+the idle hooks that write 4 today (harmless while WFI is off) are replaced
+so nothing writes 4 unless asked. A fifth bit, **bit 4, PMU Sleep** (`CTRL`
+4 around the `WFI`), applies only while USB is not configured (a user on
+battery); it is measured with the data cut (`uhubctl`) and read back after.
+
+### As built (`9f46337b6f`, 10-18)
+
+`sleep.c`/`sleep.h`, dev builds only (a stub otherwise; the daily build has
+none of it, and its idle hooks are the platform's). Op 14 **sub 3** sets the
+light-sleep mask (reply: the mask, the bits in force, the WFI count,
+scan-only in force); **sub 4** arms the deep sleep or reads its record. The
+LED driver gained `sn32f2xx_set_scan_only()` and I-class sleep hooks; the
+board's idle hooks choose the PMU mode at each WFI (4 only for bit 4, else
+0). Measured by `scripts/sleep_sizing.py` (light) and `scripts/deep_sleep.py`
+(deep).
+
+## Deep sleep: the experiment
+
+**What the manual gives** (pp. 74-78, 150-152, 263): only Sleep and
+Deep-sleep exist (no deep power-down on this part). Deep-sleep stops the
+12 MHz IHRC, the PLL, flash, USB, the ADC and every peripheral clock; it
+keeps RAM, registers and pin levels; it wakes on a **GPIO edge**, the RTC,
+or reset, in ~12.7 us plus the PLL's ~100 us to relock. The ILRC keeps
+running when the RTC uses it, which this board's does, so **the watchdog
+(ILRC-clocked) must be assumed to count** (the manual does not say). The
+datasheet's deep-sleep figure is 2 uA (every oscillator off); the MCU at
+48 MHz is ~11 mA. The CH582F has no sleep command and keeps its BLE link on
+its own; anything it sends while the SN32 sleeps is lost.
+
+**The board's matrix** is COL2ROW (`keyboard.json:141-144`): 15 columns on
+P0.4-7, P2.0-9 and P2.14, with pull-ups; 6 key rows. Drive every key row and
+the 18 LED row pins low, release the columns from PWM (inputs, pull-ups),
+and a press pulls its column low: a falling edge on P0 (IRQ31) or P2
+(IRQ29).
+
+**One dev hook**, `HC_DEVHOOK` op 14 **sub 4**: arm (delay s, cap s), or read
+the last run's record. Armed, the main loop waits out the delay, then sleeps
+at the first pass where all hold: no key down; USB not configured; the
+CH582F's TX queue empty and UART2's transmitter empty (`LS.TEMT`, bit 6); no
+glyph or LCD transfer in flight; no flash write pending; the RTC idle (no slew
+or reload pending); **the watchdog armed and counting** (not degraded after
+three resets: the way back relies on it, codex). Never safe within 60 s: it
+gives up and records why. Then, with interrupts locked throughout (PRIMASK set, so a wake
+interrupt is never taken; its vectors have no handlers):
+
+1. A watchdog breadcrumb ("deep sleep") with its sacrificial write.
+2. Blank the LEDs and disable PWMD1's notification (I-class: no lock call
+   anywhere inside, since an unlock re-enables interrupts); disable the
+   column PWM channels; the 20 kHz tick stopped with its pins low; UART2's
+   receiver off (TX stays enabled, idling high); the ADC off (~100 uA); key
+   rows driven low, columns inputs with pull-ups.
+3. Save the NVIC enables; clear and disable all; SysTick's alarm off. The
+   column pins' interrupts: edge, single, **falling** (IS 0, IBS 0, IEV 1,
+   pp. 81-84), cleared after the rows settle, then enabled; only P0, P2 and
+   the RTC in the NVIC.
+4. A second that came since the lock is counted now. **A column already low
+   is a key wake with no sleep** (a press before the clear erased its edge).
+5. The system clock to the IHRC (IHRCRDY checked), then the PLL off (never a
+   selected PLL, p. 64), then the flash to its slow mode (`LPCTRL`
+   `0x5AFA0000`) for <= 24 MHz.
+6. Loop: `PMU_CTRL = 2; DSB; WFI`. A second: cleared in the RTC **and** the
+   NVIC (no handler runs to do it), the watchdog fed directly, counted; at
+   the cap, leave. A column edge: leave, keeping which pins. Anything else
+   counts as stray, and 1,000 strays leave.
+7. Restore: the flash's speed, the PLL relocked (bounded: a reset if it does
+   not lock) and selected; the pin interrupts off and cleared; the temporary
+   vectors disabled (`ICER`) **before** the old enables go back (writing
+   `ISER` cannot disable one); a second coincident with the wake counted
+   once; rows high (the unselected level); the ADC (and its 100 us) and
+   UART2's receiver back; SysTick left off and pended, so its handler serves
+   the timers and re-arms the next alarm; the PWM notification and the tick
+   back. Both software clocks get the slept seconds (`rtc_seconds_count` and
+   the LLD's calendar time via `rtc_lld_add_secondsI`, a ChibiOS patch), with
+   interrupts still locked. Then unlock, and restart USB (its transceiver was
+   off).
+8. The system timer (CT16B5) stood still, so `timer_read32()` lost the sleep:
+   the ladder's idle, the gauge's energy count and QMK's ~175 ms timer skip
+   it, and it ran at a quarter speed in the few microseconds awake at 12 MHz
+   each second (accepted for an experiment of minutes; the gauge's model
+   would need the asleep draw added in a real build).
+
+The record: the wake reason (key, cap, stray), the column pins that woke it,
+seconds asleep, stray wakes, the PLL's lock loops, and `key_presses` before
+and after (did the waking key itself register, or was it lost).
+
+**The bench run**, JD at hand (if it never wakes, the slider brings it back):
+the pack (relay 2 off), the stage forced dark, arm (20 s, 120 s), `uhubctl`
+data off; at ~60 s the wake rig presses F19; data back on, read the record,
+the logger's current while asleep. Then a run with no press (the cap wakes
+it), and one with the watchdog left unfed for 15 s (a reset at ~12 s means it
+counts in Deep-sleep). Pass for "worth having": **every run wakes on the
+key**; the link is still up after; and then the question that decides the
+design: is the waking key itself lost.
+
+**Risks, worst first:** never waking (the watchdog stays armed and the cap
+self-wakes; if neither works, the slider); a wake interrupt taken with no
+handler (PRIMASK held throughout); a lock call in the loop re-enabling
+interrupts (direct register writes only); a pin frozen driven (an LED row
+lit, the backlight, UART TX low: all set before the sleep); the PLL not
+relocking (the watchdog, ~12 s); frozen system time confusing a timeout
+after the wake (none is armed across it, by the preconditions).
+
+## Codex's plan review (10-18) and what changed
+
+[Verbatim](review-codex-sleep-plan-2026-10-18.md), prompt
+[`review-prompt-sleep-plan.txt`](review-prompt-sleep-plan.txt): **six
+must-fixes (all deep sleep), three should-fixes, the scan-only design sound.**
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | PRIMASK must hold through teardown and restore (a non-I lock call unlocks); clear each wake source in the peripheral and the NVIC; disable the temporary vectors before restoring `ISER` | **Done:** I-class calls and register writes only (`sn32f2xx_sleep_enterI`, `pwm_tick_stopI`, `rtc_account_sleepI`); RTC cleared in both; `ICER` before `ISER`. |
+| 2 | falling edge is `IEV 1` with `IBS 0`; a press before the clear loses its edge: read the columns before sleeping; count a second coincident with the wake | **Done** (step 4 and 7 above). |
+| 3 | the LLD's own calendar time (`rtc_time`, what `rtcGetTime()` reads) also needs the seconds, before interrupts resume; do not restart the RTC | **Done:** `rtc_lld_add_secondsI` (a ChibiOS LLD commit, `27e852d25a`), called with `rtc_seconds_count`'s update under the lock; the SOF count's continuity invalidated. |
+| 4 | the clock contract: IHRC ready, select, then the PLL off; flash slow mode at 12 MHz and back before 48; UART2's receiver; the ADC off; CT16B5; SysTick's `VAL` cannot be restored | **Done** but CT16B5: it is not stopped across the few microseconds awake at 12 MHz each second (a quarter-speed tick, accepted and stated). SysTick is left off and pended, not restored. |
+| 5 | WFI with `PMU_CTRL` 0 is unverified (the manual names only Disable, Sleep, Deep-sleep); replace both idle hooks; bit 4 must end by itself before USB returns | **Done:** both hooks replaced in dev builds, the mode set at each WFI; bit 4 has its window and the bench waits it out before data returns; bit 2 is measured as a probe (USB continuity is part of its pass). |
+| 6 | the watchdog may be off (degraded after three resets): check before arming | **Done:** a precondition (`watchdog_running()` and `CFG.WDTEN`). |
+| 7 | note: the scan-only period change, the separate counter and blanking once are sound; do not reuse `sn32f2xx_blank()` | Agreed; not reused. |
+| 8 | should fix: 5.2 ms sampling lets debounce accept a stale sample; a 5 ms yield is too long for the RX queue | **Done:** 3,000 ticks (~3.9 ms per key); the yield capped at 4 ms. |
+| 9 | should fix: gate the tick on the effective backlight and the wanted indicators; reset `last_out` on restart | **Done** (`display_backlight_effective()`, `indicators_any_lit()`, `ind_last_out`). |
+| 10 | should fix: read back the mask in force and WFI entries; per-window counters; a data-off baseline for bit 4; delivery, not only board counts; for deep sleep, verify F19, take the after-count late, test a P0 column by hand | **Done** in the scripts: the applied mask and WFI rate, a health reset per window, the key count 1 s after the wake; bit 4 is left for a data-off run; F19 is in the restored VIA keymap; a P0 column (Esc's) is JD's press. Delivery at the Mac needs it unlocked. |
