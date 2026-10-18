@@ -124,7 +124,7 @@ static void l_announce(void) {
 }
 
 /* Minimal: dark on battery even while typing; the backlight lights for 4 s
- * after a message and while Fn+D's pages are open (JD, 10-18); USB is Full. */
+ * after a message and while Fn+D's pages are open; USB is Full. */
 static void l_minimal(void) {
     kb_eeconfig_set_power_mode(POWER_MODE_MINIMAL);
     power_init();

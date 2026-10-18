@@ -76,7 +76,7 @@ def _white(v):
     return (f"white {v}", {"effect": 1, "h": 0, "s": 0, "v": v}, None)
 
 
-# The low end too (JD, 10-18: is a dim green cheaper than a dim red?): white
+# The low end too (is a dim green cheaper than a dim red?): white
 # at value 3 (drive 1 of 255 after QMK's CIE curve) for the fixed cost of any
 # LED lit, and each colour alone at value 16 (drive 2).
 RGB_CURVE = ([("jd", None, None), ("rgb off", {"effect": 0}, None)]
