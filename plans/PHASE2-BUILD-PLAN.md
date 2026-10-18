@@ -334,6 +334,20 @@ fixes sound but one firmware must-fix. Fixed in `d3e8389858`; the simulator
 | — | test notes: `c_hold_stale`'s bound loose; `m_pause_missing` could pass without adopting; no exact 4011 mV case | The first two **fixed** (9.6 ± 1.5 pm; a return that forces a visible move). The exact boundary is not reachable through `5C`'s 8.75 mV steps; the rule is one comparison. |
 | — | the rest of the fixes correct; the dev build fine for the board checks after this | Agreed. |
 
+### Codex's second verify (10-18)
+
+[Verbatim](review-codex-phase2-verify2-2026-10-18.md), prompt
+[`review-prompt-phase2-verify2.txt`](review-prompt-phase2-verify2.txt): **no
+firmware must-fix; `d3e8389858` cleared for the dev-board checks.**
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | the battery-entry floor fixed; no path left to 0% above the cut or a lift after it | Agreed. |
+| 2 | note: restoring 890 is right but lossy (a stale marker after a partial charge or a pack swap reads up to 9 low); a comment still says 90..100 | Accepted, inside the reboot scope the plan excludes; the comment fixed in the next firmware change. |
+| 3 | the RGB fixes sound | Agreed. |
+| 4 | should fix: `m_pause_missing` can pass on later idle reports without the adoption | **To fix** after the flash (host only): assert at the first qualifying estimate, then require MODEL on a resumed charge. |
+| 5 | note: 4011 mV is reachable (eight 97s and two 98s); the CSV check fine | **To add** after the flash: the boundary case. The earlier disposition was wrong. Also on the board: a quick disable, cap change, enable. |
+
 ## Codex's plan review (10-18) and what changed
 
 [Verbatim](review-codex-phase2-plan-2026-10-18.md), prompt
