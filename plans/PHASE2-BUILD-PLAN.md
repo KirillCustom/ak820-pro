@@ -204,8 +204,16 @@ A fourth mode, after Saver: on battery the RGB and the backlight off even
 while typing (the ladder's thresholds 0); the backlight lights, at the user's
 level, for 4 s after a message appears in the band and while `Fn`+`D`'s pages
 are open, so a key that shows state never seems dead.
-Messages are noted when they appear, not while they persist, so a failed
-link's alternating texts cannot hold the screen lit.
+Messages are noted when the band first PAINTS them (codex's Minimal review,
+should-fix 1), not when they are posted and not while they persist: each
+source (an overlay, an alert, a link state or slot, host text) bumps a
+generation when its content is new, and `draw_text_slot()` notes a
+generation the first time it paints it. So a link state that changes under
+an alert lights the screen when the alert ends, and a failed link's
+alternating texts, or the host text the band returns to after an overlay,
+cannot hold it lit. The low-battery notice is never given in Minimal; one
+owed from another mode waits, and is given after the next mode's overlay has
+had its 2 s.
 
 ### 6. Not in this flash
 
@@ -356,6 +364,21 @@ firmware must-fix; `d3e8389858` cleared for the dev-board checks.**
 | 3 | the RGB fixes sound | Agreed. |
 | 4 | should fix: `m_pause_missing` can pass on later idle reports without the adoption | **Fixed** after the flash (host only): the first change must be one step of over 100 pm, then a resumed charge must start MODEL. |
 | 5 | note: 4011 mV is reachable (eight 97s and two 98s); the CSV check fine | **Added** (`c_band_top_edge`: the estimate lands on 4011 mV exactly, no bound, no ratchet). The earlier disposition was wrong. Still to do on the board: a quick disable, cap change, enable. |
+
+### Codex's Minimal-mode review (10-18)
+
+[Verbatim](review-codex-phase2-minimal-2026-10-18.md), prompt
+[`review-prompt-phase2-minimal.txt`](review-prompt-phase2-minimal.txt), of
+`ba9e3bda60`: **no must-fix; four should-fixes.** Fixed in `e79f55f1cf` and
+the simulator commit after it.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | should fix: the wake follows the post, not the paint: a link failure or "Connected" under an alert, an alert posted under the animation, can show dark; host text never wakes it | **Fixed:** per-source generations, noted at the first paint (5b). Host text is a source; a keepalive changes nothing. The simulator cannot run `display.c`; a bench check covers host text (below). |
+| 2 | should fix: an owed "Saving power" from Saver overwrites Fn+B's "Minimal mode" | **Fixed:** never given in Minimal, and elsewhere only once the band's last message has had `PARAM_OVERLAY_HOLD_MS`. `l_minimal_owed` fails three ways against the old gate. |
+| 3 | should fix: the bootloader screen stays dark under a dark stage's cap | **Fixed:** the splash lifts the cap. |
+| 4 | should fix: the tests check ~3.1 and ~5.1 s, not 4; no Fn+B wake, alert, owed-notice or energy check | **Fixed:** the 4.0 s boundary, an alert, `l_minimal_enter`, `l_minimal_owed`, the modelled power lit and dark; 125 cases. Notification logic in `display.c` stays source-review only. |
+| — | the cycle, persistence, op 14, HC_POWER, caps, USB and the energy model fine; no new blocking work | Agreed. |
 
 ## Codex's plan review (10-18) and what changed
 
