@@ -765,6 +765,16 @@ the win for little risk. Size it first: with RGB and the backlight off, the
 in-series meter reading is MCU + radio + regulator + panel logic, and one
 build with the rung forced on shows the MCU's share.
 
+**Its gate is the wake rig** (relay 1 presses F19, `docs/test-bench.md`):
+light sleep's one risk is a press it misses or delays, and the rig can test
+that thousands of times with no hands. In order: (1) a baseline on today's
+firmware, on the pack, in the ladder's dark stage: presses at typing speed
+and the first press after a long idle, counted at the board (`raw_edges`,
+`key_presses`) and, with the Mac unlocked, timed at the Mac; (2) the sizing
+build, the logger reading what the rung saves; (3) if it is worth building,
+the same runs as the gate: no press lost in 10,000, latency within a few
+ms of the baseline, the first press after idle included.
+
 **The target, and a budget to fill in (JD, 2026-09-29):** "a couple of months
 on a charge for 8 h daily use with a dim backlight". 4000 mAh / 60 days is
 **~65 mAh/day**; with 16 h of deep sleep at ~1 mA (~16 mAh), the 8 h of use must
