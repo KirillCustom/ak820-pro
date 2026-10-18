@@ -108,3 +108,38 @@ and the register's own error, not as a measured efficiency. The trial saw FULL
 **The stall count at the end: still 1** (`ak820health.py --stalls`, 12:18:02,
 uptime 62.1 h, 43,171 presses): the 08:02 probe run (200 Scroll Lock toggles
 at 32/s among them) added none. Flash 2h went on at 12:18.
+
+## A1/A2: the gauge's real accuracy, and the capacity (10-18)
+
+`scripts/r3_level.py` (output `a1-summary.txt`, per point `a1-points.csv`).
+To the RGB cut: **50.39 h, 4011.6 mAh, 15,579 mWh** (mean 3884 mV, 79.6 mA,
+309 mW; the hole bridged at 81.2 mA, 101.0 mAh, an estimate). Three truths
+for "how much is left", each 100% at relay off and 0% at the cut: time
+(`1 - t/T`, the gauge's own definition), energy (mWh) and charge (mAh).
+**Time and energy agree within 0.1 point everywhere** (the load is nearly
+constant power); charge sits 1-1.6 points below them (the current rises as
+the pack falls). Against energy, 596 board readings (588 trial reads, 8 from
+the RAM log over the outage):
+
+| energy left | n | board − truth, mean [range] | MAX17048 − truth |
+|---|---|---|---|
+| 90-100% | 61 | −0.5 [−3.4, +0.3] | −6.2 |
+| 80-90% | 61 | **−7.9** [−13.4, −2.3] | −4.5 |
+| 70-80% | 60 | **−10.1** [−13.7, −6.5] | +3.6 |
+| 60-70% | 61 | −4.2 [−6.5, −1.8] | +11.8 |
+| 50-60% | 60 | −1.9 [−2.8, −1.3] | +15.2 |
+| 40-50% | 60 | −4.9 [−7.0, −2.5] | +15.9 |
+| 30-40% | 61 | −4.7 [−6.4, −3.3] | +19.9 |
+| 20-30% | 58 | −2.3 [−3.7, −1.3] | +21.4 |
+| 10-20% | 53 | −1.1 [−2.5, −0.2] | +11.4 |
+| 0-10% | 61 | −0.3 [−0.7, +0.1] | −1.9 |
+
+- **The flat top is worse this cycle than on the last two:** −13.7 worst at
+  70-80% (10-10: −8.3, 10-12: −7.2, both judged against time as well). Below
+  60% it stays within 7.0 points, and within 2.5 below 20%. It reads low
+  throughout (never more than 0.4 high).
+- **Why:** from 85% to 70% the pack moves 15 mV (`vcell` 4029.8 to 4015.0),
+  about a point per mV, so `5C`'s ~10 mV accuracy and a cycle's drift each
+  cost ~10 points there. No voltage-to-level table can fix the plateau.
+- **The MAX17048's own SOC is no shortcut:** up to 22 points high in the
+  middle, on its generic model.

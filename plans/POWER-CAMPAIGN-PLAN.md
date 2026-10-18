@@ -138,8 +138,15 @@ today, ~380 with the lights out, single to tens of mAh in a real standby).
   straight line). Then refit the voltage-to-level table on `level_true`, with
   an I×R term from the maps' ΔV/ΔI. The flat top (70-85%, read up to 8 points
   low) is the target.
+  - **Done on R3 (10-18):** the gauge reads low throughout, up to 13.7
+    points at 70-80% (the plateau: 15 mV from 85% to 70%), within 7 below
+    60% and 2.5 below 20%; time and energy left agree within 0.1 point at
+    JD's load. A table refit cannot fix the plateau
+    ([`../history/battery-2026-10-15-drain-2f/README.md`](../history/battery-2026-10-15-drain-2f/README.md),
+    "A1/A2").
 - **A2, capacity**, in mAh and mWh, at the logged temperature, against
-  drains 2c-2e's runtimes.
+  drains 2c-2e's runtimes. **R3: 4011.6 mAh, 15,579 mWh to the cut** at
+  JD's settings (309 mW mean).
 - **A3, the charge.** The constant-current level, where the constant-voltage
   taper starts (the knee, task 12), the termination current, mAh in against
   mAh out. Refit `K_CC` and the charge model's knee from the current itself.
