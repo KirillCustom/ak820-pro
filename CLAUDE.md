@@ -370,7 +370,8 @@ Alphas/Mods) · `Fn`+`PgUp/PgDn` LCD brightness · `Fn`+`Home` LCD toggle ·
 (24h / 12h+AM-PM / off / date, persisted) · `Fn`+`D` debug page (tap
 cycles debug page → camera page (big volts and %) → dashboard, HOLD
 ~800 ms resets the health counters) · `Fn`+`B` power mode (Full / Normal /
-Saver: the idle ladder on battery, Phase 2). BT keys are inert in
+Saver / Minimal: the idle ladder on battery, Phase 2; Minimal keeps the lights
+and the backlight off, lighting the screen briefly for a message). BT keys are inert in
 wired mode. `Fn`+`P` (pair) is unbound by default.
 
 ## Critical warnings (details in the docs)

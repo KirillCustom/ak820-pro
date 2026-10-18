@@ -1213,15 +1213,22 @@ trips the protector, then holds it tripped while the board stays connected.
 
 ## The idle ladder and the power modes (Phase 2, `power.c`)
 
-`Fn`+`B` (`PWR_MODE`) cycles **Full power**, **Normal power** (the default) and
-**Power saver**, shown as an overlay and persisted (kb datablock byte 6; a
-flash resets it to Normal and says so once). On battery only:
+`Fn`+`B` (`PWR_MODE`) cycles **Full power**, **Normal power** (the default),
+**Power saver** and **Minimal mode**, shown as an overlay and persisted (kb
+datablock byte 6; a flash resets it to Normal and says so once). On battery
+only:
 
-| | Full | Normal | Saver |
-|---|---|---|---|
-| RGB dimmed (its value capped at 64 of 255) | never | 1 min idle | 30 s |
-| RGB off, screen capped at level 4 | never | 5 min | 2 min |
-| screen backlight off | never | 15 min | 5 min |
+| | Full | Normal | Saver | Minimal |
+|---|---|---|---|---|
+| RGB dimmed (its value capped at 64 of 255) | never | 1 min idle | 30 s | -- |
+| RGB off, screen capped at level 4 | never | 5 min | 2 min | -- |
+| screen backlight off | never | 15 min | 5 min | always, typing too |
+
+**Minimal** keeps the RGB and the backlight off even while typing (~107 mW,
+~6 days a charge by the model), and lights the backlight at the user's level
+for 4 s after a message appears in the status band (a setting's overlay, an
+alert, a new link state with words, the pair gesture) and while `Fn`+`D`'s
+pages are open, so a key that shows state never seems dead.
 
 Any key or knob turn restores everything within a tenth of a second, and the
 key types as normal. Every stage is a cap, never a change to the user's

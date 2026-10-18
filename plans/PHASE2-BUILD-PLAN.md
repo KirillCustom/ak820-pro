@@ -198,6 +198,15 @@ As built in `37b844b83c` (Full / Normal / Saver; the stage times in
   was off (codex should-fix 12). It re-arms after a real charge session
   (`session`), the warning's rule.
 
+### 5b. Minimal mode (added 10-18, JD)
+
+A fourth mode, after Saver: on battery the RGB and the backlight off even
+while typing (the ladder's thresholds 0); the backlight lights, at the user's
+level, for 4 s after a message appears in the band and while `Fn`+`D`'s pages
+are open, "so a user can see the message; otherwise it'll just seem broken".
+Messages are noted when they appear, not while they persist, so a failed
+link's alternating texts cannot hold the screen lit.
+
 ### 6. Not in this flash
 
 Light sleep (step 4), the reserve (step 5), the radio and deep sleep (step
