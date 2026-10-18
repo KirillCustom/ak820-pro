@@ -61,6 +61,17 @@ a Claude Code hook. Ideas worth taking:
      Lock (`display.c` ~1834), and each repaint costs ~25-30 ms. The decoder
      must own Num and Scroll, the band must ignore them, and Caps is never
      touched.
+     **Keep SCR instead of removing it (as quill4gen7 did): show it settled.**
+     - The host ends every frame by putting the lights back as they were.
+       That's one extra report, since any state is one move from any other.
+     - The band shows Scroll Lock only once it has held for ~1.5 s, longer
+       than any gap inside a frame and than the 500 ms between a frame's two
+       copies.
+     - A frame then never changes the indicator, a real Scroll Lock (another
+       host, an app) still shows, ~1.5 s late, and the band repaints once per
+       settled change, not once per bit.
+     - If the restore is lost, SCR shows wrongly until the next change; the
+       frame's CRC fails then too, so its resend restores it.
    - **Power: negligible.** One BLE output report and one `5A` UART frame per
      bit, in bursts of 1-2 s. Only a constant stream would show.
    - **Limits:** ~100 bit/s, one way, each frame sent twice; timing to
