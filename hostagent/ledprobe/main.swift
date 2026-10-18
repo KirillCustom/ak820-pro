@@ -32,6 +32,10 @@
 //   aseq v...        the same bytes issued at once without waiting
 //                    (IOHIDDeviceSetReportWithCallback): the fastest this Mac
 //                    can send, since a synchronous write waits ~30 ms for the link
+//   capsmix          bits 3-4 set over BLE (0x18), then this Mac's own Caps Lock
+//                    switched on and off in software, as a key press would, then
+//                    0x00: does the LED report the Mac sends for Caps keep bits
+//                    3-4? Refuses if Caps Lock is already on; leaves it off
 //
 // Logs to ~/Library/Logs/ak820pro/ledprobe.log. Started by `open` (so TCC sees
 // this app, not whatever shell started it); built and signed by
@@ -39,6 +43,7 @@
 import Foundation
 import IOKit
 import IOKit.hid
+import IOKit.hidsystem
 
 enum Probe {
     static let out: FileHandle = {
@@ -407,7 +412,41 @@ case "aseq":
     // Freed only once every callback is in: a late one would read freed memory.
     if Async.done.count == issued { bufs.forEach { $0.deallocate() } }
     IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone))
+case "capsmix":
+    // The Mac's own Caps Lock, set through the HID system as a key press sets
+    // it: the Mac then sends the keyboard its LED report. Does it carry bits
+    // 3-4, which it has no elements for, or zero them?
+    var conn: io_connect_t = 0
+    let svc = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching(kIOHIDSystemClass))
+    guard IOServiceOpen(svc, mach_task_self_, UInt32(kIOHIDParamConnectType), &conn) == kIOReturnSuccess else {
+        Probe.note("capsmix: cannot open the HID system; stopping")
+        exit(3)
+    }
+    var caps = false
+    guard IOHIDGetModifierLockState(conn, Int32(kIOHIDCapsLockState), &caps) == kIOReturnSuccess, !caps else {
+        Probe.note("capsmix: Caps Lock is on, or unreadable; stopping")
+        exit(3)
+    }
+    guard let (dev, id) = openTarget(targets[1]), id == 2 else {
+        Probe.note("capsmix: need the BLE device open with LEDs in report 2; stopping")
+        exit(3)
+    }
+    func setCaps(_ on: Bool) {
+        let r = IOHIDSetModifierLockState(conn, Int32(kIOHIDCapsLockState), on)
+        Probe.note(String(format: "capsmix: Mac Caps Lock %@ -> 0x%08x", on ? "ON" : "off", r))
+    }
+    setLeds(targets[1], dev, id, 0x18, "capsmix bits 3-4")
+    Thread.sleep(forTimeInterval: 0.4)
+    setCaps(true)
+    Thread.sleep(forTimeInterval: 0.6)
+    setCaps(false)
+    Thread.sleep(forTimeInterval: 0.6)
+    setLeds(targets[1], dev, id, 0x00, "capsmix clear")
+    if IOHIDGetModifierLockState(conn, Int32(kIOHIDCapsLockState), &caps) != kIOReturnSuccess || caps { setCaps(false) }
+    IOServiceClose(conn)
+    IOHIDDeviceClose(dev, IOOptionBits(kIOHIDOptionsTypeNone))
+    Probe.note("capsmix: done")
 default:
-    Probe.note("unknown mode \(mode); use check, run, pace, hold, night, seq or aseq")
+    Probe.note("unknown mode \(mode); use check, run, pace, hold, night, seq, aseq or capsmix")
     exit(64)
 }

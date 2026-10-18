@@ -3,8 +3,8 @@ what reaches the board of the LED bytes this Mac writes over Bluetooth.
 
     venv/bin/python scripts/ledchannel_test.py [--out DIR] [TEST ...]
 
-TEST is width, high, repeats, speed or random (default: all five, in that
-order). Each one resets the board's 5A trace (`scripts/devhook.py leds reset`,
+TEST is width, high, repeats, speed, random or caps (default: all six, in
+that order). Each one resets the board's 5A trace (`scripts/devhook.py leds reset`,
 over the cable), has the LED probe write a sequence over BLE (`seq` mode), then
 reads the trace back and compares:
   width    0x01..0x1F then 0x00, 200 ms apart: which of the five bits arrive
@@ -18,6 +18,10 @@ reads the trace back and compares:
            fastest this Mac can send: do frames merge
   random   44 values over Num, Scroll and bits 3-4, each unlike the last,
            back to back: the channel's error rate at full speed
+  caps     bits 3-4 set (0x18), then this Mac's own Caps Lock switched on and
+           off in software, as a key press would: does the LED report the Mac
+           sends for Caps keep bits 3-4 (0x1a, 0x18) or zero them (0x02,
+           0x00)? Caps Lock is really on for ~0.6 s, so not mid-typing
 Needs flash 2g (the trace; the slider on BT, linked), the probe app
 (scripts/build-led-probe.sh) and the Mac unlocked (locked, it refuses every
 write). Caps (0x02) shows CAPS on the LCD while it is set. The board's stall
@@ -120,14 +124,39 @@ def run(name, gap_ms, vals, out):
     return res
 
 
+def caps_test(out):
+    before = health()
+    devhook("reset")
+    start = os.path.getsize(LOG) if os.path.exists(LOG) else 0
+    subprocess.run(["open", "-n", "-W", "-a", APP, "--args", "capsmix"], check=True, timeout=120)
+    with open(LOG) as f:
+        f.seek(start)
+        lines = f.read().splitlines()
+    if not any("capsmix: done" in l for l in lines):
+        sys.exit("capsmix did not finish:\n" + "\n".join(lines[-5:]))
+    time.sleep(0.5)
+    tr = devhook("json")
+    after = health()
+    got = [e["byte"] for e in tr["seq"]]
+    verdict = ("kept" if 0x1A in got else "zeroed" if 0x02 in got else "no Caps report seen")
+    res = {"test": "caps", "received": got, "bits_3_4_on_caps": verdict, "probe_log": lines,
+           "health_before": before, "health_after": after, "trace": tr,
+           "at": time.strftime("%Y-%m-%d %H:%M:%S")}
+    with open(os.path.join(out, "caps.json"), "w") as f:
+        json.dump(res, f, indent=1)
+    print(f"{'caps':14} received {' '.join(f'{v:02x}' for v in got)}: bits 3-4 {verdict} "
+          f"by the Mac's Caps report; stalls +{after['count_ge_25ms'] - before['count_ge_25ms']}")
+
+
 def main():
     args = sys.argv[1:]
     out = os.path.join(ROOT, "history", "ledchannel-" + time.strftime("%Y-%m-%d"))
     if args[:1] == ["--out"]:
         if len(args) < 2: sys.exit(__doc__)
         out, args = args[1], args[2:]
-    tests = args or ["width", "high", "repeats", "speed", "random"]
-    if any(t not in ("width", "high", "repeats", "speed", "random") for t in tests):
+    names = ("width", "high", "repeats", "speed", "random", "caps")
+    tests = args or list(names)
+    if any(t not in names for t in tests):
         sys.exit(__doc__)
     os.makedirs(out, exist_ok=True)
     for t in tests:
@@ -148,6 +177,8 @@ def main():
                 v = sum(b for b in usable if rng.random() < 0.5)
                 if not vals or v != vals[-1]: vals.append(v)
             run("random", 0, vals + ([0] if vals[-1] else []), out)
+        elif t == "caps":
+            caps_test(out)
 
 
 if __name__ == "__main__":
