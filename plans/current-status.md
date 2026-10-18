@@ -26,6 +26,39 @@ of 18 frames exact ([`LOCK-LED-CHANNEL-PLAN.md`](LOCK-LED-CHANNEL-PLAN.md),
 frames exact, P3 included** (below). **The channel is parked; next is the
 power work** (the ladder, an accurate gauge, a runtime estimate).
 
+### Minimal mode on the board (10-18, 17:31)
+
+**Flashed `460ca22840`** (dev, token `0x4adb46b6`): Phase 2 plus a fourth
+power mode, Minimal (`Fn`+`B`: Full, Normal, Saver, Minimal). On battery it
+keeps the RGB and the backlight off even while typing, and lights the
+backlight for 4 s when the band first paints a message (an overlay, an
+alert, a link state, new host text), and while `Fn`+`D`'s pages are open.
+One codex review and three verifies, every finding dispositioned
+([`PHASE2-BUILD-PLAN.md`](PHASE2-BUILD-PLAN.md)); 126 simulator cases.
+The verifies also fixed two older display bugs: host text returning after
+its 3-minute expiry stayed blank, and the bootloader screen stayed dark
+under a dark stage.
+
+**Checked on the board, 17:32** (`scripts/minimal_check.py`, relay 2 off,
+hands-free; [`../history/phase2-minimal-check-20261018-1732/`](../history/phase2-minimal-check-20261018-1732/minimal-check.json)):
+dark, the model reads 114.0 mW (base plus USB data) and the logger 27.51 mA;
+new host text lifts the model +4.1 mW (JD's backlight level) for ~4 s and
+the logger to 28.51 mA; an identical push changes nothing (27.54 mA); new
+text again lifts it again. Pass.
+
+**Queued tonight, after the two maps (no hands):** `scripts/sleep_baseline.py`,
+light sleep's first gate (`BATTERY-GAUGE-PLAN.md`, "Its gate is the wake
+rig"): on the pack, the stage forced dark, a 5-min quiet window for the
+logger, 2,000 rig presses at typing speed and at the rig's fast edge, single
+presses after 1, 5 and 15 min of silence, all counted at the board (runs
+with the Mac locked). Output `../history/sleep-baseline-<date>/`.
+
+**Started:** the sleep work. Light sleep (keeps the link and every key) is
+the next build, sized first; a deep-sleep experiment (wake on a key, or it
+is not worth having) needs JD at hand in case it does not wake. A reference
+distilled from the SN32F299 manual is being written to
+[`../docs/sn32f299.md`](../docs/sn32f299.md).
+
 ### Phase 2 on the board (10-18, 16:54)
 
 **Built, reviewed three times by codex, flashed:** `d3e8389858` (dev, token

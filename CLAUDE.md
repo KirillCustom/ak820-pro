@@ -130,8 +130,10 @@ ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
   no light ([`plans/LOCK-LED-CHANNEL-PLAN.md`](plans/LOCK-LED-CHANNEL-PLAN.md)
   has the resume list; what the module forwards is in
   [docs/wireless.md](docs/wireless.md)).
-- **On the board: Phase 2**, `d3e8389858` (a `dev` build, token
-  `0x6d244bcd`, since 16:54 10-18). ⚠️ **Firmware commits from flash 2f on
+- **On the board: Phase 2 plus Minimal mode**, `460ca22840` (a `dev`
+  build, token `0x4adb46b6`, since 17:31 10-18); checked on the board by
+  `scripts/minimal_check.py`. Next after tonight's maps and the sleep
+  baseline: light sleep, then a deep-sleep experiment. ⚠️ **Firmware commits from flash 2f on
   (`523744c30f`..) are local on `ak820pro-jdlien`, not pushed**, and
   `deps.lock` still pins `3e18c70a74`, so a fresh `setup.sh` builds Phase 1b's
   firmware, not this.
