@@ -363,34 +363,53 @@ def test_link_lost_everywhere(rng):
 
 
 def test_boundaries():
-    """Quiet 99/100 ms, gap 150/151 ms, lifetime 12000/12001 ms, also across
-    the 32-bit timer's wrap."""
-    f = dict(payload=bytes(range(48)), type=6, seq=7, profile=P0, user=0)
-    w = encode(**f)
-    for t0 in (1000, 0xFFFFFFFF - 6000):
-        for quiet, want in ((99, 0), (100, 1)):
+    """Quiet 99/100 ms, gap 150/151 ms and lifetime 12000/12001 ms, in feed and
+    in poll, each once well clear of the 32-bit timer's wrap and once with the
+    wrap falling inside the interval under test (codex, flash 2h verify)."""
+    W = 1 << 32
+    q = dict(payload=b"q", type=1, seq=0, profile=P1, user=0)
+    for quiet, want in ((99, 0), (100, 1)):
+        for t0 in (1000, W - 31 - quiet // 2):          # the wrap inside the quiet
             rx = Rx()
             rx.feed(0x08, t0)
             rx.feed(0x00, t0 + 31)
-            tl = [(v, t0 + 31 + quiet + 31 * k) for k, v in enumerate(encode(b"q", profile=P1))]
-            commits, _ = feed_checked(rx, tl, dict(payload=b"q", type=1, seq=0, profile=P1, user=0))
-            check(f"quiet {quiet} ms at {t0:#x}", commits == want, f"{commits}")
-        for gap, want in ((150, 1), (151, 0)):
-            g = dict(payload=b"gap", type=1, seq=0, profile=P1, user=0)
-            rx, t = Rx(), t0
-            t = rx.warm(0, t)
+            tl = [(v, t0 + 31 + quiet + 31 * k) for k, v in enumerate(encode(**q))]
+            commits, _ = feed_checked(rx, tl, q)
+            check(f"quiet {quiet} ms (t0 {t0 % W:#x})", commits == want, f"{commits}")
+    g = dict(payload=b"gap", type=1, seq=0, profile=P1, user=0)
+    for gap, want in ((150, 1), (151, 0)):
+        for t in (1331, W - 31 * 9 - gap // 2):          # the wrap inside the gap
+            rx = Rx()
+            rx.warm(0, t - 331)
             tl = [(v, t + 31 * k + (gap - 31 if k >= 10 else 0)) for k, v in enumerate(encode(**g))]
             commits, _ = feed_checked(rx, tl, g)
-            check(f"gap {gap} ms at {t0:#x}", commits == want, f"{commits}")
-        for life, want in ((12000, 1), (12001, 0)):
-            rx, t = Rx(), t0
-            t = rx.warm(0, t)
-            n = len(w)
+            check(f"gap {gap} ms in feed (t {t % W:#x})", commits == want, f"{commits}")
+            # The same gap seen by poll alone, before the late write arrives.
+            rx = Rx()
+            rx.warm(0, t - 331)
+            for v, tt in tl[:10]:
+                rx.feed(v, tt)
+            rx.poll(tl[9][1] + gap)
+            check(f"gap {gap} ms in poll (t {t % W:#x})", rx.busy() == bool(want), f"busy {rx.busy()}")
+    f = dict(payload=bytes(range(48)), type=6, seq=7, profile=P0, user=0)
+    w = encode(**f)
+    n = len(w)
+    for life, want in ((12000, 1), (12001, 0)):
+        for t in (1331, W - life // 2):                  # the wrap inside the frame
+            rx = Rx()
+            rx.warm(0, t - 331)
             # Evenly spread so the trailer's last write lands `life` ms after the
             # preamble's first, every gap under 150 ms.
             tl = [(v, t + (life * k) // (n - 1)) for k, v in enumerate(w)]
             commits, _ = feed_checked(rx, tl, f)
-            check(f"lifetime {life} ms at {t0:#x}", commits == want, f"{commits}")
+            check(f"lifetime {life} ms in feed (t {t % W:#x})", commits == want, f"{commits}")
+            # Poll's lifetime check: the frame still running, last write < 150 ms ago.
+            rx = Rx()
+            rx.warm(0, t - 331)
+            for v, tt in tl[:-3]:
+                rx.feed(v, tt)
+            rx.poll(t + life)
+            check(f"lifetime {life} ms in poll (t {t % W:#x})", rx.busy() == bool(want), f"busy {rx.busy()}")
 
 
 # Pinned writes for one short frame per profile: the encoder must not drift

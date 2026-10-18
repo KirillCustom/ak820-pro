@@ -167,7 +167,7 @@ def frames_test(out):
     from lockchan import encode, P0, P1, P2
     rng = random.Random(8202)
     words = "the a of and to in love night light song blue heart home road dream fire rain".split()
-    results = []
+    results, health_log, stalled = [], [], False
     for prof, name in ((P1, "P1"), (P2, "P2"), (P0, "P0")):
         before = health()
         frames("reset")
@@ -177,7 +177,8 @@ def frames_test(out):
             seq = (prof * 16 + i) & 0xFF
             typ = 1 + i % 3
             w = encode(text, type=typ, seq=seq, profile=prof, user=0)
-            send(0, [0x08, 0x00])   # the warm-up; the next launch is the quiet
+            send(0, [0x08, 0x00])   # the warm-up, so the board has the baseline,
+            time.sleep(0.3)         # then the quiet (the probe exits once its last write completes)
             t0 = time.time()
             send(0, w)
             host_s = time.time() - t0
@@ -196,16 +197,19 @@ def frames_test(out):
                 print(f"{'':14} {name} frame {i} NOT received: frames {st['frames']}, aborts "
                       + ", ".join(f"{k} {v}" for k, v in st["aborts"].items() if v))
         after = health()
-        results.append({"profile": name, "health_before": before, "health_after": after})
-        mine = [r for r in results if r.get("profile") == name and r.get("ok")]
-        span = sorted(r["board_anchor_to_commit_ms"] for r in mine)
-        print(f"frames-{name:8} {ok}/6 committed exactly; {results[-1]['writes']} writes for the last; "
+        stalls = after["count_ge_25ms"] - before["count_ge_25ms"]
+        stalled = stalled or stalls > 0
+        health_log.append({"profile": name, "health_before": before, "health_after": after})
+        mine = [r for r in results if r["profile"] == name]
+        span = sorted(r["board_anchor_to_commit_ms"] for r in mine if r["ok"])
+        print(f"frames-{name:8} {ok}/6 committed exactly; {mine[-1]['writes']} writes for the last; "
               f"anchor to commit {span[0] if span else '-'}-{span[-1] if span else '-'} ms; "
-              f"stalls +{after['count_ge_25ms'] - before['count_ge_25ms']}, "
-              f"overruns +{after['uart_overrun'] - before['uart_overrun']}")
+              f"stalls +{stalls}, overruns +{after['uart_overrun'] - before['uart_overrun']}")
     with open(os.path.join(out, "frames.json"), "w") as f:
-        json.dump(results, f, indent=1)
-    return all(r["ok"] for r in results if "ok" in r)
+        json.dump({"frames": results, "health": health_log}, f, indent=1)
+    # Two verdicts, kept apart: did every frame decode, and did the board stay
+    # inside its 25 ms budget meanwhile (codex, flash 2h verify).
+    return all(r["ok"] for r in results), not stalled
 
 
 def main():
@@ -241,10 +245,15 @@ def main():
         elif t == "caps":
             caps_test(out)
         elif t == "frames":
-            if not frames_test(out):
+            decoded, in_budget = frames_test(out)
+            if not decoded:
                 failed = True
+                print("frames: DECODING FAILED (frames.json has each frame)")
+            if not in_budget:
+                failed = True
+                print("frames: a pass >= 25 ms during the frames (the 25 ms budget)")
     if failed:
-        sys.exit("frames: FAILED (frames.json has each frame)")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

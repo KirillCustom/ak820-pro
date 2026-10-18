@@ -76,7 +76,20 @@ daily `via-daily-b05e7cbc4e-20261018-112824.bin`.
 | 5 | notes: the codec matches v0; no overflow (15^8 - 1 < 2^32); timing and wrap sound; 180 bytes of RAM; the hold applied in cable mode too; back-to-back frames can hold Scroll; Caps wording; the header undersold the CRC's cost | Cable mode: **fixed** (feed, poll and hold only while the radio is the host). The rest: spec and comments reworded. |
 | 6 | should fix: the host tests were too kind (Caps-randomising faults, deletions retimed, last-commit-only oracle, slow human presses, no boundaries, encoder and decoder sharing one understanding) | **Fixed:** Caps-preserving faults, bursts with real gaps, every commit checked, presses 20 ms apart, exact boundaries across the wrap, link loss before every write, pinned golden vectors. Shared understanding remains: the spec is the contract. |
 
-Verify pass on `b05e7cbc4e`: [`review-codex-flash2h-verify-2026-10-18.md`](review-codex-flash2h-verify-2026-10-18.md).
+**Verify pass on `b05e7cbc4e`** ([verbatim](review-codex-flash2h-verify-2026-10-18.md),
+prompt [`review-prompt-flash2h-verify.txt`](review-prompt-flash2h-verify.txt)): two must-fixes.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | **must fix:** deferred selects (the bounce's real select, select retries, the `5B 23` re-issue) still skipped the reset; the promotion path leaves `PA_SELECT` pending | **Fixed in `19152be2e3`:** the reset moved into `ch582_send_command()` for every `A6` but the battery poll (`A6 53`), so every select or pair, wherever it is sent from, starts the receiver over. The promotion's leftover retry is then harmless to the channel; whether it should be cleared is a link-machinery question, left as is (BACKLOG). |
+| 2 | the shortcut fix, the cable-mode hold, the Caps wording and the cost comment are right | Agreed. |
+| 3 | should fix: the quiet after the warm-up was assumed, not enforced | **Fixed:** an explicit 0.3 s wait. |
+| 4 | **must fix:** `frames_test` crashed (`KeyError` on the health record); stalls never failed it | **Fixed:** frames and health in separate lists; separate decode and 25 ms verdicts, either exits 1. A dry run with the compiled receiver standing in for the board: 18/18. |
+| 5 | should fix: the quiet and gap boundaries did not cross the wrap; poll-side boundaries untested; the reset test cannot see call sites | **Fixed:** every boundary in feed and in poll, each also with the wrap inside the interval. Call-site coverage stays a review item (verify 2). |
+
+**Second verify** on `19152be2e3`: [`review-codex-flash2h-verify2-2026-10-18.md`](review-codex-flash2h-verify2-2026-10-18.md),
+prompt [`review-prompt-flash2h-verify2.txt`](review-prompt-flash2h-verify2.txt).
+Built as `via-dev-19152be2e3-20261018-113702.bin`, token `0x92f635f5`.
 
 ## 2026-10-15
 
