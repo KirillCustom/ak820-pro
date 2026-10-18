@@ -76,6 +76,13 @@ a Claude Code hook. Ideas worth taking:
      already accepts `d <= 0x1F`), the host owns 4 bits, not 2: 15 moves per
      change, ~3.9 bits, against quill4gen7's 1. Unknown until the firmware can
      show `host_leds`. Probe: `hostagent/ledprobe/`, `scripts/build-led-probe.sh`.
+   - **The test that answers the rest without JD's eyes (after R3, one `dev`
+     flash):** a dev hook that returns the last `5A` byte and a count of `5A`
+     frames. The probe then sends all 32 byte values and reads back what
+     arrived (which bits pass), sends the same byte twice (are repeats
+     forwarded? if so, no change is needed per report), and sweeps the pace
+     as quill4gen7 did (40 down to 6 ms) to find where reports merge. Width,
+     repeats and speed in one sitting, over the cable, no LCD watching.
    - **The payoff:** clock sync and now-playing over BT. Off USB the clock
      drifts: it was 1.6 s off after 26 min on battery on 10-08.
    - **First step, one evening on the Mac, testing item 2 at the same time:**
