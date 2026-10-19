@@ -1,0 +1,61 @@
+**Not ready as written. Yes: once the Stage-1 parser/recovery and TX must-fixes below are specified, the echo experiment is ready to build.** Dispatch should remain a separate gate. This was a static, repository-only review; nothing was modified, built, or tested.
+
+1. **Must-fix — “first byte after an empty queue” is not a frame boundary.** The drain can outrun the UART or stop between any two bytes. Preserve partial-frame state across drains; an empty read must not override it. Test start eligibility **before consuming the current byte**, so a checksum that completes a short frame cannot also start `81`.
+
+   | Wire bytes | Failure | Closing rule |
+   |---|---|---|
+   | `5A | 81 DB` | P3 data `81` begins the next drain and falsely starts collection. | Preserve the pending `5A` across drains. |
+   | `5C 25 | 81` | Battery **37%** has checksum `81`; even ordinary traffic can trigger this. | Consume it as the pending checksum, never a new header. |
+   | `5A 27 | 81` | Another legitimate LED checksum `81`. | Same rule. |
+   | `61 0D 0A | 81…` | This **is** a valid next-frame start. | A completed ACK establishes the boundary for the **following** byte. |
+
+   After unknown/corrupt traffic, use a measured **UART-arrival silence** criterion, not software drain timing. Specify both inter-byte timeout and maximum collection lifetime. The current window survives drain boundaries intentionally. [Plan:58](C:/Users/jdlien/code/ak820-pro/plans/RAWHID-24G-PLAN.md:58), [ch582f_ajazz.c:1267](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:1267), [LOCK-LED-CHANNEL-PLAN.md:282](C:/Users/jdlien/code/ak820-pro/plans/LOCK-LED-CHANNEL-PLAN.md:282).
+
+2. **Must-fix — checksum failure is not sufficient recovery; an overrun can produce a valid wrong command.** Here is a constructed, wire-valid example, not an observed capture:
+
+   ```text
+   Original: 81 07 12 01 02 11 [27 zero bytes] AE | 5B 23 7E
+   Lose 01: 81 07 12    02 11 [27 zero bytes] AE   5B
+   ```
+
+   The second line is exactly 34 bytes and its checksum is **5B**. TEXT_SET becomes **TEXT_CLEAR**, and the real `5B` frame loses its header. Both commands pass the proposed allow-list.
+
+   Abort on UART overrun/framing/parity errors and taint the affected buffered stream; check for errors before committing, including errors arising during a drain. Currently errors are merely counted before parsing. Clear both parser histories on entry/exit, and after an abort quarantine the remaining tail until a trustworthy boundary. Otherwise an unconsumed payload tail can still forge `5B 32 8D`, despite “never replaying” collected bytes.
+
+   Suppressing the short window during collection is correct: arbitrary payloads can contain valid `5x` frames **and `61 0D 0A`**, which would falsely pop TX. But real short frames swallowed by a truncated collection are lost too: LEDs/lock symbols, battery reports, connection transitions, and ACKs. The cost is greater than “one request.”
+
+   **False-commit frequency is unknown.** `1/256` assumes a uniformly distributed checksum residual; structured traffic and byte deletions do not satisfy that assumption. Two intact probes provide no rate estimate. The allow-list limits consequences, not false commits. Before state-changing dispatch, add stronger end-to-end integrity—preferably version/sequence/CRC, with its payload/compatibility cost made explicit. Magic alone does not detect corruption of an otherwise genuine request. [Plan:64](C:/Users/jdlien/code/ak820-pro/plans/RAWHID-24G-PLAN.md:64), [ch582f_ajazz.c:1245](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:1245), [GREMLIN-RESULTS.md:198](C:/Users/jdlien/code/ak820-pro/plans/GREMLIN-RESULTS.md:198).
+
+3. **Must-fix before Stage 2 — make the allow-list positive, granular, and upstream of VIA.** Require exactly 32 bytes and explicitly enumerate `(command=07, channel, subcommand, permitted operation/page)`. Checking only in `via_custom_value_command_kb()` misses VIA’s direct keymap/EEPROM paths.
+
+   “Health except bootloader/dev hook” admits instrumented `HC_STALL`, `HC_FAULT`, `HC_DRIVE`, `HC_INJECT`, RTC tests, RAM reads and blit faults. **`HC_STALL` mode 2 actually writes EEPROM-backed flash, then wedges.** Ordinary health also includes counter reset, accounting enable/reset, and RAM-only battery-threshold changes; these are not health reads.
+
+   Start with text operations, enumerated health reads, RTC GET and phase-correct SET. Exclude legacy synchronous SET until its timing is addressed below. That narrowed set has no direct flash/EEPROM write; RTC SET does persist time in the battery-backed PCF. Normal RTC calibration can subsequently schedule an EEPROM save, so this does not establish a globally flash-free workload. [via.c:396](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/quantum/via.c:396), [hid_protocol.c:677](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/hid_protocol.c:677), [hid_protocol.c:864](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/hid_protocol.c:864), [rtc_persist.c:31](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc_persist.c:31).
+
+4. **Must-fix before Stage 2 — bound dispatch separately from RX parsing.** Keep collecting cheap; dispatch at most one admitted radio request per pass, after draining control/ACK traffic. The 64-byte cap bounds bytes, not handler time.
+
+   Text setters update RAM/dirty flags; they do **not** synchronously draw. RTC GET reads the MCU clock. Phase-correct SET defers PCF work. However, legacy SET calls `pcf_write()` through `lcd_blit_wait()` and a **20 ms I2C timeout**. Earlier input work plus that timeout plus later display work can exceed 25 ms. Exclude it or use deferred, budgeted execution. Measure the **whole pass**, including simultaneous USB requests and deferred drawing/I2C, following the existing recovery arbiter’s precedent.
+
+   WDT scopes nest and restore correctly; they are breadcrumbs, not time budgets. Never mask interrupts around dispatch. [display.c:2228](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/graphics/display.c:2228), [rtc.c:1122](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:1122), [DEEP-SLEEP-BUILD-PLAN.md:355](C:/Users/jdlien/code/ak820-pro/plans/DEEP-SLEEP-BUILD-PLAN.md:355), [watchdog_record.h:35](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/watchdog_record.h:35).
+
+5. **Must-fix for Stage 1 — isolate reply capacity and ACK policy from keyboard traffic.** Present code silently rejects payloads over 16 bytes. Raising the cap correctly grows frames to 34 bytes and costs **384 additional queue bytes**, but does not solve scheduling.
+
+   Without an ACK, one `91` gets an initial transmission plus eight retries and occupies the head for roughly **90 ms or more**. Replies can fill all 23 usable entries; A1 then drops or coalesces, losing intermediate key edges. Prefer one separate, bounded reply slot with keyboard/control priority before starting a reply, explicit overflow handling, and a measured retry policy. One slot alone does not fix an excessively long in-flight wait.
+
+   Preserve RX-before-TX ordering. ACKs have no sequence/type: a late `91` ACK must not release an A1. Determine ACK behavior with other outstanding traffic excluded first. Also make UART enqueue bounded and frame-atomic: `sdWrite()` waits indefinitely for output space; careless partial-write handling would emit truncated/interleaved frames. [ch582f_ajazz.c:751](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:751), [ch582f_ajazz.c:857](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:857), [hal_serial.h:268](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/lib/chibios/os/hal/include/hal_serial.h:268).
+
+6. **Must-fix before dispatch — define request ownership and lifecycle precisely.** Ordinary USB and radio dispatch are serialized in the main loop, not competing ISR handlers. However, USB’s bootloader handler calls `ch582_tx_drain()`, which calls `ch582_task()` recursively: “main-loop-only” does not guarantee non-reentrancy. Use scoped save/restore of origin, separate owned buffers, and a dispatch/reentry guard.
+
+   With the proposed hook, a USB request under a stale radio flag replies to the dongle; a radio request with the flag cleared replies through USB, potentially taking its bounded **100 ms** send path. Queue-full must consume/drop the radio reply with a counter, never fall through to USB.
+
+   Reset collection on resync, sleep, disconnect, pairing and profile changes; invalidate pending replies by link generation. Include a separate reply slot in `ch582_tx_idle()`/sleep admission. Parse/discard recognized raw frames even when dispatch is forbidden, so their payloads do not fall into the short-frame parser. [main.c:48](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/quantum/main.c:48), [hid_protocol.c:1094](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/hid_protocol.c:1094), [ch582f_ajazz.c:550](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:550), [sleep.c:226](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/sleep.c:226).
+
+7. **Should-fix — choose the reply abstraction deliberately.** The weak core hook is reasonable for eventually supporting arbitrary VIA replies. Reading VIA’s buffer after return is insufficient: VIA already sent it. Suppressing that send needs interception anyway. For the restricted Stage-2 commands, a shared board-level command dispatcher with explicit USB/radio reply ownership avoids the core change. Extending `bluetooth_send_raw_hid()` is another option, but depends on the active host driver being Bluetooth. Stage 1 needs neither VIA nor a core hook. [via.c:479](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/quantum/via.c:479), [raw_hid.c:7](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/quantum/raw_hid.c:7).
+
+8. **Should-fix — add separate observability and explicit stage exits.** `HC_LINK` page zero has only **two spare bytes**; a new 32-bit counter needs a versioned page/layout. Separate checksum, timeout, UART-taint, admission-drop and reply-drop counters. [hid_protocol.c:707](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/hid_protocol.c:707).
+
+   - **Stage 1 → 2:** prove opaque 32-byte round trips—including embedded headers/ACKs and payloads without stock’s inner checksum—then ACK timing, duplicates, loss and recovery. Exercise every drain split/deletion boundary, concatenated traffic, P3, overruns and abort recovery. Under typing/display load require no new ≥25 ms passes, no A1 drops/replacements/giveups, and verify actual key edges at the host. Thousands of echoes alone do not certify typing.
+   - **Stage 2 → 3:** prove forbidden commands have zero side effects across build flavours; simultaneous USB/radio replies remain correctly routed; allowed handlers and failure paths meet the shared budget. Measure clock offset/uncertainty, not just RTT.
+   - **Stage 3 acceptance:** preserve one clock owner across transport switches, reject stale/duplicate replies, retry SET with a **fresh timestamp**, and keep transport-specific latency calibration. Test disconnect/reconnect and sleep: UART RX is disabled in deep sleep, so dongle presence does not imply board responsiveness. The existing lead learner clamps at 10 ms; radio suitability must be measured. [Clock transaction:119](C:/Users/jdlien/code/ak820-pro/plans/AK820-AGENT-CLOCK-TRANSACTION.md:119), [sleep.c:335](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/sleep.c:335).
+
+**Note:** keep both row-gap and whole-loop measurements. Healthy ISR sampling does not preserve every press/release while the main loop or TX queue is stalled. [hardware.md:594](C:/Users/jdlien/code/ak820-pro/docs/hardware.md:594).

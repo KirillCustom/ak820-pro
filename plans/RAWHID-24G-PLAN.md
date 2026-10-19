@@ -134,3 +134,24 @@ separate decision.
 5. Anything in this that could cost a keystroke or stall the main loop: the
    dispatch runs our raw-HID handlers from `ch582_task()`, some of which (text,
    RTC set) do I2C or LCD work.
+
+## Codex's plan review (10-19) and stage 1 as specified
+
+[Verbatim](review-codex-rawhid-24g-plan-2026-10-19.md), prompt
+[`review-prompt-rawhid-24g-plan.txt`](review-prompt-rawhid-24g-plan.txt).
+Verdict: not ready as written; stage 1 buildable once its RX and TX must-fixes
+are specified; dispatch a separate gate. The Mac session's notes (10-19) are
+folded in where they match. Dispositions:
+
+| # | finding | disposition |
+|---|---|---|
+| 1 | "First byte after an empty queue" is no boundary: `5C 25 81` (37%), `5A 27 81` and P3's `5A 81 ..` all put a `0x81` where a drain can split | **Taken.** Start eligibility is decided *before* the byte is consumed, from a `boundary` flag: set when the window is cleared by a matched frame or ACK, or by **measured silence** (below); cleared by any byte the window takes without a match. So `5C 25 \| 81` completes the 5C and never starts. Silence: a drain that finds the input queue empty at least `RAW81_SILENCE_MS` (5) after the last byte was read. The queue is filled by the UART ISR as bytes arrive, so an empty queue then means nothing arrived in that span, give or take the 16-byte FIFO's trigger and a masked ISR (both well under 5 ms; the PCF's ~2.9 ms is the known worst). Plus an inter-frame lifetime: a collection older than `RAW81_LIFETIME_MS` (15) aborts. |
+| 2 | An overrun can produce a valid wrong command (codex's constructed `TEXT_SET` -> `TEXT_CLEAR`); errors are only counted at the drain's start; an aborted tail can forge `5B 32 8D` | **Taken.** A UART error flag seen during a collection, at the drain's start or polled again just before a commit, aborts it. Any abort enters **quarantine**: every byte is dropped (counted) until the line has been silent `RAW81_SILENCE_MS`, so no tail reaches the window. The cost codex names is real and accepted: short frames in that burst are lost too (counted). False-commit frequency is unknown; **stage 1 only echoes**, so a false commit costs nothing but a stray reply, and stage 2 is gated on stronger end-to-end integrity (a sequence and a CRC inside the payload) before anything changes state. |
+| 3 | The allow-list must be positive, granular and upstream of VIA; `HC_STALL` mode 2 writes flash; counter resets are not reads | **Taken, for stage 2.** Stage 1 dispatches nothing. |
+| 4 | Bound dispatch separately; legacy RTC SET can take 20 ms of I2C | **Taken, for stage 2.** |
+| 5 | TX: a 34-byte frame in a 16-byte queue; no-ACK means 8 retries (~90 ms) at the head; ACKs carry no sequence, so a late `91` ACK could release an A1; `sdWrite` must be frame-atomic | **Taken.** A **separate one-slot `91` buffer**, sent only when the keyboard queue is empty and nothing is in flight (keys first), never retried, never coalesced (the Mac session's point), with a counter for a reply dropped because the slot was full. After a `91` goes out, the A-frame pump waits `RAW91_ACK_WINDOW_MS` (15) so an ACK in that window is counted as the `91`'s and cannot pop an A1; this is what measures whether the module ACKs `91`. `sdWrite` is the same blocking write every frame uses (a single thread; 34 bytes through the 16-byte output queue block ~1.6 ms at most, bounded by the UART). |
+| 6 | Request ownership; `ch582_tx_drain()` recurses into `ch582_task()`; reset on resync, sleep, link loss; recognised raw frames parsed and discarded even when dispatch is forbidden | **Taken.** The collector runs in every link state and mode (a `81` is always consumed whole, so its payload never reaches the window); only the echo is gated on 2.4G and linked, checked again when sending. Collector, quarantine and the reply slot reset on `rx_resync`, a sleep's wake and a link loss; `ch582_tx_idle()` includes the slot and the ACK window, so sleep admission waits for them. Stage 1 has no dispatch, so the drain's recursion cannot nest a handler. |
+| 7 | The reply abstraction: the core hook is reasonable for VIA later; a board-level dispatcher with explicit reply ownership avoids the core change for stage 2's restricted set | **Agreed; decided at stage 2.** Stage 1 needs neither. |
+| 8 | Observability: `HC_LINK` page 0 has 2 spare bytes; separate counters; explicit stage exits | **Taken.** Stage 1's counters live on a dev-hook page of their own (`HC_DEVHOOK` op 17): commits, bad sums, lifetime aborts, UART-taint aborts, quarantined bytes, `91`s sent, replies dropped, ACKs inside the window. The stage exits are adopted as codex wrote them (its finding 8). |
+
+Stage 1 is dev-only (`AK820_DEV_HOOKS`), like the tap.
