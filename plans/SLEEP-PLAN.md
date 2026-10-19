@@ -325,7 +325,7 @@ flag is not a blocker (its flush is synchronous in the main loop; accepted).
   ("Battery low", a link lost) waits for the next wake: the battery reading
   comes from the radio, which the sleeping SN32 does not hear.
 
-## Time left with deep sleep (proposed, 10-19)
+## Time left with deep sleep (adopted 10-19, not built)
 
 Today's figure (`battery_time_left_min`, `Fn`+`D`'s camera page) is the
 level's energy over a 12 h exponential average of the draw. Deep sleep
@@ -365,3 +365,18 @@ is ~10 h at JD's settings and ~28 h with the RGB off):
   of the overlay's 12 cells).
 - Rounded down; the gauge is within 2.5 points below 20% (A1), ~1.3 h at
   JD's settings, before any change in how the next hours are used.
+
+**Grading it in days, not months.** Time left is the energy left over the
+draw to come, and each half can be checked on its own without running the
+pack flat:
+
+- **The energy:** the count against the INA228 on the pack; any logged
+  hour grades it (A1 and R5 do this already).
+- **The draw to come:** at each 15-minute entry of a dumped log (v6 keeps
+  7.5 days of modelled energy), the average the firmware held then against
+  the draw over the next 2, 8 and 24 h. Every dump of ordinary use is a
+  test set, and `battery_sim` can replay the average itself. For that the
+  log must carry each entry's slept seconds (a field for the build), or the
+  awake-only average cannot be rebuilt from it.
+
+Only how it feels (the wording, the moments it appears) needs living with.
