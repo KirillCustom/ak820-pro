@@ -1,0 +1,10 @@
+You are verifying a revised firmware PLAN before it is built (AK820 Pro: QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2, a PCF8563 RTC on bit-banged I2C). Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You may read the SN32F299 manual at /Users/jdlien/code/ajazz-ak820-pro/docs/SN32F299_V1.8_EN.pdf for a register fact; docs/sn32f299.md should answer most. You are read-only: do not modify, build or run anything.
+
+You reviewed revision 1 of plans/DEEP-SLEEP-BUILD-PLAN.md (plans/review-codex-deep-sleep-plan-2026-10-19.md), verified revision 2 (plans/review-codex-deep-sleep-plan-verify-2026-10-19.md) and revision 3 (plans/review-codex-deep-sleep-plan-verify2-2026-10-19.md: V2 and V3 partial, a new must-fix on the split acquisition, a should-fix on the repaint hold). Revision 4 is now in plans/DEEP-SLEEP-BUILD-PLAN.md; its last section, "Codex's second verify (10-19) and what changed", dispositions W1-W6. The firmware is unchanged (/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/, branch ak820pro-jdlien, HEAD 442c9f49c9).
+
+Please:
+1. For W1-W6, say whether revision 4 resolves each, citing the plan's section and the code it will change (file:line).
+2. Answer the plan's "Questions for the third verify" (four).
+3. Anything revision 4 introduced that is wrong, or anything still missing that would block the build: a path that could cost a keystroke, carry a main-loop pass over 25 ms, leave the board asleep with no way to wake, corrupt the log or the clock, or ship a dev hook.
+
+Rank must-fix / should-fix / note; be brief. If nothing blocks the build, say so plainly.

@@ -1,7 +1,7 @@
 # Deep sleep, the build: the ladder's last stage
 
-Status: **revision 4, after codex's plan review and two verifies (10-19;
-every finding dispositioned at the end). For codex's third verify, then the
+Status: **revision 5, after codex's plan review and three verifies (10-19;
+every finding dispositioned at the end). For codex's fourth verify, then the
 build.**
 
 The experiment (`SLEEP-PLAN.md`, "Deep sleep: the experiment") proved the
@@ -42,7 +42,7 @@ left with deep sleep"). Every flash gets a codex review first.
   - The battery reports (`5C`) answer only the board's own poll (`A6 53`,
     every 5 s), so none are sent while it sleeps.
 
-## The design (revision 4)
+## The design (revision 5)
 
 ### 1. When it sleeps (power.c, sleep.c)
 
@@ -248,7 +248,7 @@ sleep's sequence number (section 8).
      and qualification reset, outside the `seconds == 0` early return, since
      a sub-second sleep breaks continuity too;
    - the trim window is invalidated, and **the 60 s PCF discipline is
-     suspended** until step 3 ends;
+     suspended** until step 4 ends;
    - the host-sync generation is noted;
    - **the log's open period is frozen.** Its accumulators (the `5C`
      sum, count, minimum and maximum; the VDD and LED sums; the flags; the
@@ -256,7 +256,7 @@ sleep's sequence number (section 8).
      record. The live ones are reset, so everything after the wake lands in
      them. That includes the radio's `5C` reports, which `ch582_task()` feeds
      straight in (`ch582f_ajazz.c:1343`), and the 10 Hz samples.
-     `HC_BATTLOG` answers "pending" until step 4 commits (the host retries),
+     `HC_BATTLOG` answers "pending" until step 3 commits (the host retries),
      since its age would otherwise date the old entries hours too recently;
    - `5C`'s ring is forgotten, and the radio's cached battery age is marked
      stale.
@@ -281,7 +281,13 @@ sleep's sequence number (section 8).
      re-enumerate first, but the rule makes it certain. The old sync's
      `host_synced` is cleared once, here, and a new one is never cleared.
    - If a read fails, the counted seconds stand, flagged.
-3. **The phase:** the boot acquisition is re-armed.
+3. **The gauge and the log** (section 6), right after step 2, since it
+   needs only the slept seconds and the acquisition can take 1.5 s:
+   - the sleep energy, then time left recomputed;
+   - the relaxation aged;
+   - the log's entries for the sleep written from the frozen record, and
+     `HC_BATTLOG`'s "pending" cleared.
+4. **The phase:** the boot acquisition is re-armed.
    - Every field is reset: the failure count, the previous edge, the timeout
      origin, the uncertainty, the result.
    - Its edge pass is split. The bracket read, the full read and the
@@ -294,18 +300,15 @@ sleep's sequence number (section 8).
      last read, so a full read a second late would pass, and the 999 ms
      clamp would set the clock nearly a second wrong.
    - Its 1.5 s timeout and its cancellation by a host sync are checked every
-     pass, even while the bus arbiter defers its transaction.
+     pass, even while the bus arbiter defers its transaction. A reacquisition
+     keeps the original 1.5 s, and the final confirming read's equality check
+     stays.
    - Done or aborted, it ends the step; an aborted one never holds the board
      awake. With `rtc_valid` false (no PCF ever read), it is skipped.
    - It aborts on a new host sync, as now. The 60 s discipline resumes
      afterward, with a fresh trim window.
    - The whole-second set does not fix the phase; this step does, to
      ~±20 ms at boot. Under wake load that is measured, not assumed.
-4. **The gauge and the log** (section 6):
-   - the sleep energy, then time left recomputed;
-   - the relaxation aged;
-   - the log's entries for the sleep written from the frozen record, and
-     `HC_BATTLOG`'s "pending" cleared.
 5. **The radio:** the battery poll (`A6 53`). It goes once step 1 has let
    go and the waking input's report has left (the TX queue empty, or
    100 ms). The periodic poll resumes with it. The step waits for the reply,
@@ -321,22 +324,30 @@ sleep's sequence number (section 8).
 9. **The display:**
    - **The backlight is held dark** from the wake until two repaints have
      finished: the clock's, after step 2's correction, and the battery row's,
-     after step 4's debit (painted incrementally, `display.c:1809`). The
+     after step 3's debit (painted incrementally, `display.c:1809`). The
      queue is pumped as usual, and nothing drains it synchronously.
    - **Each repaint is tracked by a generation.** The correction or debit
      bumps it, and the painter records the generation it drew from, so only
      a paint made after the change counts. Finished means its glyphs drawn
      and the bus idle (`display_bus_idle()`: the final DMA done, not just the
      queue empty).
-   - **Step 3's later phase correction is not waited for:** the
-     acquisition takes up to 1.5 s, too long to keep the screen dark after a
-     key. It moves the seconds by at most one, like an ordinary tick.
+   - **Both repaints are scheduled, not left to the cadence.** Today a
+     clean battery row waits for the next second, and dirty components
+     advance at 10 Hz (`display.c:3001`), so a 7-glyph row plus its bar could
+     take longer than the bound. The correction and the debit mark the clock
+     and the row dirty, and while the hold is on, one component is painted
+     every pass (each pass's paint still one component, within the budget).
+   - **Step 4's later phase correction is not waited for.** The acquisition
+     takes up to 1.5 s, too long to keep the screen dark after a key, which
+     is why the gauge (step 3) now runs before it. The phase correction
+     moves the seconds by at most one, like an ordinary tick.
    - **The terminal cases:** with the clock off (`DISPLAY_CLOCK_OFF`), or
      with the panel owned by `Fn`+`D`'s pages or the splash, there is no
      clock to wait for. In the date format it waits only if the date
      changed.
-   - **The bound:** a repaint not finished 250 ms after step 4 releases the
-     hold anyway, flagged. On that failure only, the screen can light
+   - **The bound:** a repaint not finished 500 ms after step 3 releases the
+     hold anyway, flagged. 500 ms covers a full row and its bar painted one
+     component per pass, with margin. On that failure only, the screen can light
      showing stale pixels; the promise is "never stale unless a repaint
      fails".
    - Then the wake's message (section 7).
@@ -350,7 +361,9 @@ sleep's sequence number (section 8).
 - **A transaction is admitted only when:**
   - no blit is in flight and the glyph queue is empty;
   - **the pass so far has taken under 10 ms**, measured from the pass's
-    start (`loop_acct`'s stamp). Earlier input work can itself take ~8 ms:
+    start: a stamp taken before keyboard processing (`quantum/main.c:48`), at
+    the board's first code each pass. `loop_acct`'s interval closes at
+    housekeeping, after the input work (`health.c:138`), so it is not that. Earlier input work can itself take ~8 ms:
     the modified-consumer ordering, `consumer_mod.c:51`.
 - **Recovery transactions use a 5 ms I2C timeout**, not 20. The software
   I2C applies the timeout as a deadline from the transaction's start (the
@@ -406,7 +419,7 @@ sleep's sequence number (section 8).
 
 ### 6. The gauge and the log
 
-- **The sleep term** (step 4):
+- **The sleep term** (step 3):
   - `P_SLEEP_UW` 13,350 × the slept ms, 64-bit from the first multiply,
     with the remainder kept;
   - stale `band_hold` cleared first, since `c5_forget()` alone does not;
@@ -435,35 +448,39 @@ sleep's sequence number (section 8).
 - **The log, v7.** `vdd_avg` gives way to **the period's slept seconds**
   (u16, 0-900). On battery `vdd_avg` reads the buck-boost's 3.90 V, and the
   supply is already in `flags` and `flags_any`.
-- **No period closes between the wake and step 4.** `log_task()` keeps
+- **No period closes between the wake and step 3.** `log_task()` keeps
   collecting into the live accumulators but never closes or resets a period
-  until step 4 has reconciled the sleep (`battery.c:1357,1382`). Otherwise
+  until step 3 has reconciled the sleep (`battery.c:1357,1382`). Otherwise
   the open period could close by the timer, on its awake time alone, before
   the sleep is laid in, and entries would be reordered or observations lost.
-- **A sleep that crosses no boundary** (it ends inside the period it began
-  in) merges back into one open period. The frozen record and the live
-  accumulators are combined: sums and counts added, minimum and maximum
-  taken, flags OR-ed, energies added with the sleep's. The slept seconds go
-  in.
-- **The sleep's entries, written at once in step 4,** from the record frozen
-  in step 0, when the sleep crosses one boundary or more. The live
-  accumulators collect everything after the wake:
-  - **The open period** closes with its awake part as it stood, plus its
-    slept share and that share's energy. Its flags and charging state are as
-    at entry. Its level is the entry's, less the sleep's energy up to the
+- **The boundaries are counted from the sleep's start through step 3**, in
+  log time with the sleep accounted, not just to the wake. A boundary can
+  fall after the wake, during the recovery's few seconds.
+- **No boundary through step 3:** the sleep merges back into one open
+  period. The frozen record and the live accumulators are combined: sums
+  and counts added, minimum and maximum taken, flags OR-ed, energies added
+  with the sleep's. The slept seconds go in.
+- **One boundary or more:** the sleep's entries are written at once in step
+  3, from the record frozen in step 0.
+  - **The first period to close always keeps its frozen contents,** plus its
+    slept share: the sleep up to its boundary, or all of it if the sleep
+    ended first, with that share's energy. Its flags and charging state are
+    as at entry. Its level is the entry's, less the sleep's energy up to the
     period's end.
-  - **Each whole slept period** becomes one entry: 900 s slept, its energy
-    at `P_SLEEP_UW`, no `5C` reports, a dark load (`led_pm` 0, `bkl` 0),
-    the flags as at entry, and the level stepped down by the sleep's energy
-    up to that boundary.
-  - **The remainder** becomes the new period: the live accumulators, which
-    have collected since the wake, plus the remainder's slept share and that
-    share's energy.
-  - **A boundary between the wake and step 4** (the sleep ended within the
-    recovery's few seconds of one) closes a period that holds only the
-    sleep's remainder share. The live observations all go to the period open
-    at step 4. They are aggregates and cannot be split; at most a few
-    seconds land one period late, an approximation declared and tested.
+  - **Each later period the sleep covers whole** becomes one entry: 900 s
+    slept, its energy at `P_SLEEP_UW`, no `5C` reports, a dark load
+    (`led_pm` 0, `bkl` 0), the flags as at entry, and the level stepped down
+    by the sleep's energy up to that boundary.
+  - **A period whose boundary falls between the wake and step 3** holds only
+    the part of the sleep's share inside it, with no observations.
+  - **The period open at step 3** takes the live accumulators (all their
+    `5C` intake, `battery.c:354`, and their live energy, `battery.c:666`),
+    plus any of the sleep's share inside it. Live observations are
+    aggregates and cannot be split, so at most a few seconds of them land
+    one period late; declared and tested.
+  - **Codex's example:** a period ending at 900 s, the sleep from 890 to
+    899, step 3 at 901. The period ending at 900 closes with its frozen
+    contents and 9 s slept, and the next takes the live 899-901.
   - **At most `LOG_LEN` entries are written**, since older ones would be
     overwritten anyway. `log_written` advances by the full count.
   - **Written synchronously**, so a dump never meets a catch-up that is
@@ -562,7 +579,7 @@ sleep's sequence number (section 8).
 - **The wireless clock:** lock-LED item 5.
 - **Sleep figures on `Fn`+`D`.**
 
-## Validation (revision 4)
+## Validation (revision 5)
 
 **On the host, before the flash** (`scripts/battery_sim`, building
 `battery.c` and `power.c` on the Mac):
@@ -585,13 +602,16 @@ sleep's sequence number (section 8).
   - the PCF-failure fallback;
   - the round trip through `ak820battery.py`;
   - a dump between two sleeps, and one during a recovery (it answers
-    "pending" until step 4, and the host retries);
+    "pending" until step 3, and the host retries);
   - `5C` reports arriving during the recovery land in the live period,
     never in the frozen one;
-  - no period closes before step 4, even when the open period's awake time
+  - no period closes before step 3, even when the open period's awake time
     reaches its end during the recovery;
-  - a sleep crossing no boundary merges into one period; a boundary falling
-    between the wake and step 4 gives a period with only the sleep's share.
+  - no boundary through step 3: one merged period; codex's case (the
+    sleep ends just before a boundary that falls before step 3): the first
+    period keeps its frozen contents and its slept share, and the live data
+    goes to the next; a sleep across many boundaries with step 3 past
+    another one.
 - **The replay:** a v7 log with sleeps, through the sleep semantics; a CSV
   without `vdd_avg` is read; the mixed-entry approximation's error stated.
 - **power.c:** each mode's sleep time, low battery's (Normal at 3 min, Full
@@ -627,7 +647,8 @@ sleep's sequence number (section 8).
    - the clock's offset before the first SET.
 4. **The clock without the daemon** (and the acquisition split, with a dev
    hook that defers its full read by 1 s once: it must reacquire, never set
-   the clock a second wrong):
+   the clock a second wrong; the hook behind `HC_DEVHOOK`'s guard, dev builds
+   only):
    - the daemon paused, and the board's clock read with `ak820 clock` after
      a sleep;
    - then host syncs injected at 0.2, 1 and 3 s after a wake (data on
@@ -675,17 +696,12 @@ sleep's sequence number (section 8).
       and low (constant power is assumed);
     - time left graded per section 6.
 
-## Questions for the third verify
+## Questions for the fourth verify
 
-1. The budget: one arbiter for every PCF transaction, admitted under 10 ms
-   into the pass with a 5 ms timeout and the pass's other display work
-   deferred. Does anything in a recovery pass still reach 25 ms?
-2. The log: no closure before step 4, the zero-boundary merge, and a
-   boundary between the wake and step 4. Is that complete against
-   `log_task()`, `battery_5c_report()` and `energy_tick()`?
-3. The acquisition split: the bracketed second required of the full read,
-   within 900 ms of the edge, or reacquire.
-4. The repaint hold's generations.
+1. The log's boundaries counted through step 3, and the first closing
+   period always keeping its frozen contents: does that settle W2?
+2. The gauge moved ahead of the acquisition, and both repaints scheduled
+   one component per pass under a 500 ms bound: any new problem?
 
 ## Codex's plan review (10-19) and what changed
 
@@ -775,3 +791,20 @@ new must-fix. Revision 4:
 | W4 | should fix: step 4 done is not the battery row repainted; step 3 can supersede step 2's clock; the 250 ms release cannot promise "never stale" | **Fixed:** two repaints tracked by generation (the clock after step 2, the row after step 4); step 3's later sub-second correction not waited for (a tick's worth); the promise is "never stale unless a repaint fails" (step 9). |
 | W5 | note: keep the 3 s supply deadline unconditional | **Fixed** (step 7). |
 | W6 | note: keep RX parsing, ACKs and reports running during the input gate | **Agreed:** only the battery poll and the recovery's I/O wait. |
+
+## Codex's third verify (10-19) and what changed
+
+[Verbatim](review-codex-deep-sleep-plan-verify3-2026-10-19.md), prompt
+[`review-prompt-deep-sleep-plan-verify3.txt`](review-prompt-deep-sleep-plan-verify3.txt).
+One must-fix left: W1, W3, W5 and W6 resolved; W4 resolved as a relaxed
+policy, with a should-fix. Revision 5, with **steps 3 and 4 swapped** (the
+gauge is now 3, the acquisition 4; the tables above keep the numbering of
+their revision):
+
+| # | finding (short) | disposition |
+|---|---|---|
+| X1 | **must fix (W2):** when the sleep crosses no boundary but the recovery does (sleep 890-899, step 3 at 901, boundary at 900), the merge rule and the recovery-boundary rule conflict, and the latter would drop the frozen contents | **Fixed:** boundaries counted from the sleep's start through step 3; none means one merged period; otherwise the first closing period always keeps its frozen contents plus its slept share, a period whose boundary falls during the recovery holds only the sleep's share inside it, and the live intake (`5C` and energy) goes to the period open at step 3 (section 6). |
+| X2 | should fix (W4): generations say what was painted, not when; a clean row waits a second and dirty components go at 10 Hz, so 250 ms can be short; and the gauge's step came after the 1.5 s acquisition | **Fixed:** the correction and the debit mark the clock and the row dirty, and one component is painted every pass while the hold is on; the bound 500 ms; the gauge moved ahead of the acquisition (step 9). |
+| X3 | note: `loop_acct`'s interval closes at housekeeping, after the input work; take the admission stamp before keyboard processing | **Fixed** (section 4, "The budget"). |
+| X4 | note: keep the confirming read's equality check and the original timeout across a reacquisition | **Fixed** (step 4). |
+| X5 | note: the new delay hook behind `HC_DEVHOOK`'s guard | **Fixed** (validation 4). |
