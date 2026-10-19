@@ -1,0 +1,225 @@
+{
+ "rows": [
+  {
+   "mask": 0,
+   "yield_ms": 2,
+   "applied": 0,
+   "scan_only": false,
+   "wfi_per_s": 0.0,
+   "isr": {
+    "isr_dt_s": 59.997,
+    "isr_per_s": 3882.1,
+    "isr_mean_us": 187.4,
+    "isr_min_us": 160.0,
+    "isr_max_us": 266.7,
+    "isr_cpu_pct": 72.7,
+    "row_samples_per_row_per_s": 215.7,
+    "timebase_vs_wall": 0.9999
+   },
+   "logger": {
+    "n": 60,
+    "q_ma": 27.908252962021294,
+    "mean_ma": 27.91775,
+    "sd_ma": 0.727430132354735,
+    "vcell_mv": 4157.541666666667
+   },
+   "link": {
+    "sent": 819,
+    "timeouts": 5,
+    "queue_full": 0,
+    "giveups": 0,
+    "replaced": 0,
+    "uart_overrun": 0,
+    "uart_framing": 0,
+    "uart_parity": 0
+   },
+   "presses": 400,
+   "edges": 796,
+   "stalls": 0,
+   "window_presses": 0,
+   "rowgap_ms": 7,
+   "rowgap_transition_ms": 5,
+   "engaged": true,
+   "continuous": true,
+   "n": 400,
+   "ok": true
+  },
+  {
+   "mask": 6,
+   "yield_ms": 2,
+   "applied": 6,
+   "scan_only": false,
+   "wfi_per_s": 2207.388205377194,
+   "isr": {
+    "isr_dt_s": 59.995,
+    "isr_per_s": 3878.9,
+    "isr_mean_us": 187.6,
+    "isr_min_us": 160.0,
+    "isr_max_us": 266.7,
+    "isr_cpu_pct": 72.8,
+    "row_samples_per_row_per_s": 215.5,
+    "timebase_vs_wall": 0.9998
+   },
+   "logger": {
+    "n": 60,
+    "q_ma": 27.075775344889745,
+    "mean_ma": 27.10525,
+    "sd_ma": 0.4386375525902598,
+    "vcell_mv": 4155.729166666667
+   },
+   "link": {
+    "sent": 820,
+    "timeouts": 7,
+    "queue_full": 0,
+    "giveups": 0,
+    "replaced": 0,
+    "uart_overrun": 5,
+    "uart_framing": 0,
+    "uart_parity": 0
+   },
+   "presses": 400,
+   "edges": 800,
+   "stalls": 0,
+   "window_presses": 0,
+   "rowgap_ms": 7,
+   "rowgap_transition_ms": 5,
+   "engaged": true,
+   "continuous": true,
+   "n": 400,
+   "ok": false
+  },
+  {
+   "mask": 7,
+   "yield_ms": 2,
+   "applied": 7,
+   "scan_only": true,
+   "wfi_per_s": 14269.349533225866,
+   "isr": {
+    "isr_dt_s": 59.994,
+    "isr_per_s": 1481.1,
+    "isr_mean_us": 33.1,
+    "isr_min_us": 26.7,
+    "isr_max_us": 90.7,
+    "isr_cpu_pct": 4.9,
+    "row_samples_per_row_per_s": 246.9,
+    "timebase_vs_wall": 0.9999
+   },
+   "logger": {
+    "n": 60,
+    "q_ma": 24.213406097993165,
+    "mean_ma": 24.190749999999998,
+    "sd_ma": 0.13800584917596642,
+    "vcell_mv": 4155.583333333333
+   },
+   "link": {
+    "sent": 819,
+    "timeouts": 6,
+    "queue_full": 0,
+    "giveups": 0,
+    "replaced": 0,
+    "uart_overrun": 0,
+    "uart_framing": 0,
+    "uart_parity": 0
+   },
+   "presses": 400,
+   "edges": 798,
+   "stalls": 0,
+   "window_presses": 0,
+   "rowgap_ms": 5,
+   "rowgap_transition_ms": 5,
+   "engaged": true,
+   "continuous": true,
+   "n": 400,
+   "ok": true
+  },
+  {
+   "mask": 15,
+   "yield_ms": 2,
+   "applied": 15,
+   "scan_only": true,
+   "wfi_per_s": 1553.2907820278353,
+   "isr": {
+    "isr_dt_s": 59.997,
+    "isr_per_s": 1494.7,
+    "isr_mean_us": 29.5,
+    "isr_min_us": 26.7,
+    "isr_max_us": 80.0,
+    "isr_cpu_pct": 4.4,
+    "row_samples_per_row_per_s": 249.1,
+    "timebase_vs_wall": 0.9999
+   },
+   "logger": {
+    "n": 60,
+    "q_ma": 23.005159322047355,
+    "mean_ma": 22.983666666666668,
+    "sd_ma": 0.118442815590359,
+    "vcell_mv": 4155.0625
+   },
+   "link": {
+    "sent": 820,
+    "timeouts": 6,
+    "queue_full": 0,
+    "giveups": 0,
+    "replaced": 0,
+    "uart_overrun": 0,
+    "uart_framing": 0,
+    "uart_parity": 0
+   },
+   "presses": 400,
+   "edges": 800,
+   "stalls": 0,
+   "window_presses": 0,
+   "rowgap_ms": 5,
+   "rowgap_transition_ms": 5,
+   "engaged": true,
+   "continuous": true,
+   "n": 400,
+   "ok": true
+  },
+  {
+   "mask": 0,
+   "yield_ms": 2,
+   "applied": 0,
+   "scan_only": false,
+   "wfi_per_s": 0.0,
+   "isr": {
+    "isr_dt_s": 59.994,
+    "isr_per_s": 3883.5,
+    "isr_mean_us": 187.3,
+    "isr_min_us": 160.0,
+    "isr_max_us": 266.7,
+    "isr_cpu_pct": 72.8,
+    "row_samples_per_row_per_s": 215.7,
+    "timebase_vs_wall": 0.9999
+   },
+   "logger": {
+    "n": 60,
+    "q_ma": 27.432014644557704,
+    "mean_ma": 27.4065,
+    "sd_ma": 0.4285295116708783,
+    "vcell_mv": 4153.958333333333
+   },
+   "link": {
+    "sent": 819,
+    "timeouts": 6,
+    "queue_full": 0,
+    "giveups": 0,
+    "replaced": 0,
+    "uart_overrun": 0,
+    "uart_framing": 0,
+    "uart_parity": 0
+   },
+   "presses": 400,
+   "edges": 795,
+   "stalls": 0,
+   "window_presses": 0,
+   "rowgap_ms": 7,
+   "rowgap_transition_ms": 8,
+   "engaged": true,
+   "continuous": true,
+   "n": 400,
+   "ok": true
+  }
+ ],
+ "at": "2026-10-18 19:03:44"
+}
