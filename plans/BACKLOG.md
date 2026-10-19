@@ -58,7 +58,7 @@ emulation switches pin modes with read-modify-writes of P0's `MODE`
 two key rows (A18, A19) that the row ISR drives, so each mode switch needs a
 short lock of its own (or `BSET`/`BCLR`-only writes). A plan and codex first.
 
-## flash.sh syncs the clock beside the daemon: two owners (2026-10-19)
+## ~~flash.sh syncs the clock beside the daemon: two owners~~ FIXED 2026-10-19 (`9880f47`)
 
 `flash.sh` ends with `ak820ctl clock` while the daemon, if installed, does its
 own sync on the board's enumeration: two clock transactions at once, which
@@ -70,6 +70,12 @@ three minutes after a flash, before any bench run. Not proven to be the
 collision (the whole-second slips are on record too, at -1000 ms). **Fix:**
 `flash.sh` leaves the clock to the daemon when it is running (`ak820
 status`), or pauses it around its own sync.
+
+**Fixed by the Gremlin session, `9880f47`:** `flash.sh` leaves the sync to a
+daemon whose status file says `clock=this daemon` and was written in the last
+2 minutes (macOS and Windows paths both), and never runs `ak820ctl` on
+Windows. Verified on Gremlin: one sync, `sync (enumerated)` at -25.2 ms, 7 s
+after the board returned. The Mac's status file carries the same line.
 
 ## `raw_edges` undercounts by design; it could be exact (2026-10-19)
 

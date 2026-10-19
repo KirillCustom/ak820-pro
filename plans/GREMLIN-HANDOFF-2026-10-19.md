@@ -24,10 +24,12 @@ testing of work already done.** Everything below is pushed; pull first.
 
 ## Ground rules
 
-1. ⚠️ **Never enumerate HID on Windows.** `ak820ctl`, the Python timekeeper
-   and `hostagent/ak820battery.py`/`ak820health.py` (through
-   `ak820health.open_device`) still enumerate; use the Rust `ak820` CLI, or
-   `ak820text.open_device`, which does not.
+1. ⚠️ **Never enumerate HID on Windows.** `ak820ctl` and the Python
+   timekeeper still enumerate; use the Rust `ak820` CLI. (This line said
+   `ak820text.open_device` did not; it did, once per process, its cache
+   lasting one process. Fixed by the Gremlin session in `9880f47`: on
+   Windows it lists the board's interface by hardware id, and
+   `ak820health.open_device` delegates to it.)
 2. **One clock owner per board:** Gremlin's daemon owns Gremlin's board.
    `flash.sh` ends with `ak820ctl clock` beside the daemon, which is two
    owners (`BACKLOG.md`, "flash.sh syncs the clock beside the daemon"): stop
