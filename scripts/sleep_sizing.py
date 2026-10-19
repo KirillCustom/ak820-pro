@@ -62,6 +62,8 @@ def main():
     ap.add_argument("--log", default=os.path.join(HERE, "..", "history", "power-bench-2026-10-15", "power.csv"))
     ap.add_argument("--out", default=os.path.join(HERE, "..", "history", "sleep-sizing-" + time.strftime("%Y%m%d-%H%M")))
     a = ap.parse_args()
+    if a.n < 10:
+        sys.exit("--n: at least 10")
     entries = []
     for e in a.masks.split(","):
         m, _, y = e.partition(":")
@@ -87,7 +89,27 @@ def main():
                     raise SystemExit("the board never reported the pack")
                 time.sleep(1)
             sb.stage(sb.SCREEN_OFF)
+            up0, probed = health.read_isr()["uptime_ms"], False
             for mask, y in entries:
+                if mask & 4 and not probed:
+                    # The plain-WFI probe first, briefly: whether a WFI with
+                    # PMU_CTRL 0 touches USB is unverified (codex). 30 s on its
+                    # own TTL, then the board must answer; if it does not, its
+                    # TTL ends the WFI and the transceiver bit is set back.
+                    with_dev(light, 6, 2, 0, 30)   # WFI needs the yield: the idle thread runs only then
+                    time.sleep(20)
+                    try:
+                        with_dev(light, 6, 2, 0, 30)   # WFI needs the yield: the idle thread runs only then
+                    except BaseException as e:
+                        cm.say(f"⚠️ the WFI probe broke USB ({e}); waiting out its TTL")
+                        time.sleep(25)
+                        try:
+                            with_dev(light, 0)
+                        except BaseException as e2:
+                            raise SystemExit(f"USB did not come back after the WFI probe: {e2}")
+                        raise SystemExit("the WFI probe cut USB; it came back after its TTL. Stopping.")
+                    probed = True
+                    cm.say("the WFI probe kept USB up for 20 s")
                 # The entry's own transition: counters reset BEFORE the mask
                 # changes, read after the settle (codex: it can reach ~8 ms).
                 with_dev(lambda h: health.reset_counters(h))
@@ -111,23 +133,28 @@ def main():
                         sb.press(dev, held, gap)
                 time.sleep(0.15)
                 c1, l1 = sb.counts(), sb.link()
+                fin = with_dev(light, mask, y)
+                up1 = health.read_isr()["uptime_ms"]
+                continuous = up1 > up0   # a reset would have started the board's uptime over
+                up0 = up1
                 d, dw = sb.delta(cw, c1), sb.delta(c0, cw)
                 dl = {k: l1[k] - l0[k] for k in l1}
                 rw = health.read_rows()
                 n = a.n * len(sb.RATES)
                 wfi_s = (st["wfi"] - w0) / (t1 - t0)
-                engaged = (st["applied"] == mask and st["scan_only"] == bool(mask & 1)
+                engaged = (st["applied"] == mask and fin["applied"] == mask and st["scan_only"] == bool(mask & 1)
                            and (wfi_s > 0) == bool(mask & 4) and (st["yield_ms"] == y or not mask & 2))
                 link_ok = (dl["giveups"] == 0 and dl["queue_full"] == 0 and dl["uart_overrun"] == 0
                            and dl["uart_framing"] == 0 and dl["uart_parity"] == 0)
-                good = (engaged and link_ok and dw["presses"] == 0 and d["presses"] == n and d["edges"] == 2 * n
+                good = (engaged and link_ok and continuous and dw["presses"] == 0 and d["presses"] == n and d["edges"] == 2 * n
                         and c1["stalls"] == c0["stalls"] and rw["row_gap_max_ms"] <= 6)
                 ok &= good
                 row = {"mask": mask, "yield_ms": y, "applied": st["applied"], "scan_only": st["scan_only"],
                        "wfi_per_s": wfi_s, "isr": isr, "logger": m, "link": dl,
                        "presses": d["presses"], "edges": d["edges"], "stalls": (c1["stalls"] - c0["stalls"]) & 0xFFFF,
                        "window_presses": dw["presses"], "rowgap_ms": rw["row_gap_max_ms"],
-                       "rowgap_transition_ms": gap_transition, "engaged": engaged, "n": n, "ok": good}
+                       "rowgap_transition_ms": gap_transition, "engaged": engaged, "continuous": continuous,
+                       "n": n, "ok": good}
                 rows.append(row)
                 cm.say(f"mask {mask:2d} yield {y}: applied {st['applied']:2d}, "
                        + (f"{m['q_ma']:.2f} mA, " if m else "no logger, ")
@@ -135,11 +162,15 @@ def main():
                        f"stalls {row['stalls']}, rowgap {rw['row_gap_max_ms']} ms (entry {gap_transition}), "
                        f"ack timeouts {dl['timeouts']}, giveups {dl['giveups']}  {'ok' if good else 'FAIL'}")
         finally:
-            sb.attempt("relay 1 open", sb.relay1, dev, False)
-            sb.attempt("mask 0", with_dev, light, 0)   # if this fails, the mask ends by itself in 240 s
-            sb.attempt("stage released", sb.stage, None)
-            if sb.attempt("relay 2 on", sb.relay2, "on"):
-                cm.say("restored: mask 0, stage released, relay 2 on")
+            done = [sb.attempt("relay 1 open", sb.bounded, sb.relay1, dev, False),
+                    sb.attempt("mask 0", with_dev, light, 0),   # if this fails, the mask ends by itself in 240 s
+                    sb.attempt("stage released", sb.stage, None),
+                    sb.attempt("relay 2 on", sb.relay2, "on")]
+            if all(done):
+                cm.say("restored: relay 1 open, mask 0, stage released, relay 2 on")
+            else:
+                ok = False
+                cm.say("⚠️ cleanup incomplete: see above")
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "sleep-sizing.json"), "w") as f:
         json.dump({"rows": rows, "at": time.strftime("%Y-%m-%d %H:%M:%S")}, f, indent=1, default=str)

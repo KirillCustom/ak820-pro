@@ -22,7 +22,7 @@ counts every key. The relay is loud. The stage and relay 2 are restored in a
 `finally`. Needs a dev build with op 14 and HC_POWER, and relay 2 on at the
 start.
 """
-import argparse, json, os, subprocess, sys, time
+import argparse, json, os, subprocess, sys, threading, time
 
 import hid
 
@@ -59,6 +59,27 @@ def link():
         return health.read_link(h)
     finally:
         h.close()
+
+
+def bounded(fn, *args, timeout=5.0):
+    """Run fn in a thread and give up waiting after `timeout` s: an in-process
+    HID call that hangs must not hold every cleanup step behind it (codex)."""
+    box = {}
+
+    def run():
+        try:
+            box["ok"] = fn(*args)
+        except BaseException as e:
+            box["err"] = e
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        raise SystemExit(f"timed out after {timeout:.0f} s")
+    if "err" in box:
+        raise box["err"]
+    return box.get("ok")
 
 
 def attempt(what, fn, *args):
@@ -165,10 +186,14 @@ def main():
                 cm.say(f"one press after {idle} s idle: presses {d['presses']}, edges {d['edges']}, "
                        f"stalls {d['stalls']}  {'ok' if good else 'FAIL'}")
         finally:
-            attempt("relay 1 open", relay1, dev, False)
-            attempt("stage released", stage, None)
-            if attempt("relay 2 on", relay2, "on"):
-                cm.say("restored: stage released, relay 2 on")
+            done = [attempt("relay 1 open", bounded, relay1, dev, False),
+                    attempt("stage released", stage, None),
+                    attempt("relay 2 on", relay2, "on")]
+            if all(done):
+                cm.say("restored: relay 1 open, stage released, relay 2 on")
+            else:
+                ok = False
+                cm.say("⚠️ cleanup incomplete: see above")
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "sleep-baseline.json"), "w") as f:
         json.dump(res, f, indent=1)

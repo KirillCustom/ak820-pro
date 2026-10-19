@@ -69,9 +69,14 @@ def deep(h, arg=0, delay=DELAY_S, cap=120, no_feed=False):
             "phy_was_off": bool(o[21]), "usb_restarted": bool(o[22])}
 
 
-def need_bus():
-    if not on_bus():
-        raise SystemExit("not on USB")
+def need_bus(wait_s=30.0):
+    """Back on USB, waiting up to wait_s for it to enumerate (codex)."""
+    deadline = time.time() + wait_s
+    while not on_bus():
+        if time.time() > deadline:
+            raise SystemExit(f"not on USB after {wait_s:.0f} s")
+        time.sleep(0.5)
+    time.sleep(2)
 
 
 def with_dev(fn, *args, **kw):
@@ -144,16 +149,22 @@ def main():
             kp0 = sb.counts()["presses"]
             with_dev(deep, 1, DELAY_S, a.cap, a.no_feed)
             t_arm = time.time()
-            cm.say(f"armed ({DELAY_S} s delay, cap {a.cap} s); awake {res['awake_ma']:.2f} mA; data off")
+            cm.say(f"armed ({DELAY_S} s delay, cap {a.cap} s); awake {res['awake_ma']:.2f} mA with data; data off")
             uhub("off")
-            # Entry: three samples 2 mA under the awake draw, by the delay plus 30 s.
+            # The awake draw with the data off (the USB data itself costs ~1.7
+            # mA), from the samples before the delay ends; then entry: three
+            # samples after it, 2 mA under that (codex).
+            time.sleep(max(0.0, t_arm + DELAY_S - 1 - time.time()))
+            off = [c for t, c in tail_ma(a.log, 12) if t_arm + 5 < t < t_arm + DELAY_S - 1]
+            res["awake_dataoff_ma"] = sum(off) / len(off) if off else None
             t_asleep = None
-            while time.time() < t_arm + DELAY_S + 30:
-                cur = [c for t, c in tail_ma(a.log, 3) if t > t_arm]
-                if len(cur) == 3 and all(c < res["awake_ma"] - 2.0 for c in cur):
-                    t_asleep = time.time()
-                    break
-                time.sleep(1)
+            if res["awake_dataoff_ma"] is not None:
+                while time.time() < t_arm + DELAY_S + 30:
+                    cur = [c for t, c in tail_ma(a.log, 3) if t > t_arm + DELAY_S + 1]
+                    if len(cur) == 3 and all(c < res["awake_dataoff_ma"] - 2.0 for c in cur):
+                        t_asleep = time.time()
+                        break
+                    time.sleep(1)
             res["asleep_seen_at"] = t_asleep
             if t_asleep is None:
                 cm.say("no fall in the current: it did not go to sleep (the record will say why)")
@@ -166,16 +177,11 @@ def main():
                 asleep = [c for t, c in tail_ma(a.log, int(a.wait) - 2) if t > t_asleep]
                 res["asleep_ma"] = sum(asleep) / len(asleep) if asleep else None
                 res["press_at"] = time.time()
-                sb.press(dev, 60, 200)
+                sb.press(dev, 40, 200)   # a realistic tap, not a long hold (codex)
                 time.sleep(5)
             cm.say("data on")
             uhub("on")
-            deadline = time.time() + 30
-            while not on_bus():
-                if time.time() > deadline:
-                    raise SystemExit("the board did not come back on USB in 30 s: check it by hand")
-                time.sleep(0.5)
-            time.sleep(3)
+            need_bus(30)
             rec = with_dev(deep)
             res["record"] = rec
             res["key_presses_gained"] = (sb.counts()["presses"] - kp0) & 0xFFFF
@@ -191,19 +197,25 @@ def main():
                 except (OSError, ValueError, subprocess.TimeoutExpired) as e:
                     res["watchdog_record"] = f"unread: {e}"
                 wr = res["watchdog_record"] if isinstance(res["watchdog_record"], dict) else {}
-                ok = t_asleep is not None and rec["state"] == 0 and wr.get("site") in (27, "deep_sleep")
+                ok = t_asleep is not None and rec["state"] == 0 and wr.get("valid") and wr.get("site_id") == 27
             elif a.no_press:
                 ok = t_asleep is not None and rec["slept"] and rec["reason"] == "cap"
             else:
                 ok = t_asleep is not None and rec["slept"] and rec["reason"] == "key" and rec["key_gain"] >= 1
         finally:
-            sb.attempt("relay 1 open", sb.relay1, dev, False)
-            sb.attempt("data on", uhub, "on")
-            if sb.attempt("the board on USB", need_bus):
-                sb.attempt("arm cancelled", with_dev, deep, 2)
-                sb.attempt("stage released", sb.stage, None)
-            if sb.attempt("relay 2 on", sb.relay2, "on"):
-                cm.say("restored: data on, the arm cancelled, stage released, relay 2 on")
+            done = [sb.attempt("relay 1 open", sb.bounded, sb.relay1, dev, False),
+                    sb.attempt("data on", uhub, "on")]
+            if sb.attempt("the board on USB", need_bus, 30):
+                done += [sb.attempt("arm cancelled", with_dev, deep, 2),
+                         sb.attempt("stage released", sb.stage, None)]
+            else:
+                done.append(False)
+            done.append(sb.attempt("relay 2 on", sb.relay2, "on"))
+            if all(done):
+                cm.say("restored: relay 1 open, data on, the arm cancelled, stage released, relay 2 on")
+            else:
+                ok = False
+                cm.say("⚠️ cleanup incomplete: see above")
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "deep-sleep.json"), "w") as f:
         json.dump(res, f, indent=1, default=str)
