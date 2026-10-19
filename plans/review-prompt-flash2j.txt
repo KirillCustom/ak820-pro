@@ -1,0 +1,13 @@
+You are reviewing a small firmware delta before it is flashed to a keyboard (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2). Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
+
+The board runs 53afebd553 (a dev build: flash 2i's lock-LED channel receiver, Phase 2's gauge and power modes, the sleep experiments off by default). You reviewed flash 2i in plans/review-codex-flash2i-2026-10-18.md. Its note 2 said the busy flag that holds the LCD band's settled Scroll Lock is held for every frame, P3 included, though P3 never moves Scroll, so frequent P3 traffic can delay a genuine Scroll update. The fix is the one commit on top of the board's build:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 442c9f49c9
+Board code: /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/ (lockchan.c, lockchan.h, indicators.c, bluetooth/ch582f_ajazz.c and .h). `lockchan_holds_scroll()` holds for P0 and P2 throughout, and for a bits 3-4 preamble and its header (which may announce P2), never for P1's payload or for P3; both of the band's uses of the hold (the settle hold and the own-key shortcut in indicators.c) take it; `lockchan_busy()` stays for the devhook. The wire format is plans/LOCK-LED-CHANNEL-PLAN.md, "The wire format". The host test is scripts/lockchan_test.py, `test_scroll_hold` (it compiles lockchan.c on the Mac; it passes).
+
+Please check, citing file:line:
+1. Is the rule right against the wire format: which profiles and which phases of a frame can move bit 2 (Scroll)? Can a frame be in a state where Scroll may still move and the hold is released (the band would then show a channel transition as a real Scroll change), or the other way?
+2. The two call sites in indicators.c: the settle hold and the own-key shortcut, and anything else that read lockchan_busy() before and now reads the new function, or should.
+3. Does `test_scroll_hold` exercise what it claims? What would let it pass with the rule wrong?
+4. Anything that could cost a keystroke, stall the main loop, or differ on a daily build (the receiver is fed only in dev builds).
+
+Rank findings must-fix / should-fix / note; be brief. If nothing blocks the flash, say so plainly.

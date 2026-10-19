@@ -216,7 +216,21 @@ Left for when it resumes, in order:
    (they may announce P2), never for P1's payload or for P3; both of the
    band's uses (the settle hold, the own-key shortcut) take it, and
    `lockchan_busy()` stays for the devhook. Tested on the host
-   (`test_scroll_hold`); a codex review before it goes on a flash.
+   (`test_scroll_hold`). **Codex's review (10-19, flash 2j:
+   [verbatim](review-codex-flash2j-2026-10-19.md), prompt
+   [`review-prompt-flash2j.txt`](review-prompt-flash2j.txt)): no must-fix,
+   nothing blocks the flash.** Notes 1, 2 and 4: the rule matches the wire
+   format (it holds conservatively through P0 and the ambiguous bits 3-4
+   phases, never releases early in an intact frame), both call sites are
+   right, no blocking work, daily builds unchanged; agreed. Should-fix 3:
+   each profile ran on a fresh receiver, whose `pay_profile` starts as P0, so
+   a rule that read the previous frame's profile would pass. **Fixed:** every
+   profile after every other on one receiver; the planted rule fails 6 of
+   them, the old test none. Its other half (the test calls only the
+   predicate, not the band's two call sites) is **accepted**: `indicators.c`
+   does not build on the host, the call sites are source-reviewed (note 2),
+   and a real Scroll change under P1 and P3 traffic is a board check for
+   when the daemon sends (item 4).
 3. A Caps change while padding bits are set: does the Mac's own Caps report
    keep bits 5-7 (the board's guard would then drop it, and the band would
    miss the change)? Needs the probe's `capsmix` to take a value.

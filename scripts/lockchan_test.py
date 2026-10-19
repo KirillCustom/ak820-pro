@@ -472,26 +472,40 @@ def expect(name, w, want, f=None, user=0):
     return rx, t + 31 * len(w)
 
 
+def hold_frame(rx, prof, t, name):
+    """One frame of profile `prof` from a warm-up at `t`; checks where Scroll is
+    held and busy is set. Returns the time after."""
+    f = dict(payload=b"hold", type=1, seq=3, profile=prof, user=0x04)
+    w = encode(**f)
+    n_hdr = 3 + len(sections(f["payload"], f["type"], f["seq"], prof)[0][1])
+    t = rx.warm(f["user"], t)
+    held, busy = [], []
+    for k, v in enumerate(w):
+        rx.feed(v, t + 31 * k)
+        held.append(rx.holds())
+        busy.append(rx.busy())
+    last = len(w) - 1
+    want = {P0: [k < last for k in range(len(w))], P2: [k < last for k in range(len(w))],
+            P1: [k < n_hdr - 1 for k in range(len(w))], P3: [False] * len(w)}[prof]
+    check(f"Scroll held only where P{prof} can move it{name}", held == want, f"{held}")
+    check(f"busy through all of P{prof}{name}", busy == [k < last for k in range(len(w))], f"{busy}")
+    return t + 31 * len(w)
+
+
 def test_scroll_hold():
     """The band's Scroll Lock waits only while a frame can move it: P0 and P2
     to the end, P1 through its preamble and header only (they could still
     announce P2), P3 never (codex, flash 2i, note 2)."""
     for prof in ALL:
-        f = dict(payload=b"hold", type=1, seq=3, profile=prof, user=0x04)
-        w = encode(**f)
-        n_hdr = 3 + len(sections(f["payload"], f["type"], f["seq"], prof)[0][1])
-        rx = Rx()
-        t = rx.warm(f["user"], 1000)
-        held, busy = [], []
-        for k, v in enumerate(w):
-            rx.feed(v, t + 31 * k)
-            held.append(rx.holds())
-            busy.append(rx.busy())
-        last = len(w) - 1
-        want = {P0: [k < last for k in range(len(w))], P2: [k < last for k in range(len(w))],
-                P1: [k < n_hdr - 1 for k in range(len(w))], P3: [False] * len(w)}[prof]
-        check(f"Scroll held only where P{prof} can move it", held == want, f"{held}")
-        check(f"busy through all of P{prof}", busy == [k < last for k in range(len(w))], f"{busy}")
+        hold_frame(Rx(), prof, 1000, "")
+    # Every profile after every other on one receiver: a rule that read the
+    # previous frame's profile would pass on a fresh receiver, which starts
+    # as P0 (codex, flash 2j, should-fix 3).
+    for prev in ALL:
+        for prof in ALL:
+            rx = Rx()
+            t = hold_frame(rx, prev, 1000, f" (first, before P{prof})")
+            hold_frame(rx, prof, t + GAP_MS + 100, f" after P{prev}")
     # A person's Num + Scroll together (a host restoring both) looks like a P0
     # preamble's first edge: held until the quiet gives it up.
     rx = Rx()
