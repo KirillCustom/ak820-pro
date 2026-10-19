@@ -16,7 +16,7 @@ the host writes LED bytes and the board decodes them.
 
 The messages are small: a title and an artist (the LCD's text slot holds ~30
 characters), a clock time, maybe a short status. Updates are rare: a track
-change every few minutes, a clock sync now and then.
+change every few minutes, a clock sync every few minutes (resume item 5).
 
 ## What is measured (all on JD's Mac and board, 10-17/18)
 
@@ -225,6 +225,21 @@ Left for when it resumes, in order:
    elapsed idle time counts; coalesce to the latest state and resend it now
    and then, since nothing acknowledges; a clock frame's time refers to the
    anchor.
+5. **The wireless clock, once deep sleep is built and tested and the
+   channel carries now-playing.** An every-few-minutes job, not "now and
+   then": the display reads the SN32's RTC, clocked by the ILRC, which
+   wandered ~0.9% across a day (09-03/04, `docs/clock.md`) and a few hundred
+   ppm on 5-minute scales. With no host, the PCF discipline holds it only to
+   its 2 s snap, visibly (a wander, then a jump), and each deep sleep adds up
+   to ~1 s more (the 10-19 soak: 16 syncs found it -1.5 to +2.1 s off). So
+   a clock frame every few minutes, and the board learns the ILRC's
+   frequency from successive frames (a sparse SOF loop: each sync's residual
+   over the time since the last), to within the jitter of a lock-light
+   change's arrival. That jitter is unmeasured (~±20 ms is the guess
+   above) and sets how often and how close: measure it first. P3 moves no
+   light, so frequent frames are invisible. Codex's row 14 still holds:
+   settle who owns the RTC's reference off USB first, and keep wireless
+   syncs out of the SOF bias learner.
 
 ## The wire format (version 0, built 10-18)
 
