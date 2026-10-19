@@ -44,9 +44,21 @@ its frame number, which the first deep run needed):
   reached the Mac). The watchdog does not count asleep.
 [`SLEEP-PLAN.md`](SLEEP-PLAN.md), last section; the history folders.
 
-**Next (JD's call):** many sleep/wake cycles in a row on the rig, the knob,
-long sleeps, what the radio loses while asleep; then a real standby rung
-(plan, codex, build). 5 UART overruns at light sleep's mask 6 to explain.
+**Then, 20:14-20:47:** 50 of 50 deep-sleep cycles passed at the Mac (the
+first key 64 ms median against 36 awake: the wake costs ~28 ms, the key is
+kept); `history/deep-cycles-20261018/`.
+
+**Queued overnight 10-18/19, no hands** (each waits for the one before):
+00:30 the RGB-curve map, then the stages map, then `sleep_baseline.py`, then
+`deep_cycles.py --board-only --n 300` (`history/deep-soak-20261019/`), then
+one 1-hour deep sleep and a key (`history/deep-sleep-20261019-1h/`). If the
+keyboard is dead in the morning, a cycle never woke: the slider to cable and
+back.
+
+**Decided** (`SLEEP-PLAN.md`, last section): deep sleep is the standby,
+starting at screen-off (a first draft: Normal 7 min, Saver 3, Minimal 30 s);
+a key or the slider wakes it; no sleep while the screen is lit. **Next:** the
+build plan for it (codex first).
 
 ### Minimal mode on the board (10-18, 17:31)
 
