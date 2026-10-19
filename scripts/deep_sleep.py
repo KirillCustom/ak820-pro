@@ -134,8 +134,8 @@ def main():
     ap.add_argument("--log", default=os.path.join(HERE, "..", "history", "power-bench-2026-10-15", "power.csv"))
     ap.add_argument("--out", default=os.path.join(HERE, "..", "history", "deep-sleep-" + time.strftime("%Y%m%d-%H%M")))
     a = ap.parse_args()
-    if not 10 <= a.cap <= 600:
-        sys.exit("--cap: 10-600 s")
+    if not 10 <= a.cap <= 7200:
+        sys.exit("--cap: 10-7200 s")
     if not a.no_press and not 5 <= a.wait <= a.cap - 5:
         sys.exit("--wait: 5 s to the cap less 5")
     if not cm.relay_on():
@@ -147,7 +147,7 @@ def main():
     if len(devs) != 1:
         sys.exit(f"expected one USB relay, found {len(devs)}")
     ok = False
-    guard = sb.deadline_guard(DELAY_S + a.cap + 240, lambda: uhub("on"))
+    guard = sb.deadline_guard(DELAY_S + a.cap + 300, lambda: uhub("on"))
     with hid.Device(path=devs[0]["path"]) as dev:
         sb.hold_relay(dev)   # relay 2 goes through this handle too (macOS opens it exclusively)
         try:
@@ -164,6 +164,7 @@ def main():
             base = [c for _, c in tail_ma(a.log, 8)]
             res["awake_ma"] = sum(base) / len(base) if base else None
             kp0 = sb.counts()["presses"]
+            l0 = with_dev(lambda h: sb.health.read_link(h))
             with_dev(deep, 1, DELAY_S, a.cap, a.no_feed)
             t_arm = time.time()
             cm.say(f"armed ({DELAY_S} s delay, cap {a.cap} s); awake {res['awake_ma']:.2f} mA with data; data off")
@@ -201,6 +202,10 @@ def main():
             need_bus(30)
             rec = with_dev(deep)
             res["record"] = rec
+            l1 = with_dev(lambda h: sb.health.read_link(h))
+            res["link"] = {k: l1[k] - l0[k] for k in ("sent", "timeouts", "giveups", "queue_full", "uart_overrun",
+                                                      "uart_framing", "uart_parity")}
+            cm.say(f"link across the run: {res['link']}")
             res["key_presses_gained"] = (sb.counts()["presses"] - kp0) & 0xFFFF
             res["logger"] = [(float(r["epoch"]), float(r["current_ma"])) for r in cm.log_rows(a.log, t_arm - 10, time.time())]
             cm.say(f"record: {rec}")
@@ -224,7 +229,8 @@ def main():
             elif a.no_press:
                 ok = t_asleep is not None and rec["slept"] and rec["reason"] == "cap"
             else:
-                ok = t_asleep is not None and rec["slept"] and rec["reason"] == "key" and rec["key_gain"] >= 1
+                ok = (t_asleep is not None and rec["slept"] and rec["reason"] == "key" and rec["key_gain"] >= 1
+                      and res["link"]["giveups"] == 0)
         finally:
             done = [sb.attempt("relay 1 open", sb.bounded, sb.relay1, dev, False),
                     sb.attempt("data on", uhub, "on")]

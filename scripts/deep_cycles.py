@@ -70,7 +70,7 @@ def main():
             sys.exit("the F19 listener is not running")
     if not os.path.exists(a.log):
         sys.exit("the power logger's CSV is missing")
-    caf = subprocess.Popen(["caffeinate", "-d"])
+    caf = subprocess.Popen(["caffeinate", "-i"] if a.board_only else ["caffeinate", "-d"])   # the displays may sleep board-only
     devs = hid.enumerate(sb.VID, sb.PID)
     if len(devs) != 1:
         sys.exit(f"expected one USB relay, found {len(devs)}")
