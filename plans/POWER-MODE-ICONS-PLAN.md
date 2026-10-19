@@ -15,8 +15,10 @@ queue.
 
 - Compiles clean, dev and daily: +1,016 bytes (the art is 784).
 - `scripts/battery_sim` passes against both firmware trees (`ladder.c`
-  takes the names from `POWER_HAS_BULB`): 146 on the deep-sleep tree, 142 on
-  the branch (`BATTERY_SIM_SRC` skips the four baseline checks). New checks
+  takes the names from `POWER_HAS_BULB`). Through `BATTERY_SIM_SRC` both
+  give 142, the same list line for line; a plain run gives 146 because it
+  adds the four pinned-baseline checks (flash 1's `battery.c`, which never
+  reads the tree under test), and the variable skips them. New checks
   in `l_modes` and `l_low_cap` catch three mutants of `power_lights_mode()`
   (low ignored, everything Saver when low, Lights out taken to Saver).
 - `hostagent/ak820battery.py` prints the new names (display only; the
