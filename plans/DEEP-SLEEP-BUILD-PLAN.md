@@ -843,3 +843,18 @@ included.
 | 8 | should fix: `deep_cycles.py`'s cleanup waits for USB before restoring power, so a run stopped asleep skips every control and leaves Minimal persisted; the log reader retries pending only 2 s | **Fixed:** both bench scripts restore relay 2 first (on USB power the ladder never sleeps; a charge start wakes the board), then data, then a rig tap if the board does not come back (a full pack gives no charge edge), then the controls. `ak820battery.py` retries pending for 12 s. |
 | 9 | should fix: judge a cycle after the recovery closes, and cancel any old arm first; the sim lacks exact report conservation, the log energy's carry, the open period's share and a mixed v7 replay | **Fixed:** `deep_cycles.py` waits for page 1's open steps to clear (12 s) and gates on it, and cancels an arm at the start. The sim's log checks are exact (every report in exactly one entry, the energy to its carry, the open period's 600 s); new `s_replay_mixed` (600 s awake, 300 asleep, per entry). Planted, each is caught: a dropped carry, live reports in the frozen period, a mixed entry played wholly awake. |
 | note | the locked sequence sound; page 1, record v2 and v7 decodes match; the RGB sums main-thread-owned; daily/fpb gain the sleep with no new dev exposure; `build.sh` proves linkage, not control flow | Noted. The instrumented build's PCF test ops (`WDT_TEST_HOOKS`) do synchronous I2C from raw HID and are not arbitrated: they mutate the clock on purpose and are never in a released or dev build. |
+
+## Codex's verify of the fixes (10-19)
+
+[Verbatim](review-codex-deep-sleep-build-verify-2026-10-19.md), prompt
+[`review-prompt-deep-sleep-build-verify.txt`](review-prompt-deep-sleep-build-verify.txt).
+**Nothing blocks the flash of `44605c1a9e`.** Findings 1-5, 7 and 9 verified
+fixed (2 and 5 judged better than proposed); 6 and 8 partly open, as below.
+No new keystroke-loss, stall, reset or daily-build regression found.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| V1 | should fix (6): the night's levels take their baseline at the accounting, after the recovery's live work; a cut before it would make the whole night 0 | **Fixed** (`752d4bcda7`): the level and the count's remainder are noted at the sleep's entry (`frz_level`, `frz_nj`); the debit runs down to the floor and not from it. New `s_log_late_cut` (a cut during the recovery, then the accounting); the late baseline, planted, fails it. 149 of 149. |
+| V2 | should fix (8): the deadline guard turns the data on and exits, skipping the `finally` | **Fixed:** one `restore()` (`deep_sleep.py`), used by both scripts' `finally` and their deadline guards: relay 1, relay 2, data, the board back (a tap if not), then the controls. |
+| V3 | should fix (8): the stage's release opens HID once; the daemon can hold it | **Fixed:** every stage call goes through the retrying open (`with_dev(cm.force_stage, ...)`). |
+| notes | the host's SET_TIME_MS under the arbiter, `PS_RECOVER_VERIFY`, the discipline's skip on a failing PCF, the supply samples' independence, the 29-byte layouts byte for byte | Noted; nothing to do. |

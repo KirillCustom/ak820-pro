@@ -1,0 +1,20 @@
+You are verifying fixes to a firmware build before it is flashed to a keyboard (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a CH582F radio module on UART2, a PCF8563 RTC on I2C). Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything except read-only git commands.
+
+You reviewed the deep-sleep build bf7d7d0280 in plans/review-codex-deep-sleep-build-2026-10-19.md: three must-fix, six should-fix. Every finding was taken; the dispositions are the table at the end of plans/DEEP-SLEEP-BUILD-PLAN.md ("Codex's implementation review (10-19) and what changed"). The fixes:
+  firmware: git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 44605c1a9e   (one commit on bf7d7d0280; board code in keyboards/a_jazz/ak820pro/: rtc/rtc.c and .h, sleep.c and .h, battery.c and .h, ak820pro.c)
+  outer repo: git -C /Users/jdlien/code/ak820-pro show d462183   (scripts/battery_sim/sleeps.c, sim.c, run.sh; scripts/deep_cycles.py, deep_sleep.py; hostagent/ak820battery.py; docs)
+All four flavours build with no warnings; the simulator passes 148 of 148, sanitizers included; ten planted bugs are each caught (four new: the old line-to-the-final-level, a dropped log-energy carry, live reports in the frozen period, a mixed entry replayed as wholly awake).
+
+Please check, citing file:line:
+1. Each of your nine findings: is it fixed as the disposition says, completely? Where a fix differs from what you proposed (finding 5 isolates the arm's settings by passing them as arguments instead of restoring on cancel; finding 2 counts PCF transactions in i2c_note and marks the pass's end in sleep_task, and holds the acquisition until the gauge has taken the slept seconds), is it equivalent or better?
+2. What the fixes could break:
+   - Can the acquisition's wait for rtc_wake_gauge_taken() stall, or can the gauge's no-transaction pass never come (the 10 s bound aside)? Is every path that ends the gauge step, the bound's included, calling it?
+   - The arbiter now spans the whole recovery (up to ~3.5 s normally, 10 s at the bound): does a host's RTC_SET_TIME_MS still land correctly, with the write machine under the admission and the 5 ms timeout, and its timed release (PS_RELEASE_WRITE) able to hit its window? Does PS_RECOVER_VERIFY (appended to the enum) keep STOP from ever being left asserted, and does anything else read ps_state's values?
+   - The discipline's new skip while a PCF write is pending or running, in any state: can it starve the standalone discipline (a PCF that keeps failing writes, the 60 s back-off), and is that acceptable?
+   - sleep_level_at's debit from acct_l0 and acct_nj0: right in every count state (RUN, CLAMP, RELAX, a cut, an unknown level, a sleep on USB)?
+   - The supply step's 15 samples: can battery_task's conversions stop after a wake so it always times out (and is the 3 s outcome then harmless)?
+   - Page 1 is now 29 bytes, data[3..31]; the record's last byte is the timed-out mask. Do the firmware's fill, the reply buffer, and ak820battery.py and deep_sleep.py's decodes agree byte for byte?
+3. The host side: does the bench scripts' new cleanup order (relay 1 open, relay 2 on, data on, the board back on USB with one rig tap if not, then the controls) restore everything in every stop point, including a stop while asleep with a full pack? Does deep_cycles.py's recovered() wait and gate correctly, and is the summary's timed-out count right?
+4. Anything else new that could cost a keystroke, stall the main loop, reset the board, or differ on a daily build.
+
+Rank findings must-fix (blocks the flash) / should-fix / note; be brief. If nothing blocks the flash, say so plainly.

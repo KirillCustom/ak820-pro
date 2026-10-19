@@ -243,6 +243,34 @@ static void s_log_floor(void) {
     CHECK(at_floor >= 288 - 100, "at the floor from ~21 h on: %u entries", at_floor);
 }
 
+/* A cut during the recovery, before the accounting (codex, the deep-sleep
+ * build's verify): the night's entries keep the level the sleep began at,
+ * debited by the sleep, not the cut's 0. */
+static void s_log_late_cut(void) {
+    c_start(96);                     /* 30,000; ~689 pm */
+    run_s(570);                      /* 600,000 */
+    uint16_t l0 = battery_level_permille();
+    battery_sleep_enter();
+    battery_sleep_wake();
+    c5 = 3;                          /* the pack at the cut, reported after the wake */
+    unsigned waited = 0;
+    while (!power_lights_cut() && waited < 600) { run_s(1); waited++; }
+    CHECK(power_lights_cut() && battery_level_permille() == 0, "the cut before the accounting: %u after %u s",
+          battery_level_permille(), waited);
+    battery_sleep_account(16u * 3600000u);
+    unsigned n = log_count(), bad = 0;
+    double pm_j = 15579.0 * 3.6 / 1000.0;
+    for (unsigned k = 0; k < n && k < 60; k++) {
+        double t_s  = ((double)P0_END + k * 900000.0 - 600000.0) / 1000.0;
+        double want = l0 - SLEEP_MW * t_s / 1000.0 / pm_j;
+        int    got  = (int)log_entry(k).level * 5;
+        if (got > want + 1.0 || got < want - 6.0) bad++;
+    }
+    CHECK(n >= 60, "the night's entries: %u", n);
+    CHECK(bad == 0, "the night's levels from %u pm, not the cut's 0: %u off (entry 10: %u)", l0, bad,
+          log_entry(10).level * 5);
+}
+
 /* A v7 entry partly asleep (codex, deep-sleep build review 9): 600 s awake
  * then 300 s asleep. The awake part matures the average 10 minutes, and the
  * entry costs the awake draw for 600 s plus the sleep's for 300. */

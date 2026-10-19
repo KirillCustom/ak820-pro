@@ -137,6 +137,27 @@ def light_off(h):
     cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 14, 3, 0, 2, 0, 0] + [0] * 23)
 
 
+def restore(dev, *controls):
+    """Put the bench back, power first, each step on its own: relay 1 open,
+    relay 2 on (on USB power the ladder never sleeps, and a charge start wakes
+    a sleeping board), data on, the board back on USB (one rig tap if not: a
+    full pack gives no charge edge), then `controls`, each (what, fn, *args)
+    run through the retrying open. Shared by a run's `finally` and its
+    deadline guard, which exits without one (codex, deep-sleep build review 8
+    and its verify). True if every step went."""
+    done = [sb.attempt("relay 1 open", sb.bounded, sb.relay1, dev, False),
+            sb.attempt("relay 2 on", sb.relay2, "on"),
+            sb.attempt("data on", uhub, "on")]
+    back = sb.attempt("the board on USB", need_bus, 30)
+    if not back:
+        sb.attempt("a wake tap", sb.bounded, sb.press, dev, 40, 200)
+        back = sb.attempt("the board on USB after the tap", need_bus, 30)
+    if not back:
+        return False
+    done += [sb.attempt(what, with_dev, fn, *args) for what, fn, *args in controls]
+    return all(done)
+
+
 def power_op(h, sub=0, arg=0):
     """op 14 sub 0 (read), 1 (set the mode to arg) or 2 (hold the stage at
     arg, 0xFF releases): returns (mode, stage). Sub 1 persists the mode."""
@@ -227,9 +248,10 @@ def main():
     if len(devs) != 1:
         sys.exit(f"expected one USB relay, found {len(devs)}")
     ok = False
-    guard = sb.deadline_guard(DELAY_S + a.cap + 300, lambda: uhub("on"))
+    controls = [("arm cancelled", deep, 2), ("stage released", cm.force_stage, None)]
     with hid.Device(path=devs[0]["path"]) as dev:
         sb.hold_relay(dev)   # relay 2 goes through this handle too (macOS opens it exclusively)
+        guard = sb.deadline_guard(DELAY_S + a.cap + 300, lambda: restore(dev, *controls))
         try:
             cm.say("relay 2 off; light sleep off; stage forced to SCREEN_OFF")
             sb.relay2("off")
@@ -239,7 +261,7 @@ def main():
                     raise SystemExit("the board never reported the pack")
                 time.sleep(1)
             with_dev(light_off)
-            sb.stage(sb.SCREEN_OFF)
+            with_dev(cm.force_stage, sb.SCREEN_OFF)
             time.sleep(8)
             base = [c for _, c in tail_ma(a.log, 8)]
             res["awake_ma"] = sum(base) / len(base) if base else None
@@ -312,23 +334,9 @@ def main():
                 ok = (t_asleep is not None and rec["slept"] and rec["reason"] == "key" and rec["key_gain"] >= 1
                       and res["link"]["giveups"] == 0)
         finally:
-            # Power first, so a board stopped asleep wakes (a charge start, or
-            # a rig tap for a full pack) and the controls still get put back
-            # (codex, deep-sleep build review 8).
-            done = [sb.attempt("relay 1 open", sb.bounded, sb.relay1, dev, False),
-                    sb.attempt("relay 2 on", sb.relay2, "on"),
-                    sb.attempt("data on", uhub, "on")]
-            back = sb.attempt("the board on USB", need_bus, 30)
-            if not back:
-                sb.attempt("a wake tap", sb.bounded, sb.press, dev, 40, 200)
-                back = sb.attempt("the board on USB after the tap", need_bus, 30)
-            if back:
-                done += [sb.attempt("arm cancelled", with_dev, deep, 2),
-                         sb.attempt("stage released", sb.stage, None)]
-            else:
-                done.append(False)
+            done = restore(dev, *controls)
             guard.cancel()
-            if all(done):
+            if done:
                 cm.say("restored: relay 1 open, relay 2 on, data on, the arm cancelled, stage released")
             else:
                 ok = False

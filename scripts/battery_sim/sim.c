@@ -1433,6 +1433,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "s_replay_v7")) s_replay_v7();
     else if (!strcmp(s, "s_log_floor")) s_log_floor();
     else if (!strcmp(s, "s_replay_mixed")) s_replay_mixed();
+    else if (!strcmp(s, "s_log_late_cut")) s_log_late_cut();
 #endif
     else if (!strcmp(s, "c_replay_r3"))      c_replay_r3(argc > 2 ? argv[2] : "");
     else if (!strcmp(s, "c_replay_r3_shuf")) c_replay_r3_shuf(argc > 2 ? argv[2] : "");

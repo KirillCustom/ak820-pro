@@ -1,0 +1,8 @@
+You are verifying a small follow-up before a keyboard firmware flash (AK820 Pro, QMK on a Sonix SN32F299, ChibiOS). Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything except read-only git commands.
+
+Your verify of the deep-sleep build's fixes (plans/review-codex-deep-sleep-build-verify-2026-10-19.md) found nothing blocking and three should-fix items. Their dispositions are the last table in plans/DEEP-SLEEP-BUILD-PLAN.md ("Codex's verify of the fixes"). The changes:
+  firmware: git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 752d4bcda7   (battery.c only: sleep_level_at's baseline noted at battery_sleep_enter)
+  outer repo: git -C /Users/jdlien/code/ak820-pro diff d462183 -- scripts/deep_sleep.py scripts/deep_cycles.py scripts/battery_sim   (a shared restore() for the finally and the deadline guard; stage calls through the retrying open; s_log_late_cut)
+All four flavours build with no warnings; the simulator passes 149 of 149; the late baseline, planted, fails s_log_late_cut.
+
+Please check, citing file:line: are V1-V3 fixed; does sleep_level_at now match count_take in every state (a level at or below the floor at the entry, the cut's 0, unknown, USB, RELAX), and is frz_nj the right remainder; can the deadline guard's restore() race the main thread's finally in a harmful way, or hang past the process exit; and anything new that could cost a keystroke or differ on a daily build. Rank must-fix / should-fix / note; be brief. If nothing blocks the flash, say so plainly.

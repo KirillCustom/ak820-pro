@@ -164,9 +164,11 @@ def main():
     if len(devs) != 1:
         sys.exit(f"expected one USB relay, found {len(devs)}")
     cycles, ok, stopped = [], True, None
-    guard = sb.deadline_guard(a.n * (a.sleep_s + 145) + 300, lambda: ds.uhub("on"))
+    controls = [("arm cancelled", ds.deep, 2), ("bench sleep time cleared", ds.bench_sleep, 0),
+                (f"mode {mode0} put back", ds.power_op, 1, mode0), ("stage released", cm.force_stage, None)]
     with hid.Device(path=devs[0]["path"]) as dev:
         sb.hold_relay(dev)
+        guard = sb.deadline_guard(a.n * (a.sleep_s + 145) + 300, lambda: ds.restore(dev, *controls))
         try:
             path = ("the ladder: Minimal, the bench sleep time " + f"{a.sleep_s} s" if ladder else
                     "the arm (op 14 sub 4), stage forced to SCREEN_OFF" if a.arm else
@@ -182,9 +184,9 @@ def main():
             if ladder:
                 ds.with_dev(ds.power_op, 1, MINIMAL)
                 ds.with_dev(ds.bench_sleep, a.sleep_s * 1000)
-                sb.stage(None)
+                ds.with_dev(cm.force_stage, None)
             else:
-                sb.stage(sb.SCREEN_OFF)
+                ds.with_dev(cm.force_stage, sb.SCREEN_OFF)
             time.sleep(5)
             for i in range(a.n):
                 c = {"i": i + 1}
@@ -273,26 +275,11 @@ def main():
             cm.say(f"stopped: {stopped}")
         finally:
             # Power first: stopped while the board slept, data alone cannot
-            # wake it, and the controls below would be skipped (codex,
-            # deep-sleep build review 8). On USB power the ladder never sleeps;
-            # a charge start wakes it, and a rig tap covers a full pack.
-            done = [sb.attempt("relay 1 open", sb.bounded, sb.relay1, dev, False),
-                    sb.attempt("relay 2 on", sb.relay2, "on"),
-                    sb.attempt("data on", ds.uhub, "on")]
-            back = sb.attempt("the board on USB", ds.need_bus, 30)
-            if not back:
-                sb.attempt("a wake tap", sb.bounded, sb.press, dev, 40, 200)
-                back = sb.attempt("the board on USB after the tap", ds.need_bus, 30)
-            if back:
-                done += [sb.attempt("arm cancelled", ds.with_dev, ds.deep, 2),
-                         sb.attempt("bench sleep time cleared", ds.with_dev, ds.bench_sleep, 0),
-                         sb.attempt(f"mode {mode0} put back", ds.with_dev, ds.power_op, 1, mode0),
-                         sb.attempt("stage released", sb.stage, None)]
-            else:
-                done.append(False)
+            # wake it (ds.restore; codex, deep-sleep build review 8).
+            done = ds.restore(dev, *controls)
             guard.cancel()
             caf.terminate()
-            if all(done):
+            if done:
                 cm.say("restored: relay 1 open, relay 2 on, data on, the arm cancelled, the bench sleep time "
                        "cleared, the mode put back, stage released")
             else:
