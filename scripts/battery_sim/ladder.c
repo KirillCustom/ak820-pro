@@ -32,7 +32,7 @@ static void l_normal(void) {
     idle_ms = 59999;  ltick(); expect_stage(POWER_STAGE_ACTIVE, 255, 0xFF, 255, "59.999 s idle");
     idle_ms = 60000;  ltick(); expect_stage(POWER_STAGE_DIM, 255, 0xFF, 64, "1 min idle");
     idle_ms = 300000; ltick(); expect_stage(POWER_STAGE_LIGHTS_OFF, 0, 4, 255, "5 min idle");
-    idle_ms = 900000; ltick(); expect_stage(POWER_STAGE_SCREEN_OFF, 0, 0, 255, "15 min idle");
+    idle_ms = 420000; ltick(); expect_stage(POWER_STAGE_SCREEN_OFF, 0, 0, 255, "7 min idle");
     idle_ms = 0;      ltick(); expect_stage(POWER_STAGE_ACTIVE, 255, 0xFF, 255, "a keypress");
 }
 
@@ -47,7 +47,7 @@ static void l_modes(void) {
     CHECK(kb_eeconfig_get_power_mode(&m) && m == POWER_MODE_SAVER, "persisted %u", m);
     idle_ms = 30000;  ltick(); expect_stage(POWER_STAGE_DIM, 255, 0xFF, 64, "Saver, 30 s");
     idle_ms = 120000; ltick(); expect_stage(POWER_STAGE_LIGHTS_OFF, 0, 4, 255, "Saver, 2 min");
-    idle_ms = 300000; ltick(); expect_stage(POWER_STAGE_SCREEN_OFF, 0, 0, 255, "Saver, 5 min");
+    idle_ms = 180000; ltick(); expect_stage(POWER_STAGE_SCREEN_OFF, 0, 0, 255, "Saver, 3 min");
     power_cycle_mode();
     CHECK(power_mode() == POWER_MODE_MINIMAL, "Saver -> Minimal, got %d", power_mode());
     CHECK(!strcmp(last_status, "Minimal mode"), "overlay '%s'", last_status);
@@ -230,4 +230,51 @@ static void l_persisted(void) {
     lrun_s(5);
     CHECK(power_mode() == POWER_MODE_SAVER, "mode %d", power_mode());
     CHECK(last_status[0] == 0, "no overlay for a persisted mode, got '%s'", last_status);
+}
+
+/* The deep sleep's times (plans/DEEP-SLEEP-BUILD-PLAN.md, section 1): Normal
+ * at 7 min, Saver at 3, Minimal after 30 s, Full never (low battery too);
+ * low battery takes Normal to Saver's 3; never on USB. The screen is off by
+ * then in every mode. */
+static void l_sleep(void) {
+    power_init();
+    on_battery_mid();
+    struct { power_mode_t m; uint32_t t; } want[] = {
+        {POWER_MODE_NORMAL, 420000u}, {POWER_MODE_SAVER, 180000u}, {POWER_MODE_MINIMAL, 30000u}};
+    for (unsigned k = 0; k < 3; k++) {
+        while (power_mode() != want[k].m) power_cycle_mode();
+        idle_ms = want[k].t - 1u; ltick();
+        CHECK(!power_sleep_wanted(), "mode %d: awake 1 ms before %u", want[k].m, want[k].t);
+        idle_ms = want[k].t; ltick();
+        CHECK(power_sleep_wanted(), "mode %d: asleep at %u ms", want[k].m, want[k].t);
+        CHECK(power_stage() == POWER_STAGE_SCREEN_OFF, "mode %d: the screen off by then: stage %d", want[k].m,
+              power_stage());
+        idle_ms = 0; ltick();
+        CHECK(!power_sleep_wanted(), "mode %d: a key ends it", want[k].m);
+    }
+    while (power_mode() != POWER_MODE_FULL) power_cycle_mode();
+    idle_ms = 86400000u; ltick();
+    CHECK(!power_sleep_wanted(), "Full never sleeps");
+}
+
+static void l_sleep_low(void) {
+    power_init();
+    vdd_mv = 3900; c5 = 62;   /* ~11%: the low cap */
+    lrun_s(30);
+    idle_ms = 179999; ltick();
+    CHECK(!power_sleep_wanted(), "low, Normal: awake before 3 min");
+    idle_ms = 180000; ltick();
+    CHECK(power_sleep_wanted(), "low, Normal: asleep at Saver's 3 min");
+    while (power_mode() != POWER_MODE_FULL) power_cycle_mode();
+    idle_ms = 86400000u; ltick();
+    CHECK(!power_sleep_wanted(), "low, Full: never");
+    CHECK(power_stage() != POWER_STAGE_ACTIVE, "though Full's lighting still follows Saver's stages when low");
+}
+
+static void l_sleep_usb(void) {
+    power_init();
+    become_full();
+    idle_ms = 86400000u;
+    lrun_s(2);
+    CHECK(!power_sleep_wanted(), "never on USB");
 }

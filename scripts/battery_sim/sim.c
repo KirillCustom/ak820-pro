@@ -1383,6 +1383,9 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "l_minimal_enter")) l_minimal_enter();
     else if (!strcmp(s, "l_minimal_owed"))  l_minimal_owed();
     else if (!strcmp(s, "l_low_alert"))     l_low_alert();
+    else if (!strcmp(s, "l_sleep"))         l_sleep();
+    else if (!strcmp(s, "l_sleep_low"))     l_sleep_low();
+    else if (!strcmp(s, "l_sleep_usb"))     l_sleep_usb();
     else if (!strcmp(s, "c_rate"))        c_rate();
     else if (!strcmp(s, "c_uneven"))      c_uneven();
     else if (!strcmp(s, "c_wrap"))        c_wrap();

@@ -18,7 +18,7 @@ cc -std=c11 -O1 -Wall -Wextra -Wno-unused-parameter -I"$build" \
    -o "$build/sim" "$here/sim.c" "$build/battery.c" "$build/power.c" -lm
 fail=0
 # Phase 2's scenarios (ladder.c, count.c) and the two drains they replay.
-phase2="l_normal l_modes l_usb l_low_cap l_val_cap l_lights_cut l_announce l_persisted l_minimal l_minimal_enter l_minimal_owed l_low_alert
+phase2="l_normal l_modes l_usb l_low_cap l_val_cap l_lights_cut l_announce l_persisted l_minimal l_minimal_enter l_minimal_owed l_low_alert l_sleep l_sleep_low l_sleep_usb
         c_rate c_uneven c_wrap c_hold c_ratchet c_floor_cut c_time_left c_load_step c_usb_data
         c_stale c_excursion c_bias c_clamp_cross c_reboot
         c_band_top c_band_top_edge c_floor_boot c_cut_reseat c_hold_stale c_handover_stays c_floor_entry c_clamp_marker"
