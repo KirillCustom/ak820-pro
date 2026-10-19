@@ -22,6 +22,15 @@ The order agreed after the sleep experiments:
    - a final pass for anything personal (the public-repo rule: no family or
      household details).
 
+## Power mode icons and names: designed, not built (2026-10-19)
+
+Rename the modes (Always on, Balanced, Power saver, Lights out) and show the
+mode as a bulb in the bolt's slot, on battery only: lit with rays, lit,
+dimmed (white outline, grey glass), unlit. Same RAM tile and one transfer as
+the bolt, so no new stall; the colours are to try on the panel first (mid
+grey was near-illegible as small text). Glyphs, rules and the gate:
+[`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
+
 ## `raw_edges` undercounts by design; it could be exact (2026-10-19)
 
 The health counter `raw_edges` comes up ~0.5% short of 2 per press (797-799
