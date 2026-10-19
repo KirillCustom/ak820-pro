@@ -56,19 +56,42 @@ def open_device():
     return ak820text.open_device()
 
 
-def xfer(h, payload, timeout=1000):
-    """One request/response round trip. The reply echoes the command byte."""
+def xfer(h, payload, read_ms=500, overall_s=5.0):
+    """One request/response round trip, correlated against the request.
+
+    ⚠️ Windows delivers HID input reports to EVERY open handle (CLAUDE.md), so
+    the daemon's now-playing echo (`07 12 04`, every ~3 s) lands here too. The
+    first-byte check this had refused it -- "unexpected reply 0x07 to command
+    0x12" -- which failed flash.sh's backup on 2026-10-19 with the daemon
+    running. The command byte alone is not enough either: a GET_BUFFER reply
+    for another process's offset is also 0x12. VIA echoes each request's
+    header (command, then offset/size or layer/index/direction), so the reply
+    must match the request's first four bytes, or all of a shorter one; other
+    reports are discarded and the wait goes on. ak820lighting.py's xfer is the
+    same idea.
+    """
+    want = bytes(payload[:4])
     h.write(bytes([0x00] + payload + [0x00] * (32 - len(payload))))
-    r = h.read(32, timeout)
-    if not r:
+    deadline = time.monotonic() + overall_s
+    others = 0
+    while time.monotonic() < deadline:
+        r = h.read(32, read_ms)
+        if not r:
+            continue
+        if bytes(r[:len(want)]) == want:
+            return bytes(r)
+        others += 1
+    if others:
         raise SystemExit(
-            "no reply from the board.\n"
-            "  The usual cause is BLUETOOTH MODE, not a busy interface -- raw HID\n"
-            "  replies route through the active host driver, so set the dip switch\n"
-            "  to `cable` and try again. (VIA holding the interface also does it.)")
-    if r[0] != payload[0]:
-        raise SystemExit(f"unexpected reply 0x{r[0]:02X} to command 0x{payload[0]:02X}")
-    return bytes(r)
+            f"no reply to {want.hex(' ').upper()} in {overall_s:g}s, "
+            f"though {others} report(s) for other requests arrived.\n"
+            "  Something else is talking to the board -- close usevia.app, or pause\n"
+            "  the host agents (`ak820 status` shows them).")
+    raise SystemExit(
+        "no reply from the board.\n"
+        "  The usual cause is BLUETOOTH MODE, not a busy interface -- raw HID\n"
+        "  replies route through the active host driver, so set the dip switch\n"
+        "  to `cable` and try again. (VIA holding the interface also does it.)")
 
 
 def read_keymap(h, layers):

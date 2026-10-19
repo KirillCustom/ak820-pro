@@ -85,7 +85,14 @@ def open_device(tries=12, delay=0.25):
     across the gaps instead of demanding the agents be stopped, which would
     itself change what is being measured. (The Rust daemon's non-seizing opens
     do not block this one: S2 in plans/AK820-AGENT-CROSSPLATFORM-PLAN.md.)"""
-    import time
+    import os, time
+    if os.name == "nt":
+        # ⚠️ Never hid.enumerate on Windows (CLAUDE.md): ak820text lists the
+        # path from the Configuration Manager and opens only ours. The
+        # interface is shareable there, so the busy-retry below has no job.
+        # ak820battery.py and ak820bootloader.py open through here too.
+        import ak820text
+        return ak820text.open_device()
     last = None
     for _ in range(tries):
         for d in hid.enumerate(VID, PID):

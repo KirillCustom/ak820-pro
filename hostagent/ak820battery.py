@@ -28,9 +28,9 @@ the log reply's first byte says which of v3/v4; older firmware leaves the
 host's own zero there. ⚠️ Never assume the period: a 10-minute log
 read as one-minute entries is ten times too fast, and so is every dV/dt.
 
-Opens the board through ak820health.open_device(), which calls hid_enumerate:
-fine on macOS, but on Windows that opens every HID device on the machine (see
-CLAUDE.md, "Never enumerate HID") -- do not run it there as it stands.
+Opens the board through ak820health.open_device(): hid_enumerate on macOS, and
+on Windows a path listed by the Configuration Manager, which opens nothing but
+the board (ak820text.raw_hid_paths; CLAUDE.md, "Never enumerate HID").
 
 Needs the USB cable. The slider position does not matter for the read, but
 moving the slider from BT to cable RESETS the board and loses the RAM log: to

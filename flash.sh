@@ -106,8 +106,14 @@ echo
 pkill -f "qmk console" 2>/dev/null && echo "stopped a running qmk console"
 
 # --- 1. back up the keymap while QMK is still running ----------------------
-KEYMAP="${KEYMAP:-$HOME/Documents/ak820pro-keymap.json}"
-LIGHTING="${LIGHTING:-$HOME/Documents/ak820pro-lighting.json}"
+# ⚠️ Under MSYS2, $HOME is C:\msys64\home\<user>, which has no Documents: the
+# backups belong in the Windows profile's, where the Windows-side tools look.
+DOCS="$HOME/Documents"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) [ -n "${USERPROFILE:-}" ] && DOCS="$(cygpath -u "$USERPROFILE")/Documents" ;;
+esac
+KEYMAP="${KEYMAP:-$DOCS/ak820pro-keymap.json}"
+LIGHTING="${LIGHTING:-$DOCS/ak820pro-lighting.json}"
 if [ "$BACKUP" = 1 ]; then
     if usb "$BOOTLOADER"; then
         # Already in the bootloader: QMK is gone, so there is nothing to read.
@@ -182,7 +188,7 @@ if [ "$RESERVE_OK" = 0 ] && ! usb "$BOOTLOADER"; then
         exit 1
     fi
 fi
-BATTLOG_DIR="${BATTLOG_DIR:-$HOME/Documents/ak820pro-battlogs}"
+BATTLOG_DIR="${BATTLOG_DIR:-$DOCS/ak820pro-battlogs}"
 if [ "$DUMPLOG" = 1 ] && ! usb "$BOOTLOADER"; then
     mkdir -p "$BATTLOG_DIR"
     blog="$BATTLOG_DIR/log-$(date +%Y%m%d-%H%M%S)-preflash.csv"
@@ -258,9 +264,40 @@ fi
 
 echo
 "$PY" hostagent/ak820keymap.py show >/dev/null 2>&1
-./time-util-ak820pro/ak820ctl info >/dev/null 2>&1 && echo "raw HID: OK -- board is healthy"
+# ak820health, not `ak820ctl info`: ak820ctl enumerates HID, which Windows
+# must never do; ak820health opens by a listed path there.
+"$PY" hostagent/ak820health.py >/dev/null 2>&1 && echo "raw HID: OK -- board is healthy"
+
 # A flash erased the persisted RTC trim and the board re-seeded the clock from
-# the PCF at a random sub-second phase; set it properly now (clock-sync plan).
-echo "== syncing the clock =="
-./time-util-ak820pro/ak820ctl clock || echo "clock sync failed -- run ./time-util-ak820pro/ak820ctl clock by hand"
+# the PCF at a random sub-second phase, so it wants a sync -- from ONE owner.
+# The daemon syncs by itself when the board re-enumerates ("sync
+# (enumerated)"), and an ak820ctl sync beside it is two clock transactions at
+# once: one's reply can pair with the other's timestamps into a wrong offset
+# with a plausible round trip (CLAUDE.md; BACKLOG.md, "flash.sh syncs the clock
+# beside the daemon"). So defer to a daemon that owns the clock and is alive
+# (its status file says `clock=this daemon` and was written in the last 2 min).
+case "$(uname -s)" in
+    Darwin)               STATUS="$HOME/Library/Application Support/ak820pro/ak820-agent.status" ;;
+    MINGW*|MSYS*|CYGWIN*) STATUS="$(cygpath -u "${LOCALAPPDATA:-}" 2>/dev/null)/ak820pro/ak820-agent.status" ;;
+    *)                    STATUS="" ;;
+esac
+daemon_owns_clock() {
+    [ -n "$STATUS" ] && [ -f "$STATUS" ] && grep -qx "clock=this daemon" "$STATUS" &&
+        "$PY" -c 'import os,sys,time; sys.exit(0 if time.time() - os.path.getmtime(sys.argv[1]) < 120 else 1)' "$STATUS"
+}
+if daemon_owns_clock; then
+    echo "== clock: left to the daemon (it syncs on the board's return; see \`ak820 status\`) =="
+else
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            # ak820ctl enumerates HID: never on Windows. The daemon is the
+            # clock owner there (`ak820 install --clock`).
+            echo "== clock: NOT synced -- no running daemon owns it; \`ak820 install --clock\` makes one =="
+            ;;
+        *)
+            echo "== syncing the clock =="
+            ./time-util-ak820pro/ak820ctl clock || echo "clock sync failed -- run ./time-util-ak820pro/ak820ctl clock by hand"
+            ;;
+    esac
+fi
 echo "done."

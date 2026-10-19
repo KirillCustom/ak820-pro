@@ -118,8 +118,80 @@ def _enumeration_deferred():
     return None
 
 
+def raw_hid_paths():
+    """This board's raw-HID interface paths, from Windows' Configuration
+    Manager -- which OPENS NOTHING. Windows only.
+
+    The same answer `ak820-agent`'s platform/windows/device.rs gives, for the
+    same reason: deciding which device is ours is a string question, and only
+    the answer gets a handle. hid_enumerate() opens every HID device on the
+    machine to ask it, which is the hazard in ../jdrgb/docs/ups-wedge-incident.md.
+
+    The filter is path.rs's, kept as strict: the hardware-id field (the second
+    of the path's '#' fields) must start `vid_0c45&pid_8009` as whole tokens
+    and carry `mi_01`, QMK's raw-HID interface on this board. Matching the
+    whole path would accept our ids in some other device's INSTANCE field --
+    the 2026-09-06 audit found exactly that shape, with the UPS's hardware id.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD),
+                    ("Data3", wintypes.WORD), ("Data4", ctypes.c_ubyte * 8)]
+
+    hid_guid = GUID(0x4D1E55B2, 0xF16F, 0x11CF,
+                    (ctypes.c_ubyte * 8)(0x88, 0xCB, 0x00, 0x11, 0x11, 0x00, 0x00, 0x30))
+    cm = ctypes.windll.cfgmgr32
+    PRESENT, CR_SUCCESS, CR_BUFFER_SMALL = 0, 0, 0x1A
+    for _ in range(4):              # the list can grow between sizing and fetching
+        size = wintypes.ULONG(0)
+        cr = cm.CM_Get_Device_Interface_List_SizeW(ctypes.byref(size), ctypes.byref(hid_guid),
+                                                   None, PRESENT)
+        if cr != CR_SUCCESS:
+            raise OSError(f"CM_Get_Device_Interface_List_SizeW: CONFIGRET {cr}")
+        buf = ctypes.create_unicode_buffer(size.value)
+        cr = cm.CM_Get_Device_Interface_ListW(ctypes.byref(hid_guid), None, buf, size, PRESENT)
+        if cr == CR_BUFFER_SMALL:
+            continue
+        if cr != CR_SUCCESS:
+            raise OSError(f"CM_Get_Device_Interface_ListW: CONFIGRET {cr}")
+        break
+    else:
+        raise OSError("CM_Get_Device_Interface_ListW: the list kept growing")
+    listed = [p for p in buf[:size.value].split("\0") if p]
+
+    want = [f"vid_{VID:04x}", f"pid_{PID:04x}"]
+    out = []
+    for p in listed:
+        fields = p.lower().split("#")
+        if len(fields) != 4 or fields[0] != r"\\?\hid":
+            continue
+        tokens = fields[1].split("&")
+        if tokens[:2] == want and "mi_01" in tokens:
+            out.append(p)
+    return out
+
+
+def _open_listed():
+    """Windows: open the one listed raw-HID path, never enumerating."""
+    paths = raw_hid_paths()
+    if not paths:
+        raise SystemExit("raw HID interface not found (board unplugged?)")
+    if len(paths) > 1:      # one board cannot list one interface twice
+        raise SystemExit("more than one AK820 Pro raw-HID interface; refusing to pick:\n  "
+                         + "\n  ".join(paths))
+    try:
+        return hid.Device(path=paths[0].encode())
+    except Exception as e:
+        raise SystemExit(f"raw HID interface present but not openable: {e}")
+
+
 def open_device():
-    """The `hid` package (a QMK dependency) exposes hid.Device(path=...), not
+    """On Windows, `_open_listed()`: no enumeration at all, so neither the
+    cache nor the backoff below has anything left to protect.
+
+    Elsewhere: the `hid` package (a QMK dependency) exposes hid.Device(path=...), not
     the hidapi-style hid.device()/open_path(). Match on usage page/usage rather
     than vid/pid alone -- the board publishes several HID interfaces and only
     0xFF60/0x61 is QMK's raw HID.
@@ -149,6 +221,9 @@ def open_device():
     _enumeration_deferred().
     """
     global _cached_path, _last_enum, _enum_backoff
+
+    if os.name == "nt":
+        return _open_listed()
 
     # Sample the AC line on EVERY call, not only when about to enumerate. It is
     # one syscall and touches no device, and the state machine it drives needs

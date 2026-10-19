@@ -14,9 +14,9 @@ comes back as 0C45:7140.
 ⚠️ The bootloader looks exactly like a dead board. Run this only to flash; a
 cold power-off (slider to cable, unplug ~10 s) gets back out without one.
 
-Opens the board through ak820health.open_device(), which calls hid_enumerate:
-fine on macOS, but do not run it on Windows as it stands (CLAUDE.md, "Never
-enumerate HID").
+Opens the board through ak820health.open_device(): hid_enumerate on macOS, and
+on Windows a path listed by the Configuration Manager, which opens nothing but
+the board (ak820text.raw_hid_paths; CLAUDE.md, "Never enumerate HID").
 
 Exit: 0  the jump was sent and no reply came (the board is resetting);
       2  the firmware answered unhandled (no jump in this build);
