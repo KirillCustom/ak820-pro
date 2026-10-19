@@ -369,6 +369,42 @@ static void s_usb(void) {
           battery_energy_used_mwh_x10() - e0);
 }
 
+/* Codex (the power-mode icons' review, 7): a sleep on USB power after the
+ * RELAX branch banked whole pm at the floor and a charge then raised the
+ * level. The night's entries keep the level at the sleep, the sleep costs
+ * nothing; with sleep_level_at's p_uw == 0 guard removed they would show
+ * the banked remainder debited. From a flat boot (FROM-FLAT, the model near
+ * 0), a short charge, an unplug onto the floor for 1500 s (RELAX banks ~7
+ * pm at the floor: under RELAX_S, so no re-seat yet), a replug (a MODEL
+ * session from the floor: the model path raises the level and never rebases
+ * the count), 15 min of charge, then 2 h asleep on USB. */
+static int usb_flat_src(void) { static int i; return i++ < 5 ? 10 : 12; }
+static void s_usb_relax_banked(void) {
+    vdd_mv = 4193; chrg_low = true;
+    run_s(2);
+    c5_src = usb_flat_src;
+    run_s(120);
+    unsigned st0 = battery_chg_state(), l_chg = battery_level_permille();
+    vdd_mv = 3900; chrg_low = false; c5_src = NULL; c5 = 30;   /* ~3423 mV: above the 3400 mV cut */
+    run_s(1500);
+    unsigned l_floor = battery_level_permille(), cs = battery_count_state();
+    vdd_mv = 4193; chrg_low = true; c5 = 50;   /* under charge; the model rises from the floor, bounded by it */
+    run_s(900);
+    uint16_t l0 = battery_level_permille();
+    uint32_t e0 = battery_energy_used_mwh_x10();
+    CHECK(l_floor == 10 && cs == BATTERY_COUNT_RELAX, "at the floor, relaxing, before the replug: %u pm, state %u "
+          "(charged from %u pm, state %u)", l_floor, cs, l_chg, st0);
+    CHECK(l0 != 0xFFFF && l0 >= 20, "the charge raised the level, known: %u pm", l0);
+    unsigned n0 = log_count();
+    sleep_for(2u * 3600000u, 300);
+    CHECK(battery_energy_used_mwh_x10() == e0, "the sleep on USB cost nothing: %u", battery_energy_used_mwh_x10() - e0);
+    unsigned n = log_count(), bad = 0;
+    for (unsigned k = n0 + 1; k < n; k++)   /* the entries the sleep laid in, after the frozen one */
+        if (log_entry(k).slept == 900 && log_entry(k).level != l0 / 5u) bad++;
+    CHECK(n >= n0 + 7, "the sleep's entries: %u", n - n0);
+    CHECK(bad == 0, "every slept entry at the level of the sleep, %u pm: %u not", l0, bad);
+}
+
 /* An accounting with no wake before it does nothing. */
 static void s_no_wake(void) {
     c_start(96);
