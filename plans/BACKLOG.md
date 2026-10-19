@@ -22,6 +22,16 @@ The order agreed after the sleep experiments:
    - a final pass for anything personal (the public-repo rule: no family or
      household details).
 
+## The bench's restore dies with the run (2026-10-18)
+
+The sleep scripts restore relay 2, the data and the board in a `finally`,
+and their deadline guard is a thread, so a killed run leaves the keyboard
+unplugged (docs/test-bench.md, "Truly unplugged, from software"). It cost
+1 h 46 min on the pack on 10-18 and would have stopped the overnight queue
+at its first check. The fix: a small watcher process, started first, that
+puts the bench back if its parent's PID disappears. Until then, check the
+relay and the port after killing a run.
+
 ## From the manual's distillation (docs/sn32f299.md, 2026-10-18): five things to check
 
 Found while writing [`docs/sn32f299.md`](../docs/sn32f299.md); none verified

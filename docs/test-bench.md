@@ -160,6 +160,17 @@ uhubctl -l 0-1.4 -p 2 -a on  -e
   relies on the data cut.
 - **In software, the keyboard can now be:** unplugged (both off), data-only
   (relay off, port on), or charging and readable (both on).
+- ⚠️ **A killed run leaves the keyboard unplugged.** The sleep scripts
+  (`deep_cycles.py`, `deep_sleep.py`, `idle_latency.py`,
+  `sleep_baseline.py`) restore the bench in a `finally`, and their deadline
+  guard is a thread in the same process. Neither survives the process being
+  killed. On 10-18 an interrupted `deep_cycles.py` left relay 2 and the data
+  off from 20:57 until 22:43: the board ran on the pack, awake (27.5 mA),
+  out of the daemon's reach, and every later script would have refused to
+  start ("relay 2 is off"). After killing one, check `usb_relay.py status`
+  and `uhubctl -l 0-1.4 -p 2`, then put back what the `finally` would have:
+  data on, the arm cancelled (op 14 sub 4, arg 2), the stage released,
+  relay 2 on.
 
 ## Confirm every cut from the USB side
 
