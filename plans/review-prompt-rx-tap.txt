@@ -1,8 +1,9 @@
-You are reviewing a small firmware delta before it is flashed to a keyboard (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2). Read only files inside C:\Users\jdlien\code\ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
+You are reviewing a small firmware delta before it is flashed to a keyboard (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2). Read only files inside the repository you were started in (the ak820-pro checkout); do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
 
-The board runs de5450e487 (a dev build, reviewed by you earlier). The delta is the one commit on top of it, on branch gremlin/rx-tap:
-  git -C C:\Users\jdlien\code\ak820-pro\qmk_firmware-ak820pro show f2e22aae
-Board code: C:\Users\jdlien\code\ak820-pro\qmk_firmware-ak820pro\keyboards\a_jazz\ak820pro\ (bluetooth\ch582f_ajazz.c and .h, hid_protocol.c).
+The board runs de5450e487 (a dev build, reviewed by you earlier). The delta is the one commit on top of it, on branch gremlin/rx-tap; the commit may not be checked out, so read it from git:
+  git -C qmk_firmware-ak820pro diff de5450e487 f2e22aae
+  git -C qmk_firmware-ak820pro show f2e22aae:keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c   (and .h, hid_protocol.c)
+Board code: qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/ (bluetooth/ch582f_ajazz.c and .h, hid_protocol.c).
 
 Why: the 2.4G dongle exposes an interface with QMK raw HID's usage page (FF60/61). We want to know whether a report written there reaches the board through the module as a frame type nobody has documented. The UART parser in ch582_task() keeps a 3-byte window and silently drops any byte that is not part of a 5A/5B/5C frame or the 61 0D 0A ACK, so such a frame would be invisible. The delta adds a dev-only "RX tap": a 260-byte ring that records every raw byte read from the module while armed (off by default and after reset), read and controlled over raw HID through two new HC_DEVHOOK ops, 15 (arm/stop/read the header) and 16 (read a 26-byte page). It mirrors the existing inbound 5A trace (ops 7-9) beside it. The plan this serves is plans/GREMLIN-RESULTS.md, section 2.
 
@@ -11,5 +12,6 @@ Please check, citing file:line:
 2. Placement: the tap records the byte where the parser reads it. Does it see every real byte exactly once, and no injected or muted one in the builds where those paths exist (WDT_TEST_HOOKS)? Is it entirely compiled out of daily, fpb and instrumented builds (it should exist only under AK820_DEV_HOOKS)?
 3. Cost: anything that could cost a keystroke or stall the main loop, armed or not, at the module's highest byte rates (a 2.4G LED burst arrives as ~375 three-byte frames a second).
 4. Concurrency: everything here runs in the main loop (the parser in ch582_task, the raw-HID handler). Is that true of every reader and writer of the new state?
+5. Overruns: confirm the tap's ring writes cannot run in the UART ISR's path, under a lock, or with interrupts masked, and cannot lengthen the time between the serial driver's reads enough to add UART overruns. The link already loses ~1-2 bytes an hour (HC_LINK's uart_overrun), which is part of what will be measured beside the tap; a tap that adds its own would muddy it.
 
 Rank findings must-fix / should-fix / note; be brief. If nothing blocks the flash, say so plainly.
