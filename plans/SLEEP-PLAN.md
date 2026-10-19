@@ -324,3 +324,30 @@ flag is not a blocker (its flush is synchronous in the main loop; accepted).
   timing accident; and a message that arises while asleep with no key
   ("Battery low", a link lost) waits for the next wake: the battery reading
   comes from the radio, which the sleeping SN32 does not hear.
+
+## Time left with deep sleep (proposed, 10-19)
+
+Today's figure (`battery_time_left_min`, `Fn`+`D`'s camera page) is the
+level's energy over a 12 h exponential average of the draw. Deep sleep
+breaks it twice:
+
+- **The count has no sleep term yet** (on the build's list): the slept
+  seconds must enter the energy at ~12 mW (3.2 mA at the pack), accounted
+  on the wake, or the count misses the night.
+- **With sleep counted, a 12 h average swings with the day.** Simulated, an
+  unchanged routine of 8 h a day at JD's settings (~306 mW, the measured
+  runtime's mean) and 16 h asleep (~12 mW): the mean is ~110 mW, ~5.9 days
+  from full, but the average sits at ~56 mW at the morning's first key and
+  ~178 mW at bedtime, so the figure reads ~11.6 days in the morning and ~3.7
+  at night.
+
+**Proposed: hours of use.** The level's energy over an average of the
+awake minutes only; the slept seconds go into the energy, never the
+average. It moves with how the board is used awake (lighting, brightness,
+the ladder's idle stages), not with how long it sleeps: full at JD's
+settings is ~51 h, and a 16 h night costs ~0.6 h of it. Asleep alone, the
+pack lasts ~1,300 h (~7.7 weeks; no self-discharge counted). Open: whether
+the bare `51h` reads as use or as wall clock (`100% 51h` fills the 8 cells).
+A calendar figure ("~6d at your pace") needs the awake fraction learned
+over several days (frozen on USB, like the average) and a second place on
+screen; later, if wanted.

@@ -2,7 +2,14 @@
 """Deep sleep, many times over (plans/SLEEP-PLAN.md): does every cycle sleep,
 wake on a key, keep the waking key, and deliver it to the Mac.
 
-    venv/bin/python scripts/deep_cycles.py [--n 50] [--out DIR]
+    venv/bin/python scripts/deep_cycles.py [--n 50] [--out DIR] [--board-only] [--awake]
+
+--awake is the control: the same cycle never armed, so the board sits awake
+through the same silence (the delay, the time to be seen asleep, the dwell);
+a cycle passes when the logger shows it awake before the tap, the tap counts
+exactly one press, and the link gives nothing up. Against an armed run it
+says which ACK timeouts the wake causes (the 10-19 soak resent ~60% of its
+frames; typing, ~4%).
 
 Relay 2 off (the pack) and the stage forced dark for the whole run; per
 cycle: data on, arm (op 14 sub 4, a 6 s delay, a 60 s cap), data off
@@ -56,6 +63,8 @@ def main():
     ap.add_argument("--n", type=int, default=50)
     ap.add_argument("--board-only", action="store_true",
                     help="no Mac-side timing (runs with the Mac locked): pass on the board's record alone")
+    ap.add_argument("--awake", action="store_true",
+                    help="the control: the same cycle, never armed, so the board stays awake through the silence")
     ap.add_argument("--log", default=os.path.join(HERE, "..", "history", "power-bench-2026-10-15", "power.csv"))
     ap.add_argument("--out", default=os.path.join(HERE, "..", "history", "deep-cycles-" + time.strftime("%Y%m%d-%H%M")))
     a = ap.parse_args()
@@ -79,7 +88,8 @@ def main():
     with hid.Device(path=devs[0]["path"]) as dev:
         sb.hold_relay(dev)
         try:
-            cm.say(f"{a.n} cycles; relay 2 off; light sleep off; stage forced to SCREEN_OFF")
+            cm.say(f"{a.n} cycles{' (the awake control: never armed)' if a.awake else ''}; "
+                   "relay 2 off; light sleep off; stage forced to SCREEN_OFF")
             sb.relay2("off")
             deadline = time.time() + 30
             while not sb.on_battery():
@@ -98,15 +108,23 @@ def main():
                     ok = False
                     break
                 l0 = link()
-                ds.with_dev(ds.deep, 1, DELAY_S, CAP_S, False)
+                if a.awake:
+                    k0 = ds.with_dev(lambda h: sb.health.read_stalls(h)["key_presses"])
+                else:
+                    ds.with_dev(ds.deep, 1, DELAY_S, CAP_S, False)
                 t_arm = time.time()
                 ds.uhub("off")
-                t_sleep = wait_current(a.log, lambda x: x < 10.0, t_arm + DELAY_S, DELAY_S + 25)
-                c["asleep"] = t_sleep is not None
                 dwell = random.uniform(5, 25)
                 c["dwell_s"] = round(dwell, 1)
-                if t_sleep:
-                    time.sleep(dwell)
+                if a.awake:
+                    time.sleep(DELAY_S + 2 + dwell)   # the silence an armed cycle keeps: the delay, seen asleep, the dwell
+                    cur = [x for _, x in ds.tail_ma(a.log, 3)]
+                    c["stayed_awake"] = len(cur) == 3 and all(x > 15.0 for x in cur)
+                else:
+                    t_sleep = wait_current(a.log, lambda x: x < 10.0, t_arm + DELAY_S, DELAY_S + 25)
+                    c["asleep"] = t_sleep is not None
+                    if t_sleep:
+                        time.sleep(dwell)
                 off = os.path.getsize(kd.LOG)
                 t_press = time.time()
                 sb.press(dev, 40, 200)
@@ -117,19 +135,28 @@ def main():
                 c["mac_latency_ms"] = round((downs[0] - t_press) * 1000, 1) if downs else None
                 ds.uhub("on")
                 ds.need_bus(30)
-                rec = ds.with_dev(ds.deep)
-                c["record"] = rec
+                if a.awake:
+                    c["key_gain"] = (ds.with_dev(lambda h: sb.health.read_stalls(h)["key_presses"]) - k0) & 0xFFFF
+                else:
+                    rec = ds.with_dev(ds.deep)
+                    c["record"] = rec
                 l1 = link()
                 c["link"] = {k: l1[k] - l0[k] for k in ("sent", "timeouts", "giveups", "replaced", "queue_full",
                                                         "uart_overrun", "uart_framing", "uart_parity")}
                 mac_ok = a.board_only or (c["mac_latency_ms"] is not None and c["mac_latency_ms"] < 1000)
-                good = (c["asleep"] and rec["slept"] and rec["reason"] == "key" and rec["p2"] & RIG_P2
-                        and rec["key_gain"] >= 1 and rec["strays"] == 0 and c["link"]["giveups"] == 0 and mac_ok)
+                if a.awake:
+                    good = c["stayed_awake"] and c["key_gain"] == 1 and c["link"]["giveups"] == 0 and mac_ok
+                else:
+                    good = (c["asleep"] and rec["slept"] and rec["reason"] == "key" and rec["p2"] & RIG_P2
+                            and rec["key_gain"] >= 1 and rec["strays"] == 0 and c["link"]["giveups"] == 0 and mac_ok)
                 c["ok"] = bool(good)
                 ok &= c["ok"]
                 cycles.append(c)
-                cm.say(f"cycle {i + 1:3d}: asleep {c['asleep']}, {rec['secs']:2d} s, woke {rec['reason']}, "
-                       f"p2 {rec['p2']:#x}, key {rec['key_gain']}, Mac "
+                head = (f"stayed awake {c['stayed_awake']}, {dwell + DELAY_S + 2:4.1f} s silent, key {c['key_gain']}"
+                        if a.awake else
+                        f"asleep {c['asleep']}, {rec['secs']:2d} s, woke {rec['reason']}, "
+                        f"p2 {rec['p2']:#x}, key {rec['key_gain']}")
+                cm.say(f"cycle {i + 1:3d}: {head}, Mac "
                        + (f"{c['mac_latency_ms']:.0f} ms" if c["mac_latency_ms"] is not None else "nothing")
                        + f", link sent {c['link']['sent']} timeouts {c['link']['timeouts']} giveups {c['link']['giveups']}"
                        + f"  {'ok' if c['ok'] else 'FAIL'}")
