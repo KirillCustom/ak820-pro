@@ -210,8 +210,8 @@ Left for when it resumes, in order:
    range check one high, a falling-edge start, the old hold, no hold
    through a P1 header): each failed the suite. The board test's initial
    wait (codex 2i, should-fix 6) was already in `ledchannel_test.py`.
-2. ~~The Scroll hold only for frames that can carry Scroll~~ **built 10-19,
-   not flashed** (firmware `442c9f49c9`, local): `lockchan_holds_scroll()`
+2. ~~The Scroll hold only for frames that can carry Scroll~~ **flashed 10:34
+   10-19** (flash 2j, firmware `442c9f49c9`, local): `lockchan_holds_scroll()`
    holds for P0 and P2 throughout and for a bits 3-4 preamble and header
    (they may announce P2), never for P1's payload or for P3; both of the
    band's uses (the settle hold, the own-key shortcut) take it, and

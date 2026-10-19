@@ -43,8 +43,12 @@ under ~10 h and on a wake after a long sleep (`SLEEP-PLAN.md`); the wireless
 clock as the lock-LED channel's item 5, after deep sleep and now-playing, a
 sync every few minutes (`LOCK-LED-CHANNEL-PLAN.md`).
 
-**Built, not flashed:** `442c9f49c9`, the Scroll hold only for frames that can
-carry Scroll (lock-LED item 2).
+**Flashed 10:34 10-19 (flash 2j):** `442c9f49c9` (dev, token `0xc8227691`),
+the Scroll hold only for frames that can carry Scroll (lock-LED item 2),
+after codex's review (no must-fix; `LOCK-LED-CHANNEL-PLAN.md`). Keymap and
+lighting restored and read back, the clock synced to -3.4 ms. Before it, the
+wake rig checked after JD's switch shorted when the keyboard was moved: 200
+of 200 presses at 40/60 and 25/40 ms.
 
 **Next, in order:**
 1. **The deep-sleep build plan, for codex:** the ladder's sleep stage and
@@ -52,8 +56,9 @@ carry Scroll (lock-LED item 2).
    after a wake, slept time from the PCF and out of the trim window, the
    gauge's sleep term, no sleep while the screen is lit, time left as hours
    of use (and slept seconds in the log). Riding along: the per-colour RGB
-   model, the Scroll hold, `1ea968335f`, the sleep.c comment wording (codex,
-   sleep verify 3), optionally `raw_edges` inside the lock.
+   model, the sleep.c comment wording (codex, sleep verify 3), optionally
+   `raw_edges` inside the lock. (`1ea968335f` has been on the board since
+   `53afebd553`.)
 2. Codex's review, every finding dispositioned; the flash; the board tests
    (the soak again, with `asleep_s` against the record's seconds).
 3. The wake/key test through the stages (10-18's item 2; the Mac unlocked,
@@ -146,7 +151,7 @@ every disposition and the host results (122 simulator cases; both recorded
 drains replayed through the firmware within +0.1 / +1.2 points at every
 second). The energy-count gauge, time left on the camera page, `HC_POWER`, log
 v6, the modes on `Fn`+`B` (bound in JD's VIA keymap and the default keymap).
-`1ea968335f` (a comment only) waits for the next flash.
+`1ea968335f` (a comment only) went on with `53afebd553`.
 
 **Checked on the board, 10-18:**
 - `ladder_check.py`: all nine effects go to 0.0% drive at once on the off

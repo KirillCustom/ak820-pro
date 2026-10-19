@@ -136,8 +136,9 @@ Two workstreams, Phase 2 first:
   no light ([`plans/LOCK-LED-CHANNEL-PLAN.md`](plans/LOCK-LED-CHANNEL-PLAN.md)
   has the resume list; what the module forwards is in
   [docs/wireless.md](docs/wireless.md)).
-- **On the board: Phase 2, Minimal mode and the sleep experiments**,
-  `53afebd553` (a `dev` build, token `0x2243da5a`, since 19:12 10-18); the
+- **On the board: Phase 2, Minimal mode and the sleep experiments**, plus
+  the lock-LED channel's Scroll hold: `442c9f49c9` (a `dev` build, token
+  `0xc8227691`, since 10:34 10-19; `53afebd553` before it); the
   experiments are off unless op 14 sub 3/4 turns them on
   ([`plans/SLEEP-PLAN.md`](plans/SLEEP-PLAN.md)). **Measured that evening:
   deep sleep draws 3.2 mA against ~27 awake and dark, wakes on a key, and
