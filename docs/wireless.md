@@ -185,6 +185,24 @@ the channel built on it is
   write (`0xe00002e2`).
 - UART overruns rose by a few during long bursts: harmless with three copies.
 
+## 2.4G after the MCU sleeps (measured 2026-10-19)
+
+Ten deep sleeps over the Mac's dongle (`history/deep-cycles-20261019-2g4/`)
+against a hundred over BT the same day:
+
+- **The pack's draw steps down in 2.4G.** Over BT it falls from ~27 mA to
+  ~3.1 within one logger sample. Over 2.4G, ~15 mA for ~5 s after the MCU
+  stops (1 s in the first cycle, 4-5 in the rest), in some cycles ~3.9 mA
+  for 1-19 s more, then the same ~3.2 mA. **It is the module, not the
+  MCU:** the MCU counts its seconds only while stopped, and counted/PCF is
+  0.842 in both modes, tail included. About 60 mA·s a sleep: nothing next
+  to the pack.
+- Awake and dark, 2.4G draws ~28.2 mA against BT's ~27.0.
+- **The waking key reaches the Mac sooner:** a median 48.0 ms after the
+  relay (38-56) against BT's 63.7 (40-115).
+- Each wake sends 9 frames with 4 ACK timeouts, every cycle; BT sends 8-9
+  with 3-7.
+
 ## Host switch: clear the outgoing host's report first
 
 `bt_ui_mode_slider()` calls `clear_keyboard()` before routing flips (analysis

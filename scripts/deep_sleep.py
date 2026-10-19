@@ -199,7 +199,14 @@ def tail_rows(path, kb=48):
     return out
 
 
-def edges(rows, t_lo, t_hi, thr=15.0):
+# Between awake and dark (27-30 mA) and the 2.4G module's tail: in 2.4G the
+# draw falls to ~15 mA for ~5 s after the MCU stops, then to ~3.2 mA, and a
+# 15 mA edge timed the fall at the tail's end (PCF 4-6 s long on 10-19). The
+# tail is the module's, not the MCU's: counted/PCF is 0.842 in both modes.
+SLEEP_EDGE_MA = 22.0
+
+
+def edges(rows, t_lo, t_hi, thr=SLEEP_EDGE_MA):
     """The sleep's fall and rise in the logger, each the midpoint between
     the last sample on one side of `thr` and the first on the other (the
     logger samples ~1 s apart, so each is within ~0.5 s): the first fall

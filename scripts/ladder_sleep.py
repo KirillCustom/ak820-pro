@@ -119,7 +119,7 @@ def main():
             fall = ed0[0] if ed0 else None
             if fall is None:   # still asleep: the fall alone
                 rows = [r for r in ds.tail_rows(a.log, kb=256) if r[0] > t_tap + 5]
-                fall = next(((r0[0] + r1[0]) / 2 for r0, r1 in zip(rows, rows[1:]) if r0[1] >= 15.0 > r1[1]), None)
+                fall = next(((r0[0] + r1[0]) / 2 for r0, r1 in zip(rows, rows[1:]) if r0[1] >= ds.SLEEP_EDGE_MA > r1[1]), None)
             res["sleep_after_tap_s"] = round(fall - t_tap, 1) if fall else None
             cm.say(f"asleep {res['sleep_after_tap_s']} s after the tap; waking in {a.asleep_s:.0f} s")
             time.sleep(a.asleep_s)

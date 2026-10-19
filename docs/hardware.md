@@ -521,6 +521,13 @@ clock SET, and every PCF transaction under the wake's arbiter
   the PCF's slept seconds within 1 s of the power logger's edges. The Mac's
   key-down a median 64 ms after the relay, worst 115.
 - **Balanced** slept 421 s after the last key (the ladder's 420).
+- **Over 2.4G, 10 cycles on the Mac's dongle:** all pass on the same
+  checks, the key-down a median 48 ms after the relay, worst 56. ⚠️ In 2.4G
+  the pack's draw does not fall in one step: ~15 mA for ~5 s after the MCU
+  stops (the module; the MCU's counted seconds span it), sometimes ~3.9 mA
+  for up to ~20 s more, then the same ~3.2 mA. A logger edge at 15 mA times
+  the fall late; the bench scripts' is 22 mA
+  ([wireless.md](wireless.md), "2.4G after the MCU sleeps").
 - **A second unit** (Windows, over 2.4G) woke on a key burst, the knob and
   the cable's insertion, the waking key and turn kept each time.
 - Three cycles of the 100 saw a UART overrun, at the link's rate on builds

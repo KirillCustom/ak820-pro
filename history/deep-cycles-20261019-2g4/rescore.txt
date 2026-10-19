@@ -1,0 +1,11 @@
+10 cycles, 10 sleeps at 22 mA
+cycle  1: 22 mA window  16.0 s, PCF  17 (diff +1.0); 15 mA tail 1 s, 3.9 mA tail 0 s; Mac 48 ms; other checks ok
+cycle  2: 22 mA window  29.0 s, PCF  29 (diff -0.0); 15 mA tail 4 s, 3.9 mA tail 19 s; Mac 38 ms; other checks ok
+cycle  3: 22 mA window  32.0 s, PCF  32 (diff -0.0); 15 mA tail 5 s, 3.9 mA tail 0 s; Mac 49 ms; other checks ok
+cycle  4: 22 mA window  23.0 s, PCF  23 (diff +0.0); 15 mA tail 5 s, 3.9 mA tail 0 s; Mac 40 ms; other checks ok
+cycle  5: 22 mA window  19.0 s, PCF  19 (diff +0.0); 15 mA tail 5 s, 3.9 mA tail 0 s; Mac 44 ms; other checks ok
+cycle  6: 22 mA window  17.0 s, PCF  18 (diff +1.0); 15 mA tail 5 s, 3.9 mA tail 0 s; Mac 51 ms; other checks ok
+cycle  7: 22 mA window  15.0 s, PCF  16 (diff +1.0); 15 mA tail 5 s, 3.9 mA tail 10 s; Mac 56 ms; other checks ok
+cycle  8: 22 mA window  26.0 s, PCF  25 (diff -1.0); 15 mA tail 5 s, 3.9 mA tail 13 s; Mac 51 ms; other checks ok
+cycle  9: 22 mA window  19.0 s, PCF  19 (diff +0.0); 15 mA tail 5 s, 3.9 mA tail 0 s; Mac 45 ms; other checks ok
+cycle 10: 22 mA window  27.0 s, PCF  27 (diff +0.0); 15 mA tail 5 s, 3.9 mA tail 1 s; Mac 40 ms; other checks ok
