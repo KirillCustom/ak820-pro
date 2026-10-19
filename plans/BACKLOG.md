@@ -28,7 +28,7 @@ Rename the modes (Always on, Balanced, Power saver, Lights out) and show the
 mode as a bulb in the bolt's slot, on battery only: lit with rays, lit,
 dimmed (white outline, grey glass), unlit. Same RAM tile and one transfer as
 the bolt, so no new stall. Built on the firmware branch `power-mode-icons`
-(`61a425a721`), its own flash after the deep-sleep one. The colours are to
+(`26fcafaeca`, cleared by codex), its own flash after the deep-sleep one. The colours are to
 try on the panel first (mid grey was near-illegible as small text). Glyphs,
 rules and the gate: [`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
 

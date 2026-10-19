@@ -1,0 +1,13 @@
+You reviewed the power mode icons branch (plans/review-codex-power-icons-2026-10-19.md): no must-fix. Read only files inside /Users/jdlien/code/ak820-pro. Do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything (git show, git diff and git log inside the repo are fine). The branch power-mode-icons is not checked out; read it with git show.
+
+The follow-up for your note 3, one commit on 61a425a721:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 6926a17c80
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show power-mode-icons:keyboards/a_jazz/ak820pro/graphics/display.c   (whole file)
+The dispositions of all eight findings: plans/POWER-MODE-ICONS-PLAN.md, "Codex's review (2026-10-19)", and the corrected "Drawing it without a stall". Dev, daily and fpb compile with no warnings.
+
+Check, citing file:line:
+1. batt_bulb_stale() and the 10 Hz branch: can it call draw_battery() every tick forever (a stale condition that draw_battery() never clears), or repaint the slot more often than one tile per mode change? Its interaction with the one-component flag, the RTC-second branch, gq_pending's early return, the Fn+D ownership gates, the wake path, Minimal and the boot order.
+2. That supply and CHRG edges keep their old 1 Hz cadence, as the commit claims.
+3. Whether every disposition is right, in particular 5 (the gate) and 7 (handed to the deep-sleep session as a sim scenario, not a flash blocker).
+
+Rank findings must-fix / should-fix / note; say plainly what is fine. Be brief.

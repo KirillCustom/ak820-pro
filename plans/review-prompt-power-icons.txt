@@ -1,0 +1,26 @@
+You are reviewing firmware before it is flashed (AK820 Pro keyboard: QMK on a Sonix SN32F299 Cortex-M0 at 48 MHz, ChibiOS, a 128x128 SPI LCD). Read only files inside /Users/jdlien/code/ak820-pro. Do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything (git show, git diff and git log inside the repo are fine).
+
+The change: power mode names and a battery-row icon. The plan is plans/POWER-MODE-ICONS-PLAN.md. The firmware is on the local branch power-mode-icons, which is NOT checked out in the working tree (the working tree is at 7df8a08e96, the branch's parent). Read the branch's files with git show:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 61a425a721                       (the branch's one commit: graphics/display.c, power.c, power.h, ak820pro.h, via.json)
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show power-mode-icons:keyboards/a_jazz/ak820pro/graphics/display.c   (whole files at the branch, for context)
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show power-mode-icons:keyboards/a_jazz/ak820pro/power.c
+Also in scope, and flashed with this branch: 7df8a08e96 (battery.c: no historical debit for a sleep on USB power), which is your own proposed fix from the deep-sleep build's second verify:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 7df8a08e96
+Host side, already committed: git -C /Users/jdlien/code/ak820-pro show d149f4d -- scripts/battery_sim/ladder.c hostagent/ak820battery.py
+Background: docs/display.md, "Battery row", "Not every band is queued -- the status band still blocks", "Small shapes go in a RAM tile", and the wake hold under "At a deep sleep and its wake".
+
+What it does: the overlay names become Always on / Balanced / Power saver / Lights out. On battery only, the slot right of the battery icon (where the charging bolt and the no-pack cross live, both of which need USB) shows the mode as a bulb, rasterized from ASCII art into the slot's existing RAM tile and sent with the one lcd_blit_ram. The tile grows from 12x14 at (35,109) to 13x15 at (35,108); the bolt and the cross move down a row inside it so they stay where they were on the panel. power_lights_mode() shows Power saver's bulb while the low cap (power.c, low_now) holds Always on or Balanced to Saver's stages. The bulb is marked only through BATT_DIRTY_BOLT, so it stays one component of draw_battery()'s one-component-per-pass painting.
+
+Built: dev, daily and fpb compile with no warnings (dev +1,016 bytes). scripts/battery_sim/run.sh passes against both trees: 149 plain on the working tree; 145 through BATTERY_SIM_SRC on either tree, the same list (the variable skips four pinned-baseline checks). The new power_lights_mode() checks in l_modes and l_low_cap caught three planted mutants.
+
+Check, citing file:line:
+1. The tile: do the bolt and the cross land on exactly the same panel pixels as before the change? Bounds of slot_run and the bulb loop; the colour lookup; the tile's size against lcd_blit_ram's contract (CPU push, bus quiesce, the explicit lcd_blit_wait).
+2. The new rect (x 35..47, y 108..122): does anything else draw into it, or clear only the old 12x14 rect and leave the new row or column stale (the battery text, which is at most 7 cells from x 54; the lock band; Fn+D's pages and their staged restore; the camera page; draw_status; overlays; the wake hold's repaint)?
+3. draw_battery(): the bulb's trigger and its interaction with the one-component flag, force, the wake hold (display_wake_repainted waits for !batt_dirty), Minimal's dark screen, the boot order (power_task before or after the first draw_battery), and battery_on_battery()'s UNKNOWN at boot. Can the bulb flap: the supply decision near a plug event, or low_now at LOW_CAP_PM (level <= 150 permille) with no hysteresis, repainting every tick? If it can, how often and at what cost?
+4. power_lights_mode() against power_task()'s actual stage logic, in every mode, on battery and on USB, low and not.
+5. Cost against the 25 ms pass budget: the 13x15 CPU push alone, and in the same pass as Fn+B's overlay (the text band is queued) or a plug-in's other battery components.
+6. The names: CONN_STATUS_MAX and the overlay's 11 big cells; via.json (check_via_sync); anything on the host or in scripts/ that parses the old names and would break; ladder.c's NAME_* macros against both power.c versions.
+7. 7df8a08e96 on its own: is it the fix you proposed, complete, and without side effects (the sim's s_* scenarios, the log, the gauge on battery)?
+8. Anything dev-only leaking into the daily or fpb builds, and anything that could cost a keystroke or make the board unrecoverable without hands.
+
+Rank findings must-fix / should-fix / note; say plainly what is fine. Be concrete.
