@@ -1,0 +1,225 @@
+{
+ "rows": [
+  {
+   "mask": 0,
+   "yield_ms": 2,
+   "applied": 0,
+   "scan_only": false,
+   "wfi_per_s": 0.0,
+   "isr": {
+    "isr_dt_s": 59.996,
+    "isr_per_s": 3885.4,
+    "isr_mean_us": 187.3,
+    "isr_min_us": 160.0,
+    "isr_max_us": 282.7,
+    "isr_cpu_pct": 72.8,
+    "row_samples_per_row_per_s": 215.9,
+    "timebase_vs_wall": 0.9999
+   },
+   "logger": {
+    "n": 60,
+    "q_ma": 27.229337037170172,
+    "mean_ma": 27.240666666666666,
+    "sd_ma": 0.05197348302599228,
+    "vcell_mv": 4155.9375
+   },
+   "link": {
+    "sent": 819,
+    "timeouts": 6,
+    "queue_full": 0,
+    "giveups": 0,
+    "replaced": 0,
+    "uart_overrun": 0,
+    "uart_framing": 0,
+    "uart_parity": 0
+   },
+   "presses": 400,
+   "edges": 791,
+   "stalls": 0,
+   "window_presses": 0,
+   "rowgap_ms": 7,
+   "rowgap_transition_ms": 5,
+   "engaged": true,
+   "continuous": true,
+   "n": 400,
+   "ok": false
+  },
+  {
+   "mask": 1,
+   "yield_ms": 2,
+   "applied": 1,
+   "scan_only": true,
+   "wfi_per_s": 0.0,
+   "isr": {
+    "isr_dt_s": 59.988,
+    "isr_per_s": 1481.3,
+    "isr_mean_us": 33.3,
+    "isr_min_us": 26.7,
+    "isr_max_us": 90.7,
+    "isr_cpu_pct": 4.9,
+    "row_samples_per_row_per_s": 246.9,
+    "timebase_vs_wall": 0.9998
+   },
+   "logger": {
+    "n": 60,
+    "q_ma": 28.057215498813243,
+    "mean_ma": 28.05091666666667,
+    "sd_ma": 0.06859048005956982,
+    "vcell_mv": 4154.5625
+   },
+   "link": {
+    "sent": 820,
+    "timeouts": 5,
+    "queue_full": 0,
+    "giveups": 0,
+    "replaced": 0,
+    "uart_overrun": 0,
+    "uart_framing": 0,
+    "uart_parity": 0
+   },
+   "presses": 400,
+   "edges": 795,
+   "stalls": 0,
+   "window_presses": 0,
+   "rowgap_ms": 5,
+   "rowgap_transition_ms": 8,
+   "engaged": true,
+   "continuous": true,
+   "n": 400,
+   "ok": false
+  },
+  {
+   "mask": 3,
+   "yield_ms": 2,
+   "applied": 3,
+   "scan_only": true,
+   "wfi_per_s": 0.0,
+   "isr": {
+    "isr_dt_s": 59.991,
+    "isr_per_s": 1480.8,
+    "isr_mean_us": 32.9,
+    "isr_min_us": 26.7,
+    "isr_max_us": 96.0,
+    "isr_cpu_pct": 4.9,
+    "row_samples_per_row_per_s": 246.8,
+    "timebase_vs_wall": 0.9998
+   },
+   "logger": {
+    "n": 60,
+    "q_ma": 28.63073898303301,
+    "mean_ma": 28.615666666666666,
+    "sd_ma": 0.06766359125793502,
+    "vcell_mv": 4152.9375
+   },
+   "link": {
+    "sent": 819,
+    "timeouts": 6,
+    "queue_full": 0,
+    "giveups": 0,
+    "replaced": 0,
+    "uart_overrun": 0,
+    "uart_framing": 0,
+    "uart_parity": 0
+   },
+   "presses": 400,
+   "edges": 800,
+   "stalls": 0,
+   "window_presses": 0,
+   "rowgap_ms": 7,
+   "rowgap_transition_ms": 5,
+   "engaged": true,
+   "continuous": true,
+   "n": 400,
+   "ok": false
+  },
+  {
+   "mask": 3,
+   "yield_ms": 4,
+   "applied": 3,
+   "scan_only": true,
+   "wfi_per_s": 0.0,
+   "isr": {
+    "isr_dt_s": 59.996,
+    "isr_per_s": 1481.1,
+    "isr_mean_us": 32.9,
+    "isr_min_us": 26.7,
+    "isr_max_us": 90.7,
+    "isr_cpu_pct": 4.9,
+    "row_samples_per_row_per_s": 246.9,
+    "timebase_vs_wall": 0.9998
+   },
+   "logger": {
+    "n": 60,
+    "q_ma": 28.742947218535516,
+    "mean_ma": 28.737000000000002,
+    "sd_ma": 0.07115988205133095,
+    "vcell_mv": 4152.8125
+   },
+   "link": {
+    "sent": 820,
+    "timeouts": 6,
+    "queue_full": 0,
+    "giveups": 0,
+    "replaced": 0,
+    "uart_overrun": 0,
+    "uart_framing": 0,
+    "uart_parity": 0
+   },
+   "presses": 400,
+   "edges": 800,
+   "stalls": 0,
+   "window_presses": 0,
+   "rowgap_ms": 5,
+   "rowgap_transition_ms": 5,
+   "engaged": true,
+   "continuous": true,
+   "n": 400,
+   "ok": true
+  },
+  {
+   "mask": 0,
+   "yield_ms": 2,
+   "applied": 0,
+   "scan_only": false,
+   "wfi_per_s": 0.0,
+   "isr": {
+    "isr_dt_s": 59.994,
+    "isr_per_s": 3884.5,
+    "isr_mean_us": 187.4,
+    "isr_min_us": 16.0,
+    "isr_max_us": 272.0,
+    "isr_cpu_pct": 72.8,
+    "row_samples_per_row_per_s": 215.8,
+    "timebase_vs_wall": 0.9999
+   },
+   "logger": {
+    "n": 60,
+    "q_ma": 27.635715859582188,
+    "mean_ma": 27.641750000000002,
+    "sd_ma": 0.6473674362042217,
+    "vcell_mv": 4151.895833333333
+   },
+   "link": {
+    "sent": 819,
+    "timeouts": 7,
+    "queue_full": 0,
+    "giveups": 0,
+    "replaced": 0,
+    "uart_overrun": 4,
+    "uart_framing": 0,
+    "uart_parity": 0
+   },
+   "presses": 400,
+   "edges": 798,
+   "stalls": 0,
+   "window_presses": 0,
+   "rowgap_ms": 5,
+   "rowgap_transition_ms": 9,
+   "engaged": true,
+   "continuous": true,
+   "n": 400,
+   "ok": false
+  }
+ ],
+ "at": "2026-10-18 18:36:16"
+}

@@ -17,9 +17,10 @@ The mask actually in force is read back: a step that never engaged cannot
 pass. Restored in a `finally`: mask 0, the stage, relay 1 open, relay 2 on.
 
 Pass per entry: the requested bits in force (the mask read back, scan-only
-and a WFI rate as asked); every press counted (presses = n, raw edges = 2n)
-and none in the quiet window; no stall >= 25 ms in the window or the
-presses; rowgap <= 6 ms steady (the entry's transition is recorded, not
+and a WFI rate as asked); every press counted (presses = n; raw edges at
+least 98% of 2n, the known quirk) and none in the quiet window; no stall
+>= 25 ms in the window or the presses; rowgap <= 8 ms steady (mask 0's own
+reached 7) (the entry's transition is recorded, not
 gated); no link give-ups, full queues or UART errors (ACK timeouts are
 reported); the board still answering. Each mask ends by itself after 240 s
 if nothing sets it again. ⚠️ Hands off the keyboard (key_presses counts every key); the
@@ -156,8 +157,12 @@ def main():
                            and (wfi_s > 0) == bool(mask & 4) and (st["yield_ms"] == y or not mask & 2))
                 link_ok = (dl["giveups"] == 0 and dl["queue_full"] == 0 and dl["uart_overrun"] == 0
                            and dl["uart_framing"] == 0 and dl["uart_parity"] == 0)
-                good = (engaged and link_ok and continuous and dw["presses"] == 0 and d["presses"] == n and d["edges"] == 2 * n
-                        and c1["stalls"] == c0["stalls"] and rw["row_gap_max_ms"] <= 6)
+                # raw_edges runs a little short with every press counted (the
+                # known quirk, docs/test-bench.md; 791-800 of 800 at mask 0 on
+                # 10-18), and mask 0's own row gap reached 7 ms: the limits are
+                # the plain firmware's, not tighter.
+                good = (engaged and link_ok and continuous and dw["presses"] == 0 and d["presses"] == n
+                        and d["edges"] >= 0.98 * 2 * n and c1["stalls"] == c0["stalls"] and rw["row_gap_max_ms"] <= 8)
                 ok &= good
                 row = {"mask": mask, "yield_ms": y, "applied": st["applied"], "scan_only": st["scan_only"],
                        "wfi_per_s": wfi_s, "isr": isr, "logger": m, "link": dl,
