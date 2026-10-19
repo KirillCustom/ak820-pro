@@ -1,5 +1,27 @@
 # Backlog — known, accepted, or deferred items
 
+## Next phase: record in daily use, then polish for other owners (2026-10-18)
+
+The order agreed after the sleep experiments:
+
+1. **Record over days and weeks** with the ladder and (once built) deep sleep
+   in daily use: R5's logged drain at real use, the gauge against the logged
+   energy, the runtime against R3's, how the timings feel.
+2. **If it holds up, clean up and polish for a broader release**, for other
+   AK820 Pro owners rather than upstream. Things that would need doing,
+   none started:
+   - a README a stranger can follow cold (flash, VIA, Fn+B, what deep sleep
+     does and how a key wakes it), separate from the working notes;
+   - JD-specific defaults made neutral or documented (the default keymap is
+     JD's VIA layout; the bench's relay key at (0,13));
+   - the bench tooling (relay, logger, `uhubctl`) and `history/` set apart
+     from what an owner needs;
+   - the daily and fpb builds carrying the features, released through the
+     existing tag-and-CI path, with the clean-install check;
+   - the firmware commits pushed and `deps.lock` pinned to them;
+   - a final pass for anything personal (the public-repo rule: no family or
+     household details).
+
 ## From the manual's distillation (docs/sn32f299.md, 2026-10-18): five things to check
 
 Found while writing [`docs/sn32f299.md`](../docs/sn32f299.md); none verified
