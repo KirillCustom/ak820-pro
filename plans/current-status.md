@@ -81,8 +81,16 @@ tables). Keymap and lighting restored and read back; the clock synced to
 (codex's one-line USB fix to the log's night levels) is committed on top,
 not flashed: it rides with the power-mode icons' flash.
 
+**Smoke tests on `752d4bcda7`, 13:02-13:05 10-19** (`../history/deep-sleep-smoke-20261019-press/`,
+`-widths/`): a bench sleep woken by the rig, PASS (woke on P2.8, one key,
+3.31 mA asleep, the PCF's seconds, the acquisition done, the re-attach,
+nothing timed out); the 32-bit widths (`--preset 65500 --cap 60
+--no-press`), PASS (woke on the cap at exactly 60 counted seconds past 65,500;
+the PCF 71 s for them). JD then asked for the soak on the icons build.
+
 **Next, in order:**
-1. **The board tests** (the plan's validation):
+1. **The board tests** (the plan's validation), on the icons build once its
+   codex review clears and it is flashed:
    the soak through the ladder (`deep_cycles.py --n 100`), an hour asleep,
    the clock without the daemon, the wake sources (the knob by hand: JD, one
    action at a time), charge and USB, the backstop's widths
