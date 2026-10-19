@@ -1285,12 +1285,15 @@ trips the protector, then holds it tripped while the board stays connected.
 
 ## The idle ladder and the power modes (Phase 2, `power.c`)
 
-`Fn`+`B` (`PWR_MODE`) cycles **Full power**, **Normal power** (the default),
-**Power saver** and **Minimal mode**, shown as an overlay and persisted (kb
-datablock byte 6; a flash resets it to Normal and says so once). On battery
-only:
+`Fn`+`B` (`PWR_MODE`) cycles **Always on**, **Balanced** (the default),
+**Power saver** and **Lights out**, shown as an overlay and persisted (kb
+datablock byte 6; a flash resets it to Balanced and says so once). The enum
+keeps the first names, `POWER_MODE_FULL`, `NORMAL`, `SAVER` and `MINIMAL`
+(Full power, Normal power, Power saver and Minimal mode until `26fcafaeca`).
+On battery the bolt's slot shows the mode as a bulb ([display.md](display.md),
+"Battery row"). On battery only:
 
-| | Full | Normal | Saver | Minimal |
+| | Always on | Balanced | Power saver | Lights out |
 |---|---|---|---|---|
 | RGB dimmed (its value capped at 64 of 255) | never | 1 min idle | 30 s | -- |
 | RGB off, screen capped at level 4 | never | 5 min | 2 min | -- |
@@ -1299,11 +1302,11 @@ only:
 
 The screen goes off when the board sleeps (its dim needs the 20 kHz tick the
 sleep stops), so the screen-off times moved from 15 and 5 min to the sleep's.
-Below 15% Normal sleeps at Saver's 3 min; Full never sleeps, at low battery
-too. Deep sleep and what holds it off: [hardware.md](hardware.md), "Deep
+Below 15% Balanced sleeps at Power saver's 3 min; Always on never sleeps, at
+low battery too. Deep sleep and what holds it off: [hardware.md](hardware.md), "Deep
 sleep"; the gauge across it: "The gauge across a deep sleep", above.
 
-**Minimal** keeps the RGB and the backlight off even while typing (~107 mW,
+**Lights out** keeps the RGB and the backlight off even while typing (~107 mW,
 ~6 days a charge by the model), and lights the backlight at the user's level
 for 4 s after a message appears in the status band (a setting's overlay, an
 alert, a new link state with words, the pair gesture) and while `Fn`+`D`'s
@@ -1315,11 +1318,12 @@ settings. The dim caps the lighting's own value (`rgb_matrix_hsv_to_rgb`), so
 a colour keeps its hue; every stage change re-runs the effect's init pass
 (`rgb_matrix_reinit_effect`, a local hook in `quantum/rgb_matrix/`), so effects
 that redraw only some LEDs a frame go dark at once and come back whole. Below
-15% the lighting follows Saver whatever the mode, and says so once a
-discharge ("Saving power", on a lit screen; a real charge re-arms it).
+15% the lighting follows Power saver whatever the mode, and says so once a
+discharge ("Saving power", on a lit screen; a real charge re-arms it); the
+bulb shows Power saver's then, except in Lights out (`power_lights_mode()`).
 
 Measured (R1, A8): the RGB is 189 of the board's 306 mW at JD's settings,
-and JD's keyboard sits idle ~88% of the time, so Normal should roughly double
+and JD's keyboard sits idle ~88% of the time, so Balanced should roughly double
 a charge's runtime (a model estimate; R5 measures it). Deep sleep is built
 (above); light sleep and the radio's own idle are not.
 

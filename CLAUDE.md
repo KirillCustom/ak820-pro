@@ -389,9 +389,11 @@ Alphas/Mods) · `Fn`+`PgUp/PgDn` LCD brightness · `Fn`+`Home` LCD toggle ·
 `Fn`+`Esc` bootloader · `Fn`+`Delete` ANIM_TOG · `Fn`+`C` clock format
 (24h / 12h+AM-PM / off / date, persisted) · `Fn`+`D` debug page (tap
 cycles debug page → camera page (big volts and %) → dashboard, HOLD
-~800 ms resets the health counters) · `Fn`+`B` power mode (Full / Normal /
-Saver / Minimal: the idle ladder on battery, Phase 2; Minimal keeps the lights
-and the backlight off, lighting the screen briefly for a message). BT keys are inert in
+~800 ms resets the health counters) · `Fn`+`B` power mode (Always on /
+Balanced / Power saver / Lights out; the enum keeps Full / Normal / Saver /
+Minimal: the idle ladder on battery, Phase 2, shown on battery as a bulb in
+the bolt's slot; Lights out keeps the lights and the backlight off, lighting
+the screen briefly for a message). BT keys are inert in
 wired mode. `Fn`+`P` (pair) is unbound by default.
 
 ## Critical warnings (details in the docs)

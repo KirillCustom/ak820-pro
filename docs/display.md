@@ -193,7 +193,7 @@ measured cases:
 | shape | as runs | as one tile |
 |---|---|---|
 | the 12h `A`/`M` glyph, 5×16 (`draw_ampm`, the first) | ~24 ms | the 12h transition 40 → 7 ms |
-| the battery row's bolt slot, 12×14: bolt, no-pack cross or blank (`draw_bolt_slot`, flash 2c) | a clear and 11 runs (24 for the cross): 19 ms at every plug-in | plug-in passes 24-26 → **11-12 ms** |
+| the battery row's bolt slot, 12×14: bolt, no-pack cross or blank (`draw_bolt_slot`, flash 2c; 13×15 with the power mode's bulb since `26fcafaeca`) | a clear and 11 runs (24 for the cross): 19 ms at every plug-in | plug-in passes 24-26 → **11-12 ms** |
 | the transport icon, 12×12: play, pause, stop (`draw_text_icon_runs`, flash 2e) | ~9 ms for play, sometimes drawn twice a call | **3.4 ms** |
 
 The plug-in figures are relay-driven bench cycles, three a build
@@ -407,6 +407,27 @@ The text slot holds one of:
 | blank | on battery, the level unknown: after a boot until the first estimate, or for 30 min after unplugging an unknown charge |
 | `No Batt`, red cross in the bolt's slot | no pack fitted (`indicators.c`) |
 
+**The bolt's slot shows the power mode on battery (`26fcafaeca`).** The slot
+right of the icon is one 13×15 RAM tile at (35, 108) (`draw_bolt_slot`). On
+USB it holds the bolt while charging, the cross with no pack, or nothing. On
+battery it holds the `Fn`+`B` mode as a bulb: **Always on** lit with rays,
+**Balanced** lit, **Power saver** a white outline over grey glass, **Lights
+out** an unlit outline. The bolt and the cross need USB and the modes act only
+on battery, so the two never want the slot at once. At 15% or below, while the
+low cap holds Always on or Balanced to Power saver's stages, the slot shows
+Power saver's bulb: it shows what the lights are doing
+(`power_lights_mode()`, [battery.md](battery.md), "The idle ladder and the
+power modes"). On USB the mode can still be changed, and it takes effect at
+the unplug. The bulb is marked by `BATT_DIRTY_BOLT` alone, so it stays one
+component of the one-per-pass painting below. The 10 Hz tick paints a changed
+mode (`batt_bulb_stale`), so the bulb follows `Fn`+`B`'s overlay within a
+tenth of a second. Measured on the pack, 30 presses: no pass of 25 ms or
+more, the worst 20-21 ms
+([`history/fnb-caps-20261019-jd/`](../history/fnb-caps-20261019-jd/README.md)).
+The greys (`COL_BULB_*`) are starting values, not yet judged on the panel.
+Design and gate:
+[`plans/POWER-MODE-ICONS-PLAN.md`](../plans/POWER-MODE-ICONS-PLAN.md).
+
 **The charging display (Phase 1b, flash 2).** While charging, `5C` reads a
 voltage the charge current lifts, so the number is a time model of the charge,
 bounded by the voltage: linear at 13.3 points an hour to ~53%, then slowing,
@@ -429,8 +450,10 @@ rasterizes them into the tile.
 **Time left, under 10 hours (the deep-sleep build).** On battery, with the
 level known and an hour or more of average draw behind it, the row adds the
 hours of use left once there are fewer than 10: `18% 6h`, `99% <1h`, at most
-7 cells, rounded down. "Hours of use" is the awake average's: asleep the board
-draws 13.35 mW, an eighth (Minimal) to a twentieth (JD's lights) of its awake
+7 cells, rounded down. Seven cells right-aligned to `PANEL_WIDTH - 4` start
+at x 54, clear of the bulb's slot, which ends at x 47; a longer text would run
+into it. "Hours of use" is the awake average's: asleep the board
+draws 13.35 mW, an eighth (Lights out) to a twentieth (JD's lights) of its awake
 draw, so the sleeps stretch the calendar time and not the number (what it is and how it is counted: [battery.md](battery.md),
 "The gauge across a deep sleep"). Above 10 hours the row stays as it was: a
 long number there says nothing worth the cells. The tenths view never adds
@@ -443,7 +466,8 @@ The deep sleep is the ladder's last stage (`sleep.c`;
 
 - **The screen goes off when the board sleeps.** Its dim level is the
   backlight's software PWM, which needs the 20 kHz tick the sleep stops; the
-  ladder's screen-off time equals its sleep time (Normal 7 min, Saver 3).
+  ladder's screen-off time equals its sleep time (Balanced 7 min, Power
+  saver 3).
 - **Host content expires at the wake**: the host text slot and the playback
   position, which ran on while the board slept and would show stale, until
   a host sends them again.
@@ -463,7 +487,7 @@ The deep sleep is the ladder's last stage (`sleep.c`;
 - **After two hours or more asleep**, if time left is under 10 hours, the
   status band says `6h use left` (or `<1h use left`) once, through the same
   gate as other owed notices: a free band and a lit screen, except in
-  Minimal, whose screen lights for the message.
+  Lights out, whose screen lights for the message.
 
 ## Param overlay (readout of what you just changed)
 

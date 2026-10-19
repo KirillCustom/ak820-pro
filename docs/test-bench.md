@@ -374,7 +374,7 @@ INA228's `vbus_mv` (below).
   each with the board's LED drive read back; `--set stages`: the ladder's
   stages forced (`HC_DEVHOOK` op 14) at three lightings, each beside the
   board's own modelled draw (`HC_POWER`). On Phase 2 firmware every map holds
-  Full power and a forced stage, so the ladder cannot move a load mid-hold.
+  Always on and a forced stage, so the ladder cannot move a load mid-hold.
 - `scripts/ladder_check.py` (Phase 2): every enabled effect through every
   forced ladder stage, on USB, the LED drive read back: off must read 0.0%.
 - `scripts/devhook.py lcd [LEVEL | on | off]`: the screen's backlight by
@@ -539,7 +539,7 @@ the session left unlocked for a window (JD's call).
   32-bit widths with the count preset near 65,535 (`--preset 65500
   --no-press`).
 - `scripts/deep_cycles.py --n 100`: the soak, by default **through the
-  ladder's own path**: Minimal mode and a 30 s bench sleep time (op 14 sub
+  ladder's own path**: Lights out and a 30 s bench sleep time (op 14 sub
   5), no stage forced; the mode found is put back. Each cycle passes only
   on exactly one press, a fresh sleep sequence number, no reset, no new pass
   of 25 ms or more, no new transport error, the PCF's slept seconds within

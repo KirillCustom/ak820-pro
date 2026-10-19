@@ -1,4 +1,4 @@
-# Power mode icons and names — built, not flashed (2026-10-19)
+# Power mode icons and names — on the board (2026-10-19)
 
 An icon for the power mode in the battery row, and friendlier mode names.
 Designed with pixel-accurate mockups (the firmware's own geometry and the
@@ -7,17 +7,18 @@ panel, not decisions.
 
 ## Status
 
-**Built on the firmware branch `power-mode-icons`, cleared by codex at
-`26fcafaeca`** (`61a425a721`, the follow-up `6926a17c80` and a comment fix,
-local, on `7df8a08e96`); handed to the deep-sleep session to fast-forward
-`ak820pro-jdlien`, build `dev`, flash and soak. The deep-sleep build is on
-the board (`752d4bcda7`, flashed 12:57 10-19). **`7df8a08e96`, battery.c's
-guard against a historical debit for a sleep on USB, is codex's own fix from
-its second verify and is not flashed: it is reviewed with this branch and
-rides on its flash.** It goes on as **its own
-flash after the deep-sleep flash, with its own codex review**: two deltas
-under one review would muddy both. The deep-sleep session owns the flash
-queue.
+**On the board since 13:18 10-19: `26fcafaeca`** (dev, token `0x47773c72`),
+cleared by codex (`61a425a721`, the follow-up `6926a17c80` and a comment
+fix, on `7df8a08e96`). The deep-sleep session fast-forwarded
+`ak820pro-jdlien` to it, flashed it and soaked it: 97 of 100 deep-sleep
+cycles through the ladder, the three failures UART overruns that are the
+deep-sleep session's
+([`../history/deep-cycles-20261019-icons/`](../history/deep-cycles-20261019-icons/README.md)).
+It carries `7df8a08e96`, battery.c's guard against a historical debit for a
+sleep on USB (codex's own fix, reviewed with this branch). The docs are
+updated (display.md's battery row; battery.md, hardware.md, test-bench.md
+and CLAUDE.md's Fn line name the modes). **Next: the bulb's shape and
+colours on the panel** ("On the panel", below).
 
 - Compiles clean, dev, daily and fpb: +1,016 bytes (the art is 784).
 - `scripts/battery_sim` passes against both firmware trees (`ladder.c`
@@ -30,16 +31,9 @@ queue.
 - `hostagent/ak820battery.py` prints the new names (display only; the
   indices are unchanged).
 
-Left, in order:
-1. Rebase onto any further deep-sleep fixes (none so far touched this
-   branch's files).
-2. Codex's review of the branch, with `7df8a08e96` in its scope, and its
-   verify of `6926a17c80`: done, no must-fix (below).
-3. The flash, after the deep-sleep flash; then the gate below.
-4. The colours on the panel (below).
-5. At merge: display.md's battery row (the slot, the bulb, the 13×15 tile),
-   battery.md and test-bench.md where they name the modes, CLAUDE.md's Fn
-   table line.
+Done: codex's review and verify (no must-fix, below); the flash; the gate's
+Fn+B part on the pack (below); the docs. Left: the shape and colours on the
+panel ("On the panel", below), then a flash of whichever wins.
 
 ## The names
 
@@ -126,6 +120,56 @@ others so the grey glass does not run into it at the neck.
 - **No green tint on Power saver's glass.** Green already means a healthy
   battery (the fill beside it) and playing (the transport icon).
 
+## On the panel (first look, 10-19)
+
+On the board the bulb reads very small, and **the screw base barely shows**:
+it needs to be lighter, at least Power saver's glass grey. Viewed at an
+angle, the screen cover's bezel clips the slot a little; not one for
+software yet.
+
+Why the base vanishes: it is 7 pixels (3 wide, two rows and a tip) under
+56 of white glass, grey, and touching the glass, so it reads as the glass's
+shading. Under the dimmed and unlit bulbs it is `0x4228`, near black. A
+lighter grey alone would not fix it: Power saver's glass runs straight into
+the base at the neck (`....#***#....` over `.....+++.....`), so a base in the
+glass's grey merges with it. One-colour icon sets solve this with a blank
+line between glass and base, and the base in the outline's colour.
+
+Two versions, each with that black row and a 5-wide base in the outline's
+colour (white; `0xA514` under Lights out):
+
+- **Separated base, 13×14 as now:** the glass gives up its third 9-wide
+  row. No change to the tile.
+- **Wider bulb, 15×15 at (35, 107) (recommended):** the glass keeps its 8
+  rows and grows from 9 to 11 wide, about a fifth more glass; the tile grows
+  from 13×15 to 15×16 at (35, 107) (480 bytes against 390, ~30 µs more on
+  the wire). Its right edge, x 49, leaves 4 columns before time left's
+  furthest reach (x 54). It moves no lower; its top rises a row.
+
+```
+Always on (wider)  Balanced           Power saver        Lights out
+.......#.......    ...............    ...............    ...............
+.#...........#.    ...............    ...............    ...............
+..#.........#..    ...............    ...............    ...............
+.....#####.....    .....#####.....    .....#####.....    .....#####.....
+##.#########.##    ...#########...    ...##*****##...    ...##.....##...
+..###########..    ..###########..    ..#*********#..    ..#.........#..
+..###########..    ..###########..    ..#*********#..    ..#.........#..
+..###########..    ..###########..    ..#*********#..    ..#.........#..
+...#########...    ...#########...    ...#*******#...    ...#.......#...
+....#######....    ....#######....    ....#*****#....    ....#.....#....
+.....#####.....    .....#####.....    .....#####.....    .....#####.....
+...............    ...............    ...............    ...............
+.....+++++.....    .....+++++.....    .....+++++.....    .....+++++.....
+.....+++++.....    .....+++++.....    .....+++++.....    .....+++++.....
+......+++......    ......+++......    ......+++......    ......+++......
+```
+
+The wider tile changes the rect codex checked (its item 2: nothing else
+draws into x 35-49, y 107-122, and every clear of the band repaints the
+slot). That needs re-checking before it flashes; the separated base does
+not, since its rect is unchanged.
+
 ## Drawing it without a stall
 
 Painting this band has stalled before ("Not every band is queued", and the
@@ -154,6 +198,16 @@ bolt's 19 ms runs, display.md), so:
   note `blit_gap_max`. The bench cannot press Fn+B (op 14 sub 1 sets a mode
   without the overlay), so the Fn+B part waits for hands; the soak covers the
   wakes and the plug cycles.
+- **Measured on `26fcafaeca`, on the pack (10-19,
+  [`../history/fnb-caps-20261019-jd/`](../history/fnb-caps-20261019-jd/README.md)):**
+  30 Fn+B presses by hand, the band's FN label changing around each (JD's Fn
+  sits where Caps Lock was): **no pass of 25 ms or more**, the worst 20-21 ms
+  (`display_hk` 13). Caps Lock toggled from the Mac ~600 times, no Fn+B:
+  one pass of exactly 25 ms, on a blit (`blit_gap_max` 25), the CAPS paint
+  the lock band's notes already suspected; a control of 199 toggles had none.
+  So Fn+B and a Caps change in the same pass were not separated from the
+  CAPS paint's own 25 ms; that paint is its own item (current-status.md).
+  The deep-sleep soak on this build covered the wakes.
 
 ## Codex's review (2026-10-19)
 

@@ -450,9 +450,9 @@ The idle ladder's last stage, in every build (`SN32F2XX_DEEP_SLEEP` in
 [`plans/DEEP-SLEEP-BUILD-PLAN.md`](../plans/DEEP-SLEEP-BUILD-PLAN.md); the
 MCU's side: [sn32f299.md](sn32f299.md), section 4.
 
-**When.** On battery only, after the mode's idle time: **Normal 7 min, Saver
-3, Minimal 30 s, Full never** (at low battery too). Below 15% Normal sleeps at
-Saver's 3 min. `power_sleep_wanted()` asks; `sleep_task()`, at the very end of
+**When.** On battery only, after the mode's idle time: **Balanced 7 min,
+Power saver 3, Lights out 30 s, Always on never** (at low battery too). Below
+15% Balanced sleeps at Power saver's 3 min. `power_sleep_wanted()` asks; `sleep_task()`, at the very end of
 each main-loop pass, sleeps at the first pass where every precondition holds.
 The ones that failed the last time a sleep was wanted are on `HC_POWER` page
 1's last field (`ak820battery.py sleep`):
