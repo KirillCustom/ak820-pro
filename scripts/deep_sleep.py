@@ -66,7 +66,7 @@ def deep(h, arg=0, delay=DELAY_S, cap=120, no_feed=False):
             "secs": o[4] | o[5] << 8, "strays": o[6] | o[7] << 8,
             "p0": int.from_bytes(o[8:12], "little"), "p2": int.from_bytes(o[12:16], "little"),
             "pll_loops": o[16] | o[17] << 8, "key_gain": o[18] | o[19] << 8, "pll_ceiling": bool(o[20]),
-            "phy_was_off": bool(o[21]), "usb_restarted": bool(o[22])}
+            "phy_was_off": bool(o[21]), "usb_back_20s": bool(o[22])}   # false inside 20 s of the wake can mean pending
 
 
 def need_bus(wait_s=30.0):
@@ -132,6 +132,7 @@ def main():
     if len(devs) != 1:
         sys.exit(f"expected one USB relay, found {len(devs)}")
     ok = False
+    guard = sb.deadline_guard(DELAY_S + a.cap + 240, lambda: uhub("on"))
     with hid.Device(path=devs[0]["path"]) as dev:
         try:
             cm.say("relay 2 off; light sleep off; stage forced to SCREEN_OFF")
@@ -211,6 +212,7 @@ def main():
             else:
                 done.append(False)
             done.append(sb.attempt("relay 2 on", sb.relay2, "on"))
+            guard.cancel()
             if all(done):
                 cm.say("restored: relay 1 open, data on, the arm cancelled, stage released, relay 2 on")
             else:

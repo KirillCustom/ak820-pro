@@ -79,6 +79,8 @@ def main():
     if len(devs) != 1:
         sys.exit(f"expected one USB relay, found {len(devs)}")
     rows, ok = [], True
+    guard = sb.deadline_guard(len(entries) * 240 + 300)
+    up_wall0 = time.time()
     with hid.Device(path=devs[0]["path"]) as dev:
         try:
             cm.say("relay 2 off; stage forced to SCREEN_OFF")
@@ -90,6 +92,8 @@ def main():
                 time.sleep(1)
             sb.stage(sb.SCREEN_OFF)
             up0, probed = health.read_isr()["uptime_ms"], False
+            up_wall0 = time.time()
+            resets0 = health.read_health()["wdt_consecutive_resets"]
             for mask, y in entries:
                 if mask & 4 and not probed:
                     # The plain-WFI probe first, briefly: whether a WFI with
@@ -134,9 +138,14 @@ def main():
                 time.sleep(0.15)
                 c1, l1 = sb.counts(), sb.link()
                 fin = with_dev(light, mask, y)
-                up1 = health.read_isr()["uptime_ms"]
-                continuous = up1 > up0   # a reset would have started the board's uptime over
-                up0 = up1
+                up1, up_wall1 = health.read_isr()["uptime_ms"], time.time()
+                # No reset since the last entry: the board's uptime kept pace
+                # with the wall clock (a reboot restarts it; its timebase runs
+                # a little slow under ISR load, hence 0.8), and the
+                # consecutive-reset count did not move (codex).
+                continuous = ((up1 - up0) / 1000.0 >= 0.8 * (up_wall1 - up_wall0)
+                              and health.read_health()["wdt_consecutive_resets"] == resets0)
+                up0, up_wall0 = up1, up_wall1
                 d, dw = sb.delta(cw, c1), sb.delta(c0, cw)
                 dl = {k: l1[k] - l0[k] for k in l1}
                 rw = health.read_rows()
@@ -166,6 +175,7 @@ def main():
                     sb.attempt("mask 0", with_dev, light, 0),   # if this fails, the mask ends by itself in 240 s
                     sb.attempt("stage released", sb.stage, None),
                     sb.attempt("relay 2 on", sb.relay2, "on")]
+            guard.cancel()
             if all(done):
                 cm.say("restored: relay 1 open, mask 0, stage released, relay 2 on")
             else:

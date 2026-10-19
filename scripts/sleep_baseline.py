@@ -82,6 +82,31 @@ def bounded(fn, *args, timeout=5.0):
     return box.get("ok")
 
 
+def deadline_guard(limit_s, *also):
+    """A last resort for the whole run (codex): if it is still going after
+    limit_s, restore relay 2 (and run `also`, e.g. the data back on) from this
+    timer's thread, bounded, then end the process. A hung HID call anywhere,
+    press loops included, can then strand the board on its pack for at most
+    limit_s. Cancel it on a normal finish."""
+    def fire():
+        print(f"⚠️ the run passed its {limit_s:.0f} s limit: restoring and exiting", flush=True)
+        for fn in also:
+            try:
+                fn()
+            except BaseException as e:
+                print(f"⚠️ emergency step failed: {e}", flush=True)
+        try:
+            relay2("on")
+            print("emergency: relay 2 on", flush=True)
+        except BaseException as e:
+            print(f"⚠️ emergency: relay 2 on failed: {e}", flush=True)
+        os._exit(3)
+    t = threading.Timer(limit_s, fire)
+    t.daemon = True
+    t.start()
+    return t
+
+
 def attempt(what, fn, *args):
     """One cleanup step, independent of the others; says how it went."""
     try:
@@ -141,6 +166,7 @@ def main():
         sys.exit(f"expected one USB relay, found {len(devs)}")
     res = {"bursts": [], "idles": [], "at": time.strftime("%Y-%m-%d %H:%M:%S")}
     ok = True
+    guard = deadline_guard(a.quiet + sum(idles) + 2 * a.bursts * a.n * 0.2 + 600)
     with hid.Device(path=devs[0]["path"]) as dev:
         try:
             cm.say("relay 2 off; stage forced to SCREEN_OFF")
@@ -189,6 +215,7 @@ def main():
             done = [attempt("relay 1 open", bounded, relay1, dev, False),
                     attempt("stage released", stage, None),
                     attempt("relay 2 on", relay2, "on")]
+            guard.cancel()
             if all(done):
                 cm.say("restored: relay 1 open, stage released, relay 2 on")
             else:
