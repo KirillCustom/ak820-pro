@@ -50,25 +50,42 @@ lighting restored and read back, the clock synced to -3.4 ms. Before it, the
 wake rig checked after JD's switch shorted when the keyboard was moved: 200
 of 200 presses at 40/60 and 25/40 ms.
 
+**The deep-sleep build is done, not flashed** (plan:
+[`DEEP-SLEEP-BUILD-PLAN.md`](DEEP-SLEEP-BUILD-PLAN.md) revision 5, cleared by
+codex after a plan review and four verifies). Firmware `6df01722a8`..`bf7d7d0280`,
+local on `ak820pro-jdlien`, not pushed; all four flavours build with no
+warnings and pass `build.sh`'s new checks (the sleep's production path in
+every flavour, no dev mutation handler in daily or fpb). Artifacts:
+`via-dev-bf7d7d0280-20261019-121358.bin` (token `0xec3c77f1`) and
+`via-daily-bf7d7d0280-20261019-121424.bin` (`0xe65fead1`). Outer repo
+`a4a810a`: the bench scripts on record v2, `deep_cycles.py` through the
+ladder's own path (Minimal plus op 14 sub 5) with validation 1's gates,
+`ak820battery.py sleep` (`HC_POWER` page 1, 28 bytes: the blockers' u16
+added to the plan's 26), and the docs (hardware.md "Deep sleep", clock.md
+"Across a deep sleep", display.md "At a deep sleep and its wake",
+battery.md "The gauge across a deep sleep"). The simulator: 146 of 146; the
+drains' replays worst +1.9 / +2.1 with the per-colour model (were +1.1 /
++1.2: the logs carry only the total drive).
+
+**The mode names are settled:** Always on / Balanced / Power saver / Lights
+out, with a bulb icon in the bolt's slot on battery
+([`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md), `db175ae`). Another
+session builds it on its own branch off `bf7d7d0280`, as its own flash
+after this one.
+
 **Next, in order:**
-1. **The deep-sleep build plan, for codex** — **written 10-19,
-   [`DEEP-SLEEP-BUILD-PLAN.md`](DEEP-SLEEP-BUILD-PLAN.md); revision 5
-   cleared for the build by codex's fourth verify** (a plan review and four
-   verifies, every finding dispositioned). Pending JD: the mode names (the
-   suggestion: Always on / Auto dim / Quick dim / Lights out). It adds the knob and the charger as wake sources, a 24 h
-   backstop, a USB re-attach, log v7 and `HC_POWER` page 1. The ladder's sleep stage and
-   timings (`SLEEP-PLAN.md`, "Decided"), the radio resynced and USB recovered
-   after a wake, slept time from the PCF and out of the trim window, the
-   gauge's sleep term, no sleep while the screen is lit, time left as hours
-   of use (and slept seconds in the log). Riding along: the per-colour RGB
-   model, the sleep.c comment wording (codex, sleep verify 3), optionally
-   `raw_edges` inside the lock. (`1ea968335f` has been on the board since
-   `53afebd553`.)
-2. Codex's review, every finding dispositioned; the flash; the board tests
-   (the soak again, with `asleep_s` against the record's seconds).
-3. The wake/key test through the stages (10-18's item 2; the Mac unlocked,
-   the keyboard untouched ~10 min).
-4. R5: a logged drain in Normal at JD's daily use.
+1. **Codex's implementation review** of the build (running 10-19 ~12:20:
+   `review-prompt-deep-sleep-build.txt`, the review into
+   `review-codex-deep-sleep-build-2026-10-19.md`); every finding
+   dispositioned in the plan.
+2. **The flash, on JD's go,** then the board tests (the plan's validation):
+   the soak through the ladder (`deep_cycles.py --n 100`), an hour asleep,
+   the clock without the daemon, the wake sources (the knob by hand: JD, one
+   action at a time), charge and USB, the backstop's widths
+   (`deep_sleep.py --preset 65500 --no-press`), the stage test, R5.
+   The stage test is 10-18's wake/key test through the stages (the Mac
+   unlocked, the keyboard untouched ~10 min); R5 a logged drain in Normal at
+   JD's daily use.
 
 ## 2026-10-18
 

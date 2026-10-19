@@ -117,7 +117,12 @@ ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 cycles and an hour asleep at 3.17 mA, every waking key kept; ⚠️ **asleep, the
 RTC's second runs ~13% slow** (3139 s counted for 3600), so the build takes
 slept time from the PCF; the radio retries as often awake as after a wake; a
-per-colour RGB model within 0.6%. Next: the deep-sleep build plan for codex.
+per-colour RGB model within 0.6%. **The deep-sleep build is done, not
+flashed** (`bf7d7d0280`, local; [docs/hardware.md](docs/hardware.md), "Deep
+sleep"); codex's implementation review is next, then the flash on JD's go.
+The mode names are settled (Always on / Balanced / Power saver / Lights
+out, [`plans/POWER-MODE-ICONS-PLAN.md`](plans/POWER-MODE-ICONS-PLAN.md)),
+built separately as the flash after.
 Two workstreams, Phase 2 first:
 - **Phase 2 is built and on the board (10-18, 16:54): an accurate gauge, a
   time-left estimate, the power ladder** ([`plans/PHASE2-BUILD-PLAN.md`](plans/PHASE2-BUILD-PLAN.md),
