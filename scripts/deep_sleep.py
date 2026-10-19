@@ -80,8 +80,22 @@ def need_bus(wait_s=30.0):
     time.sleep(2)
 
 
+def open_dev(wait_s=8.0):
+    """The board's raw HID, retried: on macOS it opens exclusively, and the
+    now-playing daemon reopens it the moment USB comes back (the cycle run's
+    seventh cycle, 20:14 10-18: "raw HID interface busy")."""
+    deadline = time.time() + wait_s
+    while True:
+        try:
+            return cm.ak820text.open_device()
+        except SystemExit:
+            if time.time() > deadline:
+                raise
+            time.sleep(0.3)
+
+
 def with_dev(fn, *args, **kw):
-    h = cm.ak820text.open_device()
+    h = open_dev()
     try:
         return fn(h, *args, **kw)
     finally:
