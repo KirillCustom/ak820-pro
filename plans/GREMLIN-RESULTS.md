@@ -62,13 +62,12 @@ access 0 (`HidP_GetCaps`), then a `GENERIC_WRITE` open closed unused:
 
 - **Windows lets a user process open the dongle's boot keyboard for
   writing**, and its only output report is the LED byte (report id 0 plus one
-  byte). So the lock-light channel's first Windows question likely has a yes
-  over 2.4G, without touching the system's lock state. Not yet written:
-  pending the experiment below.
-- **`MI_03` has QMK raw HID's usage on the dongle.** Whether it reaches the
-  keyboard (a two-way channel over 2.4G) or is the dongle's own is unknown;
-  nothing has been sent to it, since an unknown vendor command could change
-  the dongle's state.
+  byte), but the open is all it gets: the writes are refused (section 2).
+- **`MI_03` has QMK raw HID's usage on the dongle.** Probably the dongle's own
+  port, not a tunnel: fpb's `CH582F_PROTOCOL.md` lists only `5A`/`5B`/`5C`
+  from the module to the SN32, so a raw-HID payload has no frame to ride in.
+  Listened 10 s on `MI_03` and `MI_04` (opened for read, nothing written): no
+  unsolicited report on either. Nothing has been sent to them.
 
 ## 1. Deep sleep in 2.4G, on battery (10-19, ~17:00-17:20)
 
@@ -106,6 +105,32 @@ second, not confirmed. Lights out lights the screen 4 s for a band message
   utility (Logitech's, JD thinks) shows every lock change on screen, so the
   plan's last-resort route would flash it per symbol. Settles codex's
   finding 19 against that route, for this machine at least.
-- Left: `IOCTL_KEYBOARD_SET_INDICATORS` through the keyboard class driver
-  (Num/Caps/Scroll/Kana only, so no padding bits; does Kana arrive?), and
-  whether the dongle's `MI_03` raw-HID-usage interface relays to the board.
+- ✅ **The route that works: `IOCTL_KEYBOARD_SET_INDICATORS` on the
+  dongle's keyboard-class interface**, unprivileged. The interface comes from
+  the Configuration Manager's `GUID_DEVINTERFACE_KEYBOARD` list
+  (`\\?\HID#VID_0C45&PID_FDFD&MI_00#...#{884b96c3-...}`), opened with access
+  0 (read is refused, error 5). Setting Scroll reached the board (`0x05` x3,
+  then `0x01` x3) and **Windows' lock state never moved** (`GetKeyState`
+  before and after), so nothing watching the system's locks sees it. It is
+  per device: only the dongle's unit (5) is addressed.
+  - `IOCTL_KEYBOARD_QUERY_INDICATORS` answers `0x0000` with Num on: the class
+    driver's copy is stale, so a sender must build the flags from
+    `GetKeyState`, never from the query, or it turns the user's Num off.
+  - **Kana is refused**, NTSTATUS `0xC0110004` (`HIDP_STATUS_USAGE_NOT_FOUND`):
+    the dongle's descriptor has no Kana LED. Padding bits cannot be expressed
+    in `LedFlags` at all. **So Windows over 2.4G has Num and Scroll: profile
+    P0** (Caps never).
+  - **Speed** (16 Scroll changes a run, the 5A ring's 52 frames read after):
+    issued back to back (each call returns in ~0.1 ms) they merge, 6 of 16
+    arrived; **spaced 20, 12, 8, 5 or 3 ms, 16 of 16 every run**, two runs
+    each, change to change 5-10 ms on the board at the tighter spacings, so
+    **~125 changes/s**, about 4x BLE's 32/s. P0 at that rate is ~200 bit/s, a
+    30-character title in ~1.5 s. Each change still arrives 3x (~375 UART
+    frames/s at the top rate): afterwards no pass >= 25 ms, no UART overrun,
+    framing or parity error.
+  - Not yet: frames through the receiver (`ledchannel_test.py frames`'s P0
+    on this route), the 20-ms-and-under error rate over thousands of
+    changes, and what the user's own Num/Scroll press does mid-frame.
+- **The 2.4G link's ACK timeouts so far:** 109 in 5,009 frames (0.022 a
+  frame), typing included, against BT's 0.042 on record. Not yet a controlled
+  burst.
