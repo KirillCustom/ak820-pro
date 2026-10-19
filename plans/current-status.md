@@ -52,8 +52,10 @@ of 200 presses at 40/60 and 25/40 ms.
 
 **Next, in order:**
 1. **The deep-sleep build plan, for codex** — **written 10-19,
-   [`DEEP-SLEEP-BUILD-PLAN.md`](DEEP-SLEEP-BUILD-PLAN.md), at codex's plan
-   review.** It adds the knob and the charger as wake sources, a 24 h
+   [`DEEP-SLEEP-BUILD-PLAN.md`](DEEP-SLEEP-BUILD-PLAN.md); revision 5
+   cleared for the build by codex's fourth verify** (a plan review and four
+   verifies, every finding dispositioned). Pending JD: the mode names (the
+   suggestion: Always on / Auto dim / Quick dim / Lights out). It adds the knob and the charger as wake sources, a 24 h
    backstop, a USB re-attach, log v7 and `HC_POWER` page 1. The ladder's sleep stage and
    timings (`SLEEP-PLAN.md`, "Decided"), the radio resynced and USB recovered
    after a wake, slept time from the PCF and out of the trim window, the

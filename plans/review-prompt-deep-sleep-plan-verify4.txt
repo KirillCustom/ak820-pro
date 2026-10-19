@@ -1,0 +1,11 @@
+You are verifying a revised firmware PLAN before it is built (AK820 Pro: QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2, a PCF8563 RTC on bit-banged I2C). Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
+
+You reviewed plans/DEEP-SLEEP-BUILD-PLAN.md's revision 1 and verified revisions 2, 3 and 4 (plans/review-codex-deep-sleep-plan-*.md). Your third verify (plans/review-codex-deep-sleep-plan-verify3-2026-10-19.md) left one must-fix (W2: the log's merge and recovery-boundary rules conflicting) and a should-fix (W4: scheduling the repaints). Revision 5 is now in plans/DEEP-SLEEP-BUILD-PLAN.md; its last section, "Codex's third verify (10-19) and what changed", dispositions X1-X5. Note that revision 5 swapped steps 3 and 4 of section 4 (the gauge and the log are now step 3, before the acquisition, step 4); the earlier disposition tables keep their own revision's numbering. The firmware is unchanged (/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/, branch ak820pro-jdlien, HEAD 442c9f49c9).
+
+Please:
+1. For X1-X5, say whether revision 5 resolves each, citing the plan's section and the code it will change (file:line).
+2. Check that the step swap left section 4 consistent (every reference to a step number in sections 4-7 and the validation now names the right step), and that moving the gauge ahead of the acquisition breaks nothing (the slept seconds come from step 2; the 60 s discipline stays suspended until the acquisition ends).
+3. Answer the plan's "Questions for the fourth verify" (two).
+4. Anything else that blocks the build: a path that could cost a keystroke, carry a main-loop pass over 25 ms, leave the board asleep with no way to wake, corrupt the log or the clock, or ship a dev hook.
+
+Rank must-fix / should-fix / note; be brief. If nothing blocks the build, say so plainly.

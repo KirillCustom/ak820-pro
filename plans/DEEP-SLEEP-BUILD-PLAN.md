@@ -1,8 +1,8 @@
 # Deep sleep, the build: the ladder's last stage
 
-Status: **revision 5, after codex's plan review and three verifies (10-19;
-every finding dispositioned at the end). For codex's fourth verify, then the
-build.**
+Status: **revision 5, cleared for the build by codex's fourth verify
+(10-19): no blockers left.** The plan review and four verifies, every finding
+dispositioned, are at the end.
 
 The experiment (`SLEEP-PLAN.md`, "Deep sleep: the experiment") proved the
 mechanism over 10-18/19. This plan makes it the board's standby: on by
@@ -808,3 +808,16 @@ their revision):
 | X3 | note: `loop_acct`'s interval closes at housekeeping, after the input work; take the admission stamp before keyboard processing | **Fixed** (section 4, "The budget"). |
 | X4 | note: keep the confirming read's equality check and the original timeout across a reacquisition | **Fixed** (step 4). |
 | X5 | note: the new delay hook behind `HC_DEVHOOK`'s guard | **Fixed** (validation 4). |
+
+## Codex's fourth verify (10-19)
+
+[Verbatim](review-codex-deep-sleep-plan-verify4-2026-10-19.md), prompt
+[`review-prompt-deep-sleep-plan-verify4.txt`](review-prompt-deep-sleep-plan-verify4.txt).
+**No remaining build blockers.** X1-X5 resolved; the step swap audited
+consistent; W2 settled (its example worked through); no new blocker from the
+swap or the repaint scheduling.
+
+- **Implementation note,** taken: the display hold's completion and deadline
+  are serviced while the acquisition runs, and its accelerated painting
+  yields on I2C passes under the shared budget.
+- **Actual timing** is for the board validation.
