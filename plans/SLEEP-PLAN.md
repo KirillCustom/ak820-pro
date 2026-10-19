@@ -314,3 +314,13 @@ flag is not a blocker (its flush is synchronous in the main loop; accepted).
   Low battery keeps Saver's timings. Each minute in the dim-screen stage
   instead of asleep costs ~25 mA-min; Normal's 2 min keeps a glance at the
   screen. To be tuned by how it feels in use.
+- **Messages and the sleeping screen.** An Fn combo wakes the board with its
+  first key (Fn pulls a column low like any key), and the rest is as today:
+  in Normal and Saver a keypress resets the idle time, so the stage returns
+  to active, screen and lights on; in Minimal the combo's overlay lights the
+  screen 4 s, and it sleeps again after its 30 s. Two rules for the build:
+  **no deep sleep while the backlight is lit** (a message's 4 s, `Fn`+`D`'s
+  pages: the lit screen needs the 20 kHz tick), a hard precondition, not a
+  timing accident; and a message that arises while asleep with no key
+  ("Battery low", a link lost) waits for the next wake: the battery reading
+  comes from the radio, which the sleeping SN32 does not hear.
