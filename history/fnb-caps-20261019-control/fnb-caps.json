@@ -1,0 +1,30 @@
+{
+ "args": {
+  "control": true,
+  "secs": 90.0,
+  "every_ms": 150,
+  "out": "history/fnb-caps-20261019-control"
+ },
+ "caps_before": false,
+ "mode_before": 1,
+ "before": {
+  "count_ge_10ms": 704,
+  "count_ge_25ms": 0,
+  "count_ge_25ms_nonflash": 0,
+  "key_presses": 100
+ },
+ "after": {
+  "count_ge_10ms": 906,
+  "count_ge_25ms": 0,
+  "count_ge_25ms_nonflash": 0,
+  "key_presses": 100
+ },
+ "toggles": 199,
+ "delta": {
+  "count_ge_10ms": 202,
+  "count_ge_25ms": 0,
+  "count_ge_25ms_nonflash": 0,
+  "key_presses": 0
+ },
+ "mode_after": 1
+}

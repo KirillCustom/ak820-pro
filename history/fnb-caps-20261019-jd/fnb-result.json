@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "count_ge_10ms": 1327,
+  "count_ge_25ms": 1,
+  "count_ge_25ms_nonflash": 1,
+  "key_presses": 100,
+  "mode": 1,
+  "at": "14:51:04"
+ },
+ "after": {
+  "count_ge_10ms": 1677,
+  "count_ge_25ms": 1,
+  "count_ge_25ms_nonflash": 1,
+  "key_presses": 130,
+  "mode": 3
+ },
+ "delta": {
+  "count_ge_10ms": 350,
+  "count_ge_25ms": 0,
+  "count_ge_25ms_nonflash": 0,
+  "key_presses": 30
+ }
+}
