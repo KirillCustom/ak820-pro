@@ -4,7 +4,8 @@
 
     python3 scripts/lockchan_test.py [-v]
 
-It checks round trips in every profile, repeats and unused bits ignored, and
+It checks round trips in every profile, repeats and unused bits ignored, the
+Scroll Lock hold, headers and blocks at their limits, preamble edges, and
 that no fault (a lost, inserted, substituted or merged report, a Caps change, a
 pause, a link drop, garbage after a valid preamble, human lock presses) ever
 commits a wrong frame. Exit status 1 on any failure.
@@ -12,7 +13,8 @@ commits a wrong frame. Exit status 1 on any failure.
 import ctypes, os, random, subprocess, sys, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lockchan import encode, P0, P1, P2, P3, PROFILES  # noqa: E402
+from lockchan import (encode, sections, writes, header, crc16, to_digits, digits_for,  # noqa: E402
+                      P0, P1, P2, P3, PROFILES, PREAMBLE, HEADER_PROFILE)
 
 GAP_MS = 500       # lockchan.h: LOCKCHAN_GAP_MS
 QUIET_MS = 150     # LOCKCHAN_QUIET_MS
@@ -52,6 +54,7 @@ L = build()
 L.lc_size.restype = ctypes.c_size_t
 L.lockchan_feed.restype = ctypes.c_bool
 L.lockchan_busy.restype = ctypes.c_bool
+L.lockchan_holds_scroll.restype = ctypes.c_bool
 
 
 class Rx:
@@ -67,6 +70,9 @@ class Rx:
 
     def busy(self):
         return L.lockchan_busy(self.buf)
+
+    def holds(self):
+        return L.lockchan_holds_scroll(self.buf)
 
     def link_lost(self):
         L.lockchan_link_lost(self.buf)
@@ -356,7 +362,8 @@ def test_timing(rng):
         b = dict(payload=b"second", type=1, seq=2, profile=P1, user=0)
         _, t = run_frame(rx, a, encode(**a), 500, rng)
         got, _ = run_frame(rx, b, encode(**b), t - 31 + quiet, rng)
-        check(f"second frame after {quiet} ms", got == bool(want), f"got {got}")
+        check(f"second frame after {quiet} ms", got == bool(want) and (not want or matches(rx.stats(), b)),
+              f"got {got}")
 
 
 def test_link_lost_everywhere(rng):
@@ -395,8 +402,8 @@ def test_boundaries():
             rx.feed(0x08, t0)
             rx.feed(0x00, t0 + 31)
             tl = [(v, t0 + 31 + quiet + 31 * k) for k, v in enumerate(encode(**q))]
-            commits, _ = feed_checked(rx, tl, q)
-            check(f"quiet {quiet} ms (t0 {t0 % W:#x})", commits == want, f"{commits}")
+            commits, wrong = feed_checked(rx, tl, q)
+            check(f"quiet {quiet} ms (t0 {t0 % W:#x})", commits == want and not wrong, f"{commits} {wrong}")
     # The preamble's second transition late: at QUIET_MS it starts a new preamble
     # instead, so the frame is lost (in feed), and poll gives up the preamble.
     for prof in (P0, P1, P3):
@@ -406,8 +413,9 @@ def test_boundaries():
                 rx = Rx()
                 rx.warm(0, t - 331)
                 tl = [(v, t + 31 * k + (space - 31 if k >= 1 else 0)) for k, v in enumerate(encode(**q))]
-                commits, _ = feed_checked(rx, tl, q)
-                check(f"preamble spacing {space} ms P{prof} (t {t % W:#x})", commits == want, f"{commits}")
+                commits, wrong = feed_checked(rx, tl, q)
+                check(f"preamble spacing {space} ms P{prof} (t {t % W:#x})", commits == want and not wrong,
+                      f"{commits} {wrong}")
                 rx = Rx()
                 rx.warm(0, t - 331)
                 rx.feed(tl[0][0], tl[0][1])
@@ -420,8 +428,8 @@ def test_boundaries():
             rx = Rx()
             rx.warm(0, t - 331)
             tl = [(v, t + 31 * k + (gap - 31 if k >= 10 else 0)) for k, v in enumerate(encode(**g))]
-            commits, _ = feed_checked(rx, tl, g)
-            check(f"gap {gap} ms in feed (t {t % W:#x})", commits == want, f"{commits}")
+            commits, wrong = feed_checked(rx, tl, g)
+            check(f"gap {gap} ms in feed (t {t % W:#x})", commits == want and not wrong, f"{commits} {wrong}")
             # The same gap seen by poll alone, before the late write arrives.
             rx = Rx()
             rx.warm(0, t - 331)
@@ -439,8 +447,8 @@ def test_boundaries():
             # Evenly spread so the trailer's last write lands `life` ms after the
             # preamble's first, every gap well under the limit.
             tl = [(v, t + (life * k) // (n - 1)) for k, v in enumerate(w)]
-            commits, _ = feed_checked(rx, tl, f)
-            check(f"lifetime {life} ms in feed (t {t % W:#x})", commits == want, f"{commits}")
+            commits, wrong = feed_checked(rx, tl, f)
+            check(f"lifetime {life} ms in feed (t {t % W:#x})", commits == want and not wrong, f"{commits} {wrong}")
             # Poll's lifetime check: the frame still running, its last write recent.
             rx = Rx()
             rx.warm(0, t - 331)
@@ -448,6 +456,215 @@ def test_boundaries():
                 rx.feed(v, tt)
             rx.poll(t + life)
             check(f"lifetime {life} ms in poll (t {t % W:#x})", rx.busy() == bool(want), f"busy {rx.busy()}")
+
+
+def expect(name, w, want, f=None, user=0):
+    """Feed writes 31 ms apart after a warm-up. want "commit": exactly f and no
+    abort; otherwise the one abort named, and no commit."""
+    rx = Rx()
+    t = rx.warm(user, 1000)
+    commits, wrong = feed_checked(rx, [(v, t + 31 * k) for k, v in enumerate(w)], f)
+    a = rx.stats()["aborts"]
+    if want == "commit":
+        check(name, commits == 1 and not wrong and not any(a.values()), f"commits {commits} {a}")
+    else:
+        check(name, commits == 0 and a[want] == 1 and sum(a.values()) == 1, f"commits {commits} {a}")
+    return rx, t + 31 * len(w)
+
+
+def test_scroll_hold():
+    """The band's Scroll Lock waits only while a frame can move it: P0 and P2
+    to the end, P1 through its preamble and header only (they could still
+    announce P2), P3 never (codex, flash 2i, note 2)."""
+    for prof in ALL:
+        f = dict(payload=b"hold", type=1, seq=3, profile=prof, user=0x04)
+        w = encode(**f)
+        n_hdr = 3 + len(sections(f["payload"], f["type"], f["seq"], prof)[0][1])
+        rx = Rx()
+        t = rx.warm(f["user"], 1000)
+        held, busy = [], []
+        for k, v in enumerate(w):
+            rx.feed(v, t + 31 * k)
+            held.append(rx.holds())
+            busy.append(rx.busy())
+        last = len(w) - 1
+        want = {P0: [k < last for k in range(len(w))], P2: [k < last for k in range(len(w))],
+                P1: [k < n_hdr - 1 for k in range(len(w))], P3: [False] * len(w)}[prof]
+        check(f"Scroll held only where P{prof} can move it", held == want, f"{held}")
+        check(f"busy through all of P{prof}", busy == [k < last for k in range(len(w))], f"{busy}")
+    # A person's Num + Scroll together (a host restoring both) looks like a P0
+    # preamble's first edge: held until the quiet gives it up.
+    rx = Rx()
+    rx.feed(0, 1000)
+    rx.feed(0x05, 2000)
+    check("a P0-like edge holds Scroll", rx.holds())
+    rx.poll(2000 + QUIET_MS)
+    check("and lets go after the quiet", not rx.holds() and not rx.busy())
+    rx.feed(0x05 ^ 0xE0, 3000)
+    check("a P3 preamble's first edge does not hold Scroll", rx.busy() and not rx.holds())
+
+
+def test_forbidden_headers():
+    """Headers whose CRC-8 is right but whose content is not allowed: a
+    profile the preamble may not announce (P3 -> P0-P2, bits 3-4 -> P0 or
+    P3, P0 -> P1-P3), a version other than 0, a length past 48. Each is one
+    header abort and nothing else; the edge that is allowed commits. Random
+    traffic rarely reaches these with a valid CRC (codex, flash 2i)."""
+    allowed = {P0: (P0,), P1: (P1, P2), P3: (P3,)}   # by the header's alphabet
+    for hp, ok in allowed.items():
+        cases = [(0, p, 4) for p in ALL if p not in ok]
+        cases += [(v, ok[0], 4) for v in (1, 2, 3)]
+        cases += [(0, ok[-1], n) for n in (49, 50, 128, 255)]
+        for ver, prof, n in cases:
+            h = header(prof, 1, 9, n, version=ver)
+            body = bytes(4) + crc16(h + bytes(4)).to_bytes(2, "big")
+            w = writes(PREAMBLE[hp], [(hp, to_digits(h, 32, hp)), (hp, to_digits(body, 48, hp))], 0)
+            rx, t = expect(f"header v{ver} P{prof} len {n} after a P{hp} preamble", w, "header")
+            check(f"  idle after it", not rx.busy())
+            g = dict(payload=b"next", type=2, seq=10, profile=ok[0], user=0)
+            t = rx.warm(0, t + GAP_MS + 100)
+            commits, wrong = feed_checked(rx, [(v, t + 31 * k) for k, v in enumerate(encode(**g))], g)
+            check(f"  and the next frame decodes", commits == 1 and not wrong)
+        for prof in ok:
+            f = dict(payload=bytes(range(48)), type=15, seq=255, profile=prof, user=0)
+            expect(f"header P{prof} len 48 after a P{hp} preamble", encode(**f), "commit", f)
+
+
+def digits_n(v, base, n):
+    out = []
+    for _ in range(n):
+        out.append(v % base)
+        v //= base
+    return out[::-1]
+
+
+def test_range_limits(rng):
+    """Blocks exactly under and at their limit, full and partial, in the
+    header and the payload: 2^bits - 1 decodes; 2^bits, and the largest value
+    the digits can hold, are one range abort and nothing else (codex, flash
+    2i). Random digits almost always fail a CRC first."""
+    for prof in ALL:
+        _, _, base, bb, bd, _ = PROFILES[prof]
+        hp = HEADER_PROFILE[prof]
+        _, _, hbase, hbb, hbd, _ = PROFILES[hp]
+
+        def bad(secs, i, at, v, n):
+            secs = [(p, list(ds)) for p, ds in secs]
+            ds = secs[i][1]
+            ds[at:at + n] = digits_n(v, PROFILES[secs[i][0]][2], n)
+            return writes(PREAMBLE[prof], secs, 0)
+
+        # The payload's first block, full: all ones decodes, past it aborts.
+        f = dict(payload=b"\xff" * 8, type=1, seq=1, profile=prof, user=0)
+        expect(f"P{prof} full payload block 2^{bb}-1", encode(**f), "commit", f)
+        secs = sections(f["payload"], 1, 1, prof)
+        for v in (1 << bb, base ** bd - 1):
+            expect(f"P{prof} full payload block {v}", bad(secs, 1, 0, v, bd), "range")
+        # The payload's last block, partial: a length that leaves the fewest bits.
+        n = min(range(49), key=lambda k: ((k + 2) * 8) % bb or bb)
+        r = ((n + 2) * 8) % bb
+        nd = digits_for(base, r)
+        for _ in range(100000):   # a payload whose CRC ends in r one bits
+            pay = bytes(rng.randrange(256) for _ in range(n))
+            h = header(prof, 1, 2, n)
+            if crc16(h + pay) & ((1 << r) - 1) == (1 << r) - 1:
+                break
+        f = dict(payload=pay, type=1, seq=2, profile=prof, user=0)
+        expect(f"P{prof} partial payload block ({r} bits) 2^{r}-1", encode(**f), "commit", f)
+        secs = sections(pay, 1, 2, prof)
+        at = len(secs[1][1]) - nd
+        for v in (1 << r, base ** nd - 1):
+            expect(f"P{prof} partial payload block ({r} bits) {v}", bad(secs, 1, at, v, nd), "range")
+        # The header: its first block, full, and its last, partial.
+        hr = 32 % hbb
+        hnd = digits_for(hbase, hr)
+        for v in (1 << hbb, hbase ** hbd - 1):
+            expect(f"P{prof} full header block {v}", bad(secs, 0, 0, v, hbd), "range")
+        for v in (1 << hr, hbase ** hnd - 1):
+            expect(f"P{prof} partial header block ({hr} bits) {v}", bad(secs, 0, 32 // hbb * hbd, v, hnd), "range")
+        # The partial header block all ones: a type, seq and length whose CRC-8 ends that way.
+        found = None
+        for typ in range(16):
+            for seq in range(256):
+                for n2 in range(49):
+                    h = header(prof, typ, seq, n2)
+                    if int.from_bytes(h, "big") & ((1 << hr) - 1) == (1 << hr) - 1:
+                        found = (typ, seq, n2)
+                        break
+                if found:
+                    break
+            if found:
+                break
+        typ, seq, n2 = found
+        f = dict(payload=bytes(range(n2)), type=typ, seq=seq, profile=prof, user=0)
+        expect(f"P{prof} partial header block ({hr} bits) 2^{hr}-1", encode(**f), "commit", f)
+
+
+def test_preamble_edges():
+    """A preamble starts only from its bits clear: the same three flips from
+    bits 3-4 (or 5-7) set never sync. A stray light change 300 ms before a
+    frame (more than the quiet) leaves the frame decodable; one 100 ms before
+    may cost the frame, but never commits a wrong one (codex, flash 2i)."""
+    for prof in (P1, P2, P3):
+        m = PREAMBLE[prof]
+        for user in range(8):
+            start = user | m
+            rx = Rx()
+            rx.feed(start, 1000)
+            w = writes(m, sections(b"falling", 1, 4, prof), start)
+            commits, _ = feed_checked(rx, [(v, 1300 + 31 * k) for k, v in enumerate(w)], None)
+            st = rx.stats()
+            check(f"falling-edge preamble P{prof} from {start:#04x} never syncs",
+                  commits == 0 and st["preambles"] == 0, f"{st}")
+    for prof in ALL:
+        m = PREAMBLE[prof]
+        for lead in (300, 100):
+            for user in (0, 0x02, 0x05):
+                rx = Rx()
+                t = rx.warm(user, 1000) + 400
+                if prof == P0:   # Num and Scroll flipped together, and left
+                    stray, u2 = [user ^ m], user ^ m
+                else:            # bits flipped and back
+                    stray, u2 = [user ^ m, user], user
+                f = dict(payload=b"after a stray", type=1, seq=6, profile=prof, user=u2)
+                tl = [(v, t - lead - 31 * (len(stray) - 1 - i)) for i, v in enumerate(stray)]
+                tl += [(v, t + 31 * k) for k, v in enumerate(encode(**f))]
+                commits, wrong = feed_checked(rx, tl, f)
+                if lead > QUIET_MS:
+                    check(f"a stray {lead} ms before P{prof} (user {user:#x}): decodes", commits == 1 and not wrong,
+                          f"{rx.stats()['aborts']}")
+                else:
+                    check(f"a stray {lead} ms before P{prof} (user {user:#x}): never wrong", not wrong)
+
+
+def test_stall_deadline():
+    """Mid-frame, a report that only moves bits the section does not use, or
+    repeats the last value, is not a transition: neither extends the gap, so
+    with no real change for more than 500 ms the frame dies; resumed inside
+    the gap it decodes (codex, flash 2i: the old test moved unused bits only
+    alongside real digits)."""
+    unused = {P0: (0x08, 0x80), P1: (0x04, 0x20), P2: (0x20,), P3: (0x01, 0x04)}
+    for prof in ALL:
+        f = dict(payload=b"stall test payload", type=1, seq=8, profile=prof, user=0)
+        w = encode(**f)
+        k = len(w) - 8   # mid-payload
+        for kind in ("repeat",) + unused[prof]:
+            for resume, want in ((GAP_MS - 20, 1), (GAP_MS + 20, 0)):
+                rx = Rx()
+                t = rx.warm(0, 1000)
+                tl = [(v, t + 31 * j) for j, v in enumerate(w[:k])]
+                t_last, last = tl[-1][1], w[k - 1]
+                flip = 0 if kind == "repeat" else kind
+                tl += [(last ^ flip, t_last + 200), (last, t_last + 400)]
+                tl += [(v, t_last + resume + 31 * j) for j, v in enumerate(w[k:])]
+                commits, wrong = feed_checked(rx, tl, f)
+                a = rx.stats()["aborts"]
+                name = "repeats" if kind == "repeat" else f"bit {kind:#04x} alone"
+                if want:
+                    check(f"{name} in a pause, P{prof}, resumed at {resume} ms: decodes", commits == 1 and not wrong, f"{a}")
+                else:
+                    check(f"{name} in a stall, P{prof}, resumed at {resume} ms: gap abort",
+                          commits == 0 and a["gap"] == 1, f"{a}")
 
 
 # Pinned writes for one short frame per profile: the encoder must not drift
@@ -471,6 +688,9 @@ def test_golden():
             print(f"     golden P{prof}: {w}")
         else:
             check(f"golden P{prof}", w == GOLDEN[prof], f"{w}")
+            # The pinned writes themselves, through the C (codex, flash 2i).
+            f = dict(payload=b"AK820", type=1, seq=42, profile=prof, user=0x02)
+            expect(f"golden P{prof} on the receiver", GOLDEN[prof], "commit", f, user=0x02)
 
 
 def test_timer_wrap(rng):
@@ -504,6 +724,11 @@ def main():
     test_timer_wrap(rng)
     test_link_lost_everywhere(rng)
     test_boundaries()
+    test_scroll_hold()
+    test_forbidden_headers()
+    test_range_limits(rng)
+    test_preamble_edges()
+    test_stall_deadline()
     test_golden()
     if VERBOSE:
         report_sizes()

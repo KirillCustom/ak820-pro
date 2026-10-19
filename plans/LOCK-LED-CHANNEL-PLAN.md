@@ -194,14 +194,29 @@ overruns +3 in all. No write in this run went past the old 150 ms gap, so the
 **Where the channel stands:** P3 works end to end on the Mac over Bluetooth
 and moves no light. **Parked here (10-18)** while the power work comes first.
 Left for when it resumes, in order:
-1. Codex's 2i should-fixes for the host tests: valid-CRC headers announcing
-   forbidden profiles, versions and lengths; block values exactly at and below
-   the range limit; falling-edge starts for both high preambles and the stray
-   transition 300 ms before a frame; unused-bit and repeat reports during a
-   stall; the golden vectors fed into the C; boundary tests checking content,
-   not only counts.
-2. The Scroll hold only for frames that can carry Scroll (P0, P2, a P1
-   preamble until its header ends), not P3 (codex 2i, note 2).
+1. ~~Codex's 2i should-fixes for the host tests~~ **done 10-19**
+   (`lockchan_test.py`): valid-CRC headers announcing forbidden profiles,
+   versions and lengths (each one header abort and nothing else, then the
+   next frame decodes; length 48 commits); blocks exactly at and below the
+   range limit, full and partial, in the header and the payload, and the
+   largest value the digits hold; falling-edge starts for both high
+   preambles; a stray transition 300 ms before a frame (decodes) and 100 ms
+   before (may cost the frame, never a wrong one); unused-bit-only and
+   repeated reports in a stall (resumed at 480 ms the frame decodes, at
+   520 ms it is a gap abort); the golden writes fed into the C; content
+   checked in the boundary tests. To show the tests bite, eight bugs were
+   planted one at a time in a scratch copy of the receiver (an unused bit
+   extending the deadline, P1 announcing P3, any version, length 49, the
+   range check one high, a falling-edge start, the old hold, no hold
+   through a P1 header): each failed the suite. The board test's initial
+   wait (codex 2i, should-fix 6) was already in `ledchannel_test.py`.
+2. ~~The Scroll hold only for frames that can carry Scroll~~ **built 10-19,
+   not flashed** (firmware `442c9f49c9`, local): `lockchan_holds_scroll()`
+   holds for P0 and P2 throughout and for a bits 3-4 preamble and header
+   (they may announce P2), never for P1's payload or for P3; both of the
+   band's uses (the settle hold, the own-key shortcut) take it, and
+   `lockchan_busy()` stays for the devhook. Tested on the host
+   (`test_scroll_hold`); a codex review before it goes on a flash.
 3. A Caps change while padding bits are set: does the Mac's own Caps report
    keep bits 5-7 (the board's guard would then drop it, and the band would
    miss the change)? Needs the probe's `capsmix` to take a value.

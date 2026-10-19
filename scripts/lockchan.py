@@ -76,37 +76,48 @@ def mask_of(profile, d):
     return sum(b for i, b in enumerate(bits) if s >> i & 1)
 
 
-def header(profile, type_, seq, length):
-    h = bytes([profile << 4 | type_, seq, length])
+def header(profile, type_, seq, length, version=0):
+    h = bytes([version << 6 | profile << 4 | type_, seq, length])
     return h + bytes([crc8(h)])
 
 
-def encode(payload, type=1, seq=0, profile=P1, user=0x00):
-    payload = bytes(payload)
-    if len(payload) > MAX_PAYLOAD or not 0 <= type < 16 or not 0 <= seq < 256 or profile not in PROFILES:
-        raise ValueError("payload <= 48 bytes, type 0-15, seq 0-255, profile P0-P3")
-    state = user & 0x07    # bits 3-7 clear: the baseline
-    base = state
-    out = []
+def sections(payload, type=1, seq=0, profile=P1):
+    """A frame's two sections as (profile, digits): the header, then the
+    payload and its CRC-16."""
+    h = header(profile, type, seq, len(payload))
+    body = payload + crc16(h + payload).to_bytes(2, "big")
+    return [(HEADER_PROFILE[profile], to_digits(h, 32, HEADER_PROFILE[profile])),
+            (profile, to_digits(body, len(body) * 8, profile))]
+
+
+def writes(pre, secs, start):
+    """The LED bytes for a preamble (the bits it flips), sections of digits,
+    and the trailer back to `start`, the LED byte before the frame. The
+    trailer is the last section's profile's. Takes any digits, so the tests
+    can build frames the encoder never would."""
+    state, out = start, []
 
     def write(s):
         nonlocal state
         state = s
         out.append(s)
 
-    hdr_profile = HEADER_PROFILE[profile]
-    pre = PREAMBLE[profile]
     for _ in range(3):
         write(state ^ pre)
-    h = header(profile, type, seq, len(payload))
-    for d in to_digits(h, 32, hdr_profile):
-        write(state ^ mask_of(hdr_profile, d))
-    body = payload + crc16(h + payload).to_bytes(2, "big")
-    for d in to_digits(body, len(body) * 8, profile):
-        write(state ^ mask_of(profile, d))
-    mask, _, _, _, _, (ta, tb) = PROFILES[profile]
-    b = base & mask
+    for prof, ds in secs:
+        for d in ds:
+            write(state ^ mask_of(prof, d))
+    mask, _, _, _, _, (ta, tb) = PROFILES[secs[-1][0]]
+    b = start & mask
     mid = b ^ (tb if (state & mask) == b ^ ta else ta)
     write((state & ~mask) | mid)
     write((state & ~mask) | b)
     return out
+
+
+def encode(payload, type=1, seq=0, profile=P1, user=0x00):
+    payload = bytes(payload)
+    if len(payload) > MAX_PAYLOAD or not 0 <= type < 16 or not 0 <= seq < 256 or profile not in PROFILES:
+        raise ValueError("payload <= 48 bytes, type 0-15, seq 0-255, profile P0-P3")
+    # Bits 3-7 clear: the baseline.
+    return writes(PREAMBLE[profile], sections(payload, type, seq, profile), user & 0x07)
