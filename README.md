@@ -119,7 +119,10 @@ somewhere else. `build.sh` enforces the ChibiOS submodule pin, checks the
 resulting binary structurally (stack pointer, reset vector, USB descriptor),
 verifies the VIA keycode enum still matches `via.json`, and writes a
 provenance-named artifact. `flash.sh` preserves your VIA keymap across the
-erase and refuses to flash if that backup fails.
+erase and refuses to flash if that backup fails. It also refuses if it cannot
+dump the board's battery log, and firmware older than the battery work has no
+log to dump ("no reply to 0x0a"): flash a board coming from such a build once
+with `--no-battlog`.
 
 For the other panel revision:
 
