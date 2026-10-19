@@ -4,7 +4,7 @@
  * hand-over before the lock, QMK's timer standing still (now_ms does not move,
  * no report arrives: the board polls the module for them), the wake, a few
  * awake passes, then the accounting with the slept ms. The sim's awake load is
- * count.c's 303.8 mW; asleep it is BATTERY_P_SLEEP_UW. */
+ * count.c's SIM_MW; asleep it is BATTERY_P_SLEEP_UW. */
 
 #define SLEEP_MW (BATTERY_P_SLEEP_UW / 1000.0)
 
@@ -151,7 +151,7 @@ static void s_log_within(void) {
     CHECK(log_count() == 1, "one entry at the period's end: %u", log_count());
     lent_t e = log_entry(0);
     CHECK(e.slept == 300, "300 s slept in it: %u", e.slept);
-    /* 600 s awake at 303.8 mW (~50.6 mWh) + 300 s asleep (~1.1 mWh) */
+    /* 600 s awake at SIM_MW (~50 mWh) + 300 s asleep (~1.1 mWh) */
     CHECK(e.e_x10 >= 500 && e.e_x10 <= 525, "its energy, the sleep's included: %u x 0.1 mWh", e.e_x10);
     CHECK(e.c5_n >= 230, "and every report: %u", e.c5_n);
 }
@@ -179,7 +179,7 @@ static void s_log_across(void) {
     /* 300 + 63 x 900 = 57,000 s of the 57,600 slept; the last 600 in the open period */
     CHECK(slept == 57000, "57,000 s slept in the closed entries: %u", slept);
     /* the closed entries' energy: 600 s awake before (in the first) + 57,000 s asleep */
-    double want = (303.8 * 600.0 + SLEEP_MW * 57000.0) / 3600.0 * 10.0;
+    double want = (SIM_MW * 600.0 + SLEEP_MW * 57000.0) / 3600.0 * 10.0;
     CHECK(fabs(e_sum - want) <= 64.0 + 3.0, "their energy %u x 0.1 mWh (want %.0f)", e_sum, want);
     CHECK(battery_energy_used_mwh_x10() - e0 >= (unsigned)(SLEEP_MW * 16 * 10 - 2), "e_used the whole night");
     /* Dating: the newest entry ended at 57,600,100 in log time; now is 58,200,300. */

@@ -284,7 +284,7 @@ static void l_sleep_usb(void) {
  * band, and a lit screen except in Minimal (codex, deep-sleep verify V7). */
 static void l_wake_notice(void) {
     power_init();
-    vdd_mv = 3900; c5 = 72;   /* ~3.79 V: ~200 pm, ~10 h at 303.8 mW; above the low cap */
+    vdd_mv = 3900; c5 = 72;   /* ~3.79 V: ~200 pm, ~10 h at the sim's ~300.7 mW; above the low cap */
     lrun_s(30);
     idle_ms = 0;
     lrun_s(61 * 60);          /* a mature average */

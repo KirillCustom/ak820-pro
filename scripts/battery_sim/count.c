@@ -1,11 +1,12 @@
 /* Phase 2's energy count (battery.c; plans/PHASE2-BUILD-PLAN.md, section 1,
  * and codex's must-fix 8), #included by sim.c after ladder.c. The sim's load
- * unless a scenario changes it: full white (246 channels at 255: 9.5 + 179.2
- * mW), the backlight at level 10 (duty 10/48: 8.1 mW) and the base (106.9):
- * 303.8 mW, so 1 pm every 184.6 s and 19.50 pm an hour. */
+ * unless a scenario changes it: full white (82 channels of each colour at 255,
+ * the per-colour model of 10-19: 8.64 + 20910 x (3.636 + 2.533 + 2.294) uW =
+ * 185.6 mW), the backlight at level 10 (duty 10/48: 8.15 mW) and the base
+ * (106.9): 300.65 mW, so 1 pm every 186.5 s and ~19.30 pm an hour. */
 
-#define SIM_MW        303.8
-#define PM_PER_HOUR   (SIM_MW * 3600.0 / 56084.4)   /* 19.50 */
+#define SIM_MW        300.65
+#define PM_PER_HOUR   (SIM_MW * 3600.0 / 56084.4)   /* ~19.30 */
 
 /* On the pack with a level from the first estimate at `c5v`. */
 static void c_start(uint8_t c5v) {
@@ -21,12 +22,12 @@ static void c_rate(void) {
     CHECK(l0 >= 680 && l0 <= 700, "the first estimate's level ~689: %u", l0);
     run_s(3600);
     double drop = l0 - battery_level_permille();
-    CHECK(fabs(drop - PM_PER_HOUR) <= 1.0, "an hour at 303.8 mW is 19.5 pm: %.0f", drop);
+    CHECK(fabs(drop - PM_PER_HOUR) <= 1.0, "an hour at %.1f mW is %.1f pm: %.0f", SIM_MW, PM_PER_HOUR, drop);
     uint32_t de = battery_energy_used_mwh_x10() - e0;
-    CHECK(de >= 3033 && de <= 3043, "and 303.8 mWh of modelled energy: %u x 0.1", de);
+    CHECK(fabs(de - SIM_MW * 10.0) <= 5.0, "and %.1f mWh of modelled energy: %u x 0.1", SIM_MW, de);
     CHECK(battery_count_state() == BATTERY_COUNT_RUN, "counting: state %u", battery_count_state());
     uint32_t p = battery_power_uw();
-    CHECK(p >= 303000 && p <= 304600, "the draw now: %u uW", p);
+    CHECK(fabs(p - SIM_MW * 1000.0) <= 800.0, "the draw now: %u uW", p);
 }
 
 /* Elapsed time, not ticks (codex): housekeeping that runs late now and then
@@ -40,7 +41,7 @@ static void c_uneven(void) {
         tick();
     }
     double drop = l0 - battery_level_permille();
-    CHECK(fabs(drop - PM_PER_HOUR) <= 1.0, "uneven ticks, still 19.5 pm an hour: %.0f", drop);
+    CHECK(fabs(drop - PM_PER_HOUR) <= 1.0, "uneven ticks, still %.1f pm an hour: %.0f", PM_PER_HOUR, drop);
 }
 
 /* The 32-bit ms timer wraps mid-count. */
@@ -52,7 +53,7 @@ static void c_wrap(void) {
     uint16_t l0 = battery_level_permille();
     run_s(3600);
     double drop = l0 - battery_level_permille();
-    CHECK(fabs(drop - PM_PER_HOUR) <= 1.0, "across the wrap, 19.5 pm an hour: %.0f", drop);
+    CHECK(fabs(drop - PM_PER_HOUR) <= 1.0, "across the wrap, %.1f pm an hour: %.0f", PM_PER_HOUR, drop);
 }
 
 /* Below the band the level waits, the energy keeps counting, and the wait's
@@ -70,7 +71,7 @@ static void c_hold(void) {
     CHECK(battery_level_permille() == l1, "held below the band for an hour: %u -> %u", l1,
           battery_level_permille());
     CHECK(battery_count_state() == BATTERY_COUNT_HELD, "state HELD: %u", battery_count_state());
-    CHECK(battery_energy_used_mwh_x10() - e1 >= 3030, "the energy still counted: %u",
+    CHECK(battery_energy_used_mwh_x10() - e1 >= SIM_MW * 10.0 - 10.0, "the energy still counted: %u",
           battery_energy_used_mwh_x10() - e1);
     c5 = 80;
     run_s(600);
@@ -124,7 +125,7 @@ static void c_time_left(void) {
     uint16_t got = battery_time_left_min();
     CHECK(fabs(got - want) <= want * 0.02 + 2, "time left %u min, want %.0f", got, want);
     uint32_t avg = battery_power_avg_uw();
-    CHECK(avg >= 303000 && avg <= 304600, "the average %u uW", avg);
+    CHECK(fabs(avg - SIM_MW * 1000.0) <= 800.0, "the average %u uW", avg);
     uint16_t mins = battery_avg_minutes();
     become_full();
     run_s(1800);
@@ -156,7 +157,7 @@ static void c_usb_data(void) {
     uint32_t e0 = battery_energy_used_mwh_x10();
     run_s(3600);
     uint32_t de = battery_energy_used_mwh_x10() - e0;
-    CHECK(de >= 3104 && de <= 3114, "with USB data, 310.9 mWh: %u x 0.1", de);
+    CHECK(fabs(de - (SIM_MW + 7.1) * 10.0) <= 5.0, "with USB data, %.1f mWh: %u x 0.1", SIM_MW + 7.1, de);
 }
 
 /* Stale reports: the count runs on, the band holds as it was, and the
@@ -302,8 +303,9 @@ static void c_hold_stale(void) {
     run_s(30 * 60);
     double drop = l1 - battery_level_permille();
     /* The estimate expires after C5_STALE_MS (20 s), then the count runs:
-     * 29.7 min at 303.8 mW is 9.6 pm (codex: check it closely). */
-    CHECK(fabs(drop - 9.6) <= 1.5, "counting again once stale: %.0f pm in 30 min, want ~9.6", drop);
+     * 29.7 min at SIM_MW is ~9.55 pm (codex: check it closely). */
+    double want_st = 29.7 / 60.0 * PM_PER_HOUR;
+    CHECK(fabs(drop - want_st) <= 1.5, "counting again once stale: %.0f pm in 30 min, want ~%.2f", drop, want_st);
 }
 
 /* After a handover on USB, later idle reports keep the level bounded, not

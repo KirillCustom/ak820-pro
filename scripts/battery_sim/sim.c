@@ -96,11 +96,17 @@ bool     battery_usb_configured(void) { return usb_configured; }
  * per frame (all 246 channels), scaled as the driver would. */
 static uint32_t drive_sum = 82u * 3u * 255u;   /* full white */
 static uint32_t drive_last_ms;
-uint64_t sn32f2xx_led_drive_take(uint32_t now, uint32_t *lit_ms) {
+uint64_t sn32f2xx_led_drive_take(uint32_t now, uint32_t *lit_ms, uint64_t rgb_ms[3]) {
     uint32_t dt  = now - drive_last_ms;
     uint32_t sum = scale ? (drive_sum * (scale + 1u)) >> 8 : 0u;
     drive_last_ms = now;
     if (lit_ms) *lit_ms = sum ? dt : 0u;
+    /* White: the sum split evenly over the three colours (the remainder to red). */
+    if (rgb_ms) {
+        uint64_t third = (uint64_t)(sum / 3u) * dt;
+        rgb_ms[1] = rgb_ms[2] = third;
+        rgb_ms[0] = (uint64_t)sum * dt - 2u * third;
+    }
     return (uint64_t)sum * dt;
 }
 uint32_t sn32f2xx_led_load(void) { return scale ? 82u * 3u * 255u / 2u : 0u; }
@@ -259,7 +265,7 @@ static void discharge(void) {
         }
         if (s == clamp_s - 5) {
             /* Phase 2: the count, unfloored: 1000 less 5.3 h at the sim's
-             * 303.8 mW (19.50 pm an hour). */
+             * SIM_MW (count.c: ~19.3 pm an hour). */
             CHECK(abs((int)battery_level_permille() - 897) <= 2, "the count at the clamp's exit ~897, got %u pm",
                   battery_level_permille());
         }
@@ -565,11 +571,10 @@ static void log_cadence(void) {
     battery_cfg(0, 0, 0, cfg);
     CHECK((cfg[6] | cfg[7] << 8) == 900, "period 900 s, from HC_BATTCFG: %u", cfg[6] | cfg[7] << 8);
     CHECK(out[0] == BATTERY_LOG_VERSION, "log v%u: %u", BATTERY_LOG_VERSION, out[0]);
-    /* The period's modelled energy in vdd_min's place: the sim's load is full
-     * white (179.2 + 9.5 mW), the backlight at level 10 (8.1) and the base
-     * (106.9): 303.8 mW, 75.9 mWh over 899 s on the pack. */
+    /* The period's modelled energy in vdd_min's place: the sim's load
+     * (count.c's SIM_MW, ~300.7 mW) over 899 s on the pack, ~75.1 mWh. */
     unsigned ex = out[11 + 2] | out[11 + 3] << 8;
-    CHECK(ex >= 750 && ex <= 765, "the period's modelled energy ~759 x 0.1 mWh: %u", ex);
+    CHECK(ex >= 743 && ex <= 758, "the period's modelled energy ~751 x 0.1 mWh: %u", ex);
 #elif BATTERY_LOG_VERSION >= 5
     uint8_t cfg[8];
     battery_cfg(0, 0, 0, cfg);
