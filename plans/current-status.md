@@ -91,7 +91,10 @@ the PCF 71 s for them). JD then asked for the soak on the icons build.
 **Flashed 13:18 10-19: the power-mode icons, `26fcafaeca`** (dev, token
 `0x47773c72`; codex: a review and a verify, no must-fix; the plan
 [`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md)). It carries
-`7df8a08e96`.
+`7df8a08e96`. **Then the bulbs reworked on the panel with JD** (another
+session; display.c art and colours only, no codex): previews 15:54-16:08,
+**`83d8768c64` on the board since 16:16** (dev, token `0xcf9da0e0`): collar
+bases, Lights out's bulb slate with a light-grey slash.
 
 **The soak on it, 13:19-14:43: 97 of 100**
 ([`../history/deep-cycles-20261019-icons/`](../history/deep-cycles-20261019-icons/README.md)).

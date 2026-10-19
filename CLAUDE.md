@@ -118,9 +118,9 @@ cycles and an hour asleep at 3.17 mA, every waking key kept; ⚠️ **asleep, th
 RTC's second runs ~13% slow** (3139 s counted for 3600), so the build takes
 slept time from the PCF; the radio retries as often awake as after a wake; a
 per-colour RGB model within 0.6%. **Deep sleep and the mode icons are on
-the board** (`26fcafaeca`, since 13:18 10-19; [docs/hardware.md](docs/hardware.md),
+the board** (`83d8768c64`, since 16:16 10-19; [docs/hardware.md](docs/hardware.md),
 "Deep sleep"); its soak passed 97 of 100, the three failures UART overruns
-(likely the PCF's I2C masking interrupts at the wake; next to fix).
+at the link's long-standing rate (~1-2 an hour, not the sleep's; `BACKLOG.md`).
 The mode names are settled (Always on / Balanced / Power saver / Lights
 out, [`plans/POWER-MODE-ICONS-PLAN.md`](plans/POWER-MODE-ICONS-PLAN.md)),
 built separately as the flash after.
@@ -142,9 +142,10 @@ Two workstreams, Phase 2 first:
   no light ([`plans/LOCK-LED-CHANNEL-PLAN.md`](plans/LOCK-LED-CHANNEL-PLAN.md)
   has the resume list; what the module forwards is in
   [docs/wireless.md](docs/wireless.md)).
-- **On the board: deep sleep and the power-mode icons**, `26fcafaeca` (a
-  `dev` build, token `0x47773c72`, since 13:18 10-19; `752d4bcda7` before
-  it): the ladder sleeps on battery (Balanced 7 min, Power saver 3, Lights
+- **On the board: deep sleep and the power-mode icons**, `83d8768c64` (a
+  `dev` build, token `0xcf9da0e0`, since 16:16 10-19: `26fcafaeca`, flashed
+  13:18 and soaked, plus the bulbs' art reworked on the panel, display.c
+  only): the ladder sleeps on battery (Balanced 7 min, Power saver 3, Lights
   out 30 s, Always on never; the enum keeps Full/Normal/Saver/Minimal), a
   bulb in the bolt's slot shows the mode on battery, and the bench's sleep
   controls are op 14 subs 4-6
