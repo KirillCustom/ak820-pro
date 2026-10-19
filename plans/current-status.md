@@ -1,6 +1,6 @@
 # Current status
 
-Updated 2026-10-18 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
+Updated 2026-10-19 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
 [`CRASH-HUNT-PLAN.md`](CRASH-HUNT-PLAN.md). **Phase 1b is closed (10-14). The
 INA228 power logger is on the pack and recording (10-15)**; next is using it,
 below.
@@ -15,7 +15,52 @@ loop stopped next time. The crash hunt adds what they cannot say (a CPU fault
 versus a hang, the PC, stack depth, why blits time out) and tries to provoke
 the next reset instead of waiting for it.
 
-## 2026-10-18 — RESUME HERE
+## 2026-10-19 — RESUME HERE
+
+**The night's runs, no hands, all on `53afebd553`** (each folder has a README):
+- **The RGB curve** (`../history/power-bench-2026-10-15/rgb-curve-20261019/`):
+  white within 0.7% of the model at every value; red, green and blue alone
+  up to 7.7% off. **A per-colour fit is within 0.6% at every step**
+  (`scripts/rgb_fit.py`): red 1.29x the mean per unit, green 0.90, blue 0.81.
+- **The stages** (`stages-20261019/`): the model within 2% at all 24 steps
+  (target 5%).
+- **The sleep baseline** (`../history/sleep-baseline-20261019-0251/`): 2,000
+  rig presses, every one counted; raw edges ~0.5% short by design
+  (`BACKLOG.md`).
+- **The deep-sleep soak** (`../history/deep-soak-20261019/`): **247 of 247**;
+  stopped in cycle 248 by the daemon holding raw HID 11 s (the open now
+  waits 30 s). ~3 ACK timeouts a cycle, no give-ups.
+- **The awake control** (`../history/awake-control-20261019/`): 30 of 30,
+  and ~3 timeouts a cycle awake too: **the retries are not the wake's**, so
+  the wake's ~28 ms first-key cost (10-18) is unexplained.
+- **One hour asleep** (`../history/deep-sleep-20261019-1h/`): pass at 3.17 mA.
+  **The record counted 3139 s for 3600: asleep, the RTC runs ~13% slow**
+  (the 10-18 cycles agree), caught on the wake by the PCF's 2 s snap. The
+  build takes slept time from the PCF (`SLEEP-PLAN.md`).
+
+**Adopted 10-19, not built:** time left as hours of use, on the battery row
+under ~10 h and on a wake after a long sleep (`SLEEP-PLAN.md`); the wireless
+clock as the lock-LED channel's item 5, after deep sleep and now-playing, a
+sync every few minutes (`LOCK-LED-CHANNEL-PLAN.md`).
+
+**Built, not flashed:** `442c9f49c9`, the Scroll hold only for frames that can
+carry Scroll (lock-LED item 2).
+
+**Next, in order:**
+1. **The deep-sleep build plan, for codex:** the ladder's sleep stage and
+   timings (`SLEEP-PLAN.md`, "Decided"), the radio resynced and USB recovered
+   after a wake, slept time from the PCF and out of the trim window, the
+   gauge's sleep term, no sleep while the screen is lit, time left as hours
+   of use (and slept seconds in the log). Riding along: the per-colour RGB
+   model, the Scroll hold, `1ea968335f`, the sleep.c comment wording (codex,
+   sleep verify 3), optionally `raw_edges` inside the lock.
+2. Codex's review, every finding dispositioned; the flash; the board tests
+   (the soak again, with `asleep_s` against the record's seconds).
+3. The wake/key test through the stages (10-18's item 2; the Mac unlocked,
+   the keyboard untouched ~10 min).
+4. R5: a logged drain in Normal at JD's daily use.
+
+## 2026-10-18
 
 **R3 and its charge are done** (cut 02:01:22 10-18 after 50.39 h, ~4012
 mAh out; 3972.4 mAh back in over 9.90 h;

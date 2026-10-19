@@ -110,10 +110,15 @@ Four things from that work that bite outside it:
 Measured results and audit findings from completed work: [`history/`](history/).
 ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 
-## Current state (2026-10-18)
+## Current state (2026-10-19)
 
-**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-18
-— RESUME HERE"). Two workstreams, Phase 2 first:
+**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-19
+— RESUME HERE"). **The night of 10-18/19, no hands:** 247 of 247 deep-sleep
+cycles and an hour asleep at 3.17 mA, every waking key kept; ⚠️ **asleep, the
+RTC's second runs ~13% slow** (3139 s counted for 3600), so the build takes
+slept time from the PCF; the radio retries as often awake as after a wake; a
+per-colour RGB model within 0.6%. Next: the deep-sleep build plan for codex.
+Two workstreams, Phase 2 first:
 - **Phase 2 is built and on the board (10-18, 16:54): an accurate gauge, a
   time-left estimate, the power ladder** ([`plans/PHASE2-BUILD-PLAN.md`](plans/PHASE2-BUILD-PLAN.md),
   three codex reviews; [docs/battery.md](docs/battery.md), "The gauge as

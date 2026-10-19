@@ -327,9 +327,9 @@ flag is not a blocker (its flush is synchronous in the main loop; accepted).
 
 ## Asleep, the RTC's second runs ~13% slow (measured 10-19)
 
-**The 1-hour run's record counted 3139 s for ~3604 s asleep** (armed
-05:44:13 with a 15 s delay; the rig tapped at 06:44:32): 0.871 of real
-time. The 10-18 cycle run says the same: the record's seconds against the
+**The 1-hour run's record counted 3139 s for 3600 s asleep** (the logger's
+1 s samples: the current fell at 05:44:32-33 and rose at 06:44:32-33):
+0.872 of real time. The 10-18 cycle run says the same: the record's seconds against the
 dwell over its 50 cycles fit a slope of **0.842**. The awake clock does not
 do this (the SOF loop holds it to ms), so the RTC's second, clocked by the
 ILRC, comes ~13-16% late while the chip is in Deep-sleep. Why is not known:
@@ -339,7 +339,7 @@ nothing of it in Deep-sleep.
 What it explains: each ~20 s soak cycle lost ~3 s, and the PCF discipline
 snapped it back at its 2 s threshold, which is the soak's 16 syncs at -1.5 to
 +2.1 s (not whole-second rounding, as first guessed). After the hour the
-board woke ~465 s behind and the daemon found it 1.6 s off 12 s later, so
+board woke ~461 s behind and the daemon found it 1.6 s off 12 s later, so
 something caught it in between, presumably the PCF snap (not checked).
 
 For the build:

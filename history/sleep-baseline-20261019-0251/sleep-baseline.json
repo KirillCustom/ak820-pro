@@ -1,0 +1,136 @@
+{
+ "bursts": [
+  {
+   "held_ms": 40,
+   "gap_ms": 60,
+   "n": 200,
+   "presses": 200,
+   "edges": 397,
+   "stalls": 0,
+   "ok": false
+  },
+  {
+   "held_ms": 40,
+   "gap_ms": 60,
+   "n": 200,
+   "presses": 200,
+   "edges": 399,
+   "stalls": 0,
+   "ok": false
+  },
+  {
+   "held_ms": 40,
+   "gap_ms": 60,
+   "n": 200,
+   "presses": 200,
+   "edges": 398,
+   "stalls": 0,
+   "ok": false
+  },
+  {
+   "held_ms": 40,
+   "gap_ms": 60,
+   "n": 200,
+   "presses": 200,
+   "edges": 397,
+   "stalls": 0,
+   "ok": false
+  },
+  {
+   "held_ms": 40,
+   "gap_ms": 60,
+   "n": 200,
+   "presses": 200,
+   "edges": 398,
+   "stalls": 0,
+   "ok": false
+  },
+  {
+   "held_ms": 25,
+   "gap_ms": 40,
+   "n": 200,
+   "presses": 200,
+   "edges": 399,
+   "stalls": 0,
+   "ok": false
+  },
+  {
+   "held_ms": 25,
+   "gap_ms": 40,
+   "n": 200,
+   "presses": 200,
+   "edges": 399,
+   "stalls": 0,
+   "ok": false
+  },
+  {
+   "held_ms": 25,
+   "gap_ms": 40,
+   "n": 200,
+   "presses": 200,
+   "edges": 399,
+   "stalls": 0,
+   "ok": false
+  },
+  {
+   "held_ms": 25,
+   "gap_ms": 40,
+   "n": 200,
+   "presses": 200,
+   "edges": 399,
+   "stalls": 0,
+   "ok": false
+  },
+  {
+   "held_ms": 25,
+   "gap_ms": 40,
+   "n": 200,
+   "presses": 200,
+   "edges": 398,
+   "stalls": 0,
+   "ok": false
+  }
+ ],
+ "idles": [
+  {
+   "idle_s": 60,
+   "at": 1792400429.1033778,
+   "presses": 1,
+   "edges": 2,
+   "stalls": 0,
+   "ok": true
+  },
+  {
+   "idle_s": 300,
+   "at": 1792400729.3576021,
+   "presses": 1,
+   "edges": 2,
+   "stalls": 0,
+   "ok": true
+  },
+  {
+   "idle_s": 900,
+   "at": 1792401629.619204,
+   "presses": 1,
+   "edges": 2,
+   "stalls": 0,
+   "ok": true
+  }
+ ],
+ "at": "2026-10-19 02:51:15",
+ "quiet": {
+  "s": 300,
+  "counts": {
+   "presses": 0,
+   "edges": 0,
+   "stalls": 0
+  },
+  "logger": {
+   "n": 300,
+   "q_ma": 27.46813411722537,
+   "mean_ma": 27.462333333333337,
+   "sd_ma": 0.30609945848340697,
+   "vcell_mv": 4145.329166666666
+  }
+ }
+}
