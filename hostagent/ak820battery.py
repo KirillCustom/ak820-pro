@@ -44,6 +44,7 @@ from ak820health import open_device
 
 SET_VALUE, HEALTH_CHANNEL = 0x07, 0x13
 HC_CONN, HC_BATTLOG, HC_BATTCFG, HC_POWER = 0x02, 0x0A, 0x0B, 0x0F
+LOG_PENDING = 0xFF   # HC_BATTLOG's version byte while a deep sleep's entries are laid in (v7)
 POWER_MODES = ["Full power", "Normal power", "Power saver", "Minimal mode"]
 POWER_STAGES = ["active", "dim", "lights off", "screen off"]
 COUNT_STATES = ["off (not on battery)", "counting", "counting at the clamp", "held below the band",
@@ -203,7 +204,8 @@ def decode_entry(e, ver):
     # holds there; c5_mean then covers only the reports before saturation.
     pack = "" if mean is None or c5_min == 0 or c5_max == 100 \
         else f"{(mean + FIT_OFFSET) / FIT_SLOPE * 1000:.0f}"
-    row = {"vdd_avg": u16(e, 0)}
+    # v7: the seconds slept in the period (deep sleep) in vdd_avg's place.
+    row = {"slept_s": u16(e, 0)} if ver >= 7 else {"vdd_avg": u16(e, 0)}
     if ver >= 6:
         row["e_mwh"] = f"{u16(e, 2) / 10:.1f}"   # the period's modelled battery energy
     else:
@@ -235,7 +237,15 @@ def dump_v3(h):
     for _ in range(3):
         first = xfer(h, HC_BATTLOG, [0, 0])
         ver, count, _, since, period, written, _ = parse_reply(first)
-        if ver not in (3, 4, 5, 6):
+        # 0xFF: woken from a deep sleep whose entries are not yet laid in (a
+        # few passes); its age would misdate the older entries. Ask again.
+        for _ in range(20):
+            if ver != LOG_PENDING:
+                break
+            time.sleep(0.1)
+            first = xfer(h, HC_BATTLOG, [0, 0])
+            ver, count, _, since, period, written, _ = parse_reply(first)
+        if ver not in (3, 4, 5, 6, 7):
             sys.exit(f"unexpected log format {ver}")
         if period is None:
             # v5+: the firmware's period, from HC_BATTCFG [10..11] -- never assumed.

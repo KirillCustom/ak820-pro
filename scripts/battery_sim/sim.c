@@ -564,7 +564,7 @@ static void log_cadence(void) {
     uint8_t cfg[8];
     battery_cfg(0, 0, 0, cfg);
     CHECK((cfg[6] | cfg[7] << 8) == 900, "period 900 s, from HC_BATTCFG: %u", cfg[6] | cfg[7] << 8);
-    CHECK(out[0] == 6, "log v6: %u", out[0]);
+    CHECK(out[0] == BATTERY_LOG_VERSION, "log v%u: %u", BATTERY_LOG_VERSION, out[0]);
     /* The period's modelled energy in vdd_min's place: the sim's load is full
      * white (179.2 + 9.5 mW), the backlight at level 10 (8.1) and the base
      * (106.9): 303.8 mW, 75.9 mWh over 899 s on the pack. */
@@ -592,7 +592,11 @@ static void log_cadence(void) {
 #else
     enum { H = 13 };   /* v4: and the period */
 #endif
+#if BATTERY_LOG_VERSION >= 7
+    CHECK((out[H] | out[H + 1] << 8) == 0, "v7: no sleep, 0 s slept");
+#else
     CHECK((out[H] | out[H + 1] << 8) == 0, "an outage entry says 0 mV, not a stale mean");
+#endif
     CHECK((out[H + 6] | out[H + 15] << 8) >= 200, "and still counts every 5C report: %u",
           out[H + 6] | out[H + 15] << 8);
 }
@@ -796,6 +800,7 @@ typedef struct {
     long     t_s;          /* seconds since the epoch of the file's first row */
     int      dur_s;
     int      vdd_avg, vdd_min;
+    int      slept_s;      /* v7: seconds slept in the period (deep sleep) */
     bool     v34;          /* the ten-minute formats */
     double   c5_mean;
     int      c5_n, c5_min, c5_max, c5_single;
@@ -858,7 +863,8 @@ static bool rp_load(const char *path) {
     char *h[40], *c[40];
     if (!fgets(hdr, sizeof hdr, f)) { fclose(f); return false; }
     int hn = rp_split(hdr, h, 40);
-    int i_t = rp_col(h, hn, "time"), i_va = rp_col(h, hn, "vdd_avg"), i_vm = rp_col(h, hn, "vdd_min");
+    int i_t = rp_col(h, hn, "time"), i_va = rp_col(h, hn, "vdd_avg"), i_vm = rp_col(h, hn, "vdd_min"),
+        i_sl = rp_col(h, hn, "slept_s");
     int i_mean = rp_col(h, hn, "c5_mean"), i_n = rp_col(h, hn, "c5_n"), i_mn = rp_col(h, hn, "c5_min"),
         i_mx = rp_col(h, hn, "c5_max"), i_lvl = rp_col(h, hn, "level"), i_pct = rp_col(h, hn, "module_pct"),
         i_chg = rp_col(h, hn, "charging"), i_ext = rp_col(h, hn, "external"), i_any = rp_col(h, hn, "flags_any"),
@@ -875,8 +881,8 @@ static bool rp_load(const char *path) {
         r->t_s = rp_epoch(c[i_t]);
         /* v6 logs have no vdd_min (the period's energy took its place, codex):
          * no dip then. */
-        r->vdd_avg = atoi(c[i_va]); r->vdd_min = i_vm >= 0 ? atoi(c[i_vm]) : r->vdd_avg;
         r->v34 = v34;
+        r->slept_s = (i_sl >= 0 && c[i_sl][0]) ? atoi(c[i_sl]) : 0;
         r->chg_end = atoi(c[i_chg]) != 0;
         r->level_pm = -1;
         r->led_pm   = (i_led >= 0 && c[i_led][0]) ? atoi(c[i_led]) : -1;
@@ -893,6 +899,15 @@ static bool rp_load(const char *path) {
             r->c5_single = atoi(c[i_pct]);
             r->chg_any = r->chg_end;
             r->ext_end = true;
+        }
+        /* v7 logs have no vdd_avg (the slept seconds took its place): the
+         * supply from the flags then, at the rail's two levels (codex, the
+         * deep-sleep review 16). */
+        if (i_va >= 0) {
+            r->vdd_avg = atoi(c[i_va]);
+            r->vdd_min = i_vm >= 0 ? atoi(c[i_vm]) : r->vdd_avg;
+        } else {
+            r->vdd_avg = r->vdd_min = r->ext_end ? 4790 : 3900;
         }
         rp_n++;
     }
@@ -978,7 +993,11 @@ static void rp_play(int i) {
         chg_first = false;
         rp_label("CHRG low from the interval's middle", r->time, 0, 0);
     }
-    int ticks = r->dur_s * 10;
+    /* v7: the entry's awake part plays first, then its slept part through the
+     * production hand-over (sleep.c's order). The order inside a mixed entry
+     * is not in the aggregate: awake first is an approximation, declared. */
+    int awake_s = r->dur_s - r->slept_s;
+    int ticks = (awake_s > 0 ? awake_s : 0) * 10;
     if (!r->v34) {
         c5 = (uint8_t)r->c5_single; chrg_low = r->chg_end;
         for (int t = 0; t < ticks; t++) {
@@ -1013,6 +1032,13 @@ static void rp_play(int i) {
             if (rp_second_hook && t % 10 == 9) rp_second_hook();
         }
     }
+#ifdef BATTERY_P_SLEEP_UW
+    if (r->slept_s > 0) {
+        battery_sleep_enter();
+        battery_sleep_wake();
+        battery_sleep_account((uint32_t)r->slept_s * 1000u);
+    }
+#endif
     r->r_level = battery_level_permille();
     r->r_state = (uint8_t)battery_state();
     if (r->r_state != BATTERY_STATE_FULL && !rp_seen_full) rp_writes_before_full = saved_writes;
@@ -1234,6 +1260,9 @@ static void c5_equivalence(void) {
 #ifdef POWER_HAS_MODES
 #include "ladder.c"  /* Phase 2: the power modes */
 #include "count.c"   /* Phase 2: the energy count */
+#ifdef BATTERY_P_SLEEP_UW
+#include "sleeps.c"  /* deep sleep's hand-over */
+#endif
 #endif
 #endif
 
@@ -1376,6 +1405,23 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "c_handover_stays")) c_handover_stays();
     else if (!strcmp(s, "c_floor_entry"))    c_floor_entry();
     else if (!strcmp(s, "c_clamp_marker"))   c_clamp_marker();
+#ifdef BATTERY_P_SLEEP_UW
+    else if (!strcmp(s, "s_energy")) s_energy();
+    else if (!strcmp(s, "s_time_left")) s_time_left();
+    else if (!strcmp(s, "s_floor_cut")) s_floor_cut();
+    else if (!strcmp(s, "s_unknown")) s_unknown();
+    else if (!strcmp(s, "s_band_hold")) s_band_hold();
+    else if (!strcmp(s, "s_remainder")) s_remainder();
+    else if (!strcmp(s, "s_relax")) s_relax();
+    else if (!strcmp(s, "s_log_within")) s_log_within();
+    else if (!strcmp(s, "s_log_across")) s_log_across();
+    else if (!strcmp(s, "s_log_long")) s_log_long();
+    else if (!strcmp(s, "s_log_pending")) s_log_pending();
+    else if (!strcmp(s, "s_log_recovery_boundary")) s_log_recovery_boundary();
+    else if (!strcmp(s, "s_usb")) s_usb();
+    else if (!strcmp(s, "s_no_wake")) s_no_wake();
+    else if (!strcmp(s, "s_replay_v7")) s_replay_v7();
+#endif
     else if (!strcmp(s, "c_replay_r3"))      c_replay_r3(argc > 2 ? argv[2] : "");
     else if (!strcmp(s, "c_replay_r3_shuf")) c_replay_r3_shuf(argc > 2 ? argv[2] : "");
     else if (!strcmp(s, "c_replay_r3_ramp")) c_replay_r3_ramp(argc > 2 ? argv[2] : "");
