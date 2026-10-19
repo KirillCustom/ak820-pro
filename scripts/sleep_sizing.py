@@ -82,6 +82,7 @@ def main():
     guard = sb.deadline_guard(len(entries) * 240 + 300)
     up_wall0 = time.time()
     with hid.Device(path=devs[0]["path"]) as dev:
+        sb.hold_relay(dev)   # relay 2 goes through this handle too (macOS opens it exclusively)
         try:
             cm.say("relay 2 off; stage forced to SCREEN_OFF")
             sb.relay2("off")

@@ -42,8 +42,34 @@ def relay1(dev, on):
     dev.send_feature_report(bytes([0, 0xFF if on else 0xFD, 1, 0, 0, 0, 0, 0, 0]))
 
 
+# The relay while a run holds it open: macOS opens it EXCLUSIVELY, so with
+# relay 1 held for the presses, relay 2 must go through the same handle (a
+# usb_relay.py subprocess cannot open it then: "exclusive access and device
+# already open", 18:25 10-18). hold_relay() sets it.
+_dev = None
+
+
+def hold_relay(dev):
+    global _dev
+    _dev = dev
+
+
+def _relay2_inproc(on):
+    _dev.send_feature_report(bytes([0, 0xFF if on else 0xFD, 2, 0, 0, 0, 0, 0, 0]))
+    if bool(relay_state(_dev) & 2) != on:
+        raise SystemExit("relay 2's read-back does not match the command")
+
+
+def relay_state(dev):
+    raw = dev.get_feature_report(0, 9)
+    return raw[8]
+
+
 def relay2(state):
-    """Bounded: a hung relay call must not hold a cleanup (codex)."""
+    """Bounded: a hung relay call must not hold a cleanup (codex). Through the
+    held handle when a run has one, else a usb_relay.py subprocess."""
+    if _dev is not None:
+        return bounded(_relay2_inproc, state == "on", timeout=5.0)
     try:
         rc = subprocess.run([cm.PY, cm.RELAY, state, "2"], capture_output=True, text=True, cwd=cm.ROOT, timeout=20)
     except subprocess.TimeoutExpired:
@@ -168,6 +194,7 @@ def main():
     ok = True
     guard = deadline_guard(a.quiet + sum(idles) + 2 * a.bursts * a.n * 0.2 + 600)
     with hid.Device(path=devs[0]["path"]) as dev:
+        hold_relay(dev)   # relay 2 goes through this handle too (macOS opens it exclusively)
         try:
             cm.say("relay 2 off; stage forced to SCREEN_OFF")
             relay2("off")
