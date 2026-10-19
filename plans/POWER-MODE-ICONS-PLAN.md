@@ -7,16 +7,17 @@ panel, not decisions.
 
 ## Status
 
-**Built on the firmware branch `power-mode-icons`** (`df159438f8`, local, off
-the deep-sleep build `bf7d7d0280`); not flashed. It goes on as **its own
+**Built on the firmware branch `power-mode-icons`** (`5ed981aed9`, local,
+rebased onto the deep-sleep review's fixes `44605c1a9e`, cleanly); not
+flashed. It goes on as **its own
 flash after the deep-sleep flash, with its own codex review**: two deltas
 under one review would muddy both. The deep-sleep session owns the flash
 queue.
 
-- Compiles clean, dev and daily: +1,016 bytes (the art is 784).
+- Compiles clean, dev, daily and fpb: +1,016 bytes (the art is 784).
 - `scripts/battery_sim` passes against both firmware trees (`ladder.c`
   takes the names from `POWER_HAS_BULB`). Through `BATTERY_SIM_SRC` both
-  give 142, the same list line for line; a plain run gives 146 because it
+  give 144, the same list line for line; a plain run gives 148 because it
   adds the four pinned-baseline checks (flash 1's `battery.c`, which never
   reads the tree under test), and the variable skips them. New checks
   in `l_modes` and `l_low_cap` catch three mutants of `power_lights_mode()`
@@ -25,8 +26,8 @@ queue.
   indices are unchanged).
 
 Left, in order:
-1. Rebase onto the deep-sleep codex fixes (they may touch display.c's wake
-   hold and battery row, and power.c).
+1. Rebase onto any further deep-sleep fixes (the first set, `44605c1a9e`,
+   touched none of this branch's files).
 2. Codex's review of the branch.
 3. The flash, after the deep-sleep flash; then the gate below.
 4. The colours on the panel (below).
