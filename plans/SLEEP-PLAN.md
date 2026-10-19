@@ -227,3 +227,18 @@ experiments.** Fixed in `1486620cff` (firmware) and `dcd8899` (scripts).
 | 9 | should fix: also check SPI0/SPI1 and DMA idle, the serial output queue; recheck under the lock | **Fixed:** `STAT.BUSY` on both, SPI0's `DMACTRL.DMAEN`; the radio side rechecked under the lock. |
 | 10 | should fix: the length check before reading arguments; the yield in the reply; the echoed op checked; the sizing run's stall baseline after the window; no deep verdict; entry not confirmed; `--cap` unvalidated | **Fixed:** all of them; the deep run waits for the logger's current to fall before pressing, and passes only on a key (press), the cap (no press), or a reset recorded in site 27 (unfed). Delivery at the Mac and a P0 column stay JD's part. |
 | — | the locked section, the GPIO wake setup, the RTC and NVIC handling, the clock order, the ADC, SysTick, the RTC accounting, the protocol layouts: fine | Agreed. |
+
+## Codex's verify of the implementation fixes (10-18)
+
+[Verbatim](review-codex-sleep-verify-2026-10-18.md), prompt
+[`review-prompt-sleep-verify.txt`](review-prompt-sleep-verify.txt), of
+`1486620cff` and `dcd8899`: #2 (UART), 5-9 fixed; three must-fixes still
+open. Fixed in `f38bb1e8a4` and the scripts commit after it.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | the 20 s USB-restart fallback still blocks 50 ms, later; moving the gap does not remove it | **Fixed:** no USB restart anywhere. The record says whether the host configured USB again within 20 s; if the transceiver bit is not the whole story, a power cycle restores USB (the keyboard types over the radio meanwhile). |
+| 2 | the plain-WFI probe's expiry does nothing for USB | **Fixed:** the transceiver bit is set back when either WFI bit ends; the sizing run tries WFI in a 30 s probe (with the yield it needs: the idle thread runs only then) and stops if the board stops answering. |
+| 3 | relay 1's in-process call has no deadline; the deep cleanup gives up on USB at once; "restored" is printed on relay 2 alone | **Fixed:** relay 1 in a thread with a 5 s deadline; the deep cleanup waits up to 30 s for USB; every step's result aggregated, and an incomplete cleanup fails the run. |
+| — | the unfed verdict reads `site`, but the CLI emits `site_id: 27`; entry judged against the USB-on draw, before the delay ends; sizing has no boot continuity, allows `--n 0`, no final mask check | **Fixed:** `valid` and `site_id`; a data-off awake baseline and samples after the delay; uptime monotonic per entry, `--n` >= 10, the mask read back after the presses. |
+| — | notes: the idle hook masks and unmasks even with WFI off; the parser resync check was unguarded in daily; the UART drain's 32-byte ceiling; short waking taps untested | The hook's mask is a few cycles in the idle thread (which does not run while the main loop spins); the resync now dev-only; the FIFO depth is undocumented, 32 covers any plausible one; the deep run now presses a 40 ms tap. |

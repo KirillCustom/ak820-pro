@@ -1,0 +1,8 @@
+You are verifying fixes before a flash (AK820 Pro: QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a CH582F radio on UART2). Read only files inside /Users/jdlien/code/ak820-pro, plus /Users/jdlien/code/ajazz-ak820-pro/docs/SN32F299_V1.8_EN.pdf by page ranges (docs/sn32f299.md distils it). Do not search or list anything else outside the repo; there is no AGENTS.md. Read-only: do not modify, build or run anything.
+
+Your implementation review is plans/review-codex-sleep-impl-2026-10-18.md; the dispositions are the last section of plans/SLEEP-PLAN.md. The fixes:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 1486620cff   (firmware)
+  git -C /Users/jdlien/code/ak820-pro show dcd8899                           (scripts)
+Both dev and daily builds compile cleanly.
+
+Check, citing file:line: (a) each must-fix (1-4) is actually fixed and nothing new broke: the PHY_EN restore and the 20 s fallback, the UART drain/LS read/iqResetI/parser resync (is iqResetI safe there, under chSysLock with the serial ISR masked?), tx_quietI and the locked re-check (oqIsEmptyI on SD2, LS.TEMT), the light mask's TTL, the cancel, the scripts' independent cleanup; (b) the should-fixes as listed; (c) with every feature off (the default), is the dev build's behaviour still unchanged, and is the daily build now free of the scan-only branch and the sleep_task() call; (d) anything that could cost a keystroke or leave the board unrecoverable without hands. Rank must-fix / should-fix / note; be brief where fine.
