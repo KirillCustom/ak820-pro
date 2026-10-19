@@ -1386,6 +1386,8 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "l_sleep"))         l_sleep();
     else if (!strcmp(s, "l_sleep_low"))     l_sleep_low();
     else if (!strcmp(s, "l_sleep_usb"))     l_sleep_usb();
+    else if (!strcmp(s, "l_wake_notice"))   l_wake_notice();
+    else if (!strcmp(s, "l_wake_notice_high")) l_wake_notice_high();
     else if (!strcmp(s, "c_rate"))        c_rate();
     else if (!strcmp(s, "c_uneven"))      c_uneven();
     else if (!strcmp(s, "c_wrap"))        c_wrap();

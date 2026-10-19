@@ -278,3 +278,44 @@ static void l_sleep_usb(void) {
     lrun_s(2);
     CHECK(!power_sleep_wanted(), "never on USB");
 }
+
+/* A wake after a long sleep says the time left in hours of use, once it
+ * matters (under 10 h, the average mature), through the owed gate: a free
+ * band, and a lit screen except in Minimal (codex, deep-sleep verify V7). */
+static void l_wake_notice(void) {
+    power_init();
+    vdd_mv = 3900; c5 = 72;   /* ~3.79 V: ~200 pm, ~10 h at 303.8 mW; above the low cap */
+    lrun_s(30);
+    idle_ms = 0;
+    lrun_s(61 * 60);          /* a mature average */
+    uint16_t left = battery_time_left_min();
+    CHECK(left < 600u, "under 10 h left for the test: %u min", left);
+    last_status[0] = 0;
+    power_wake_notice();
+    ltick();
+    char want[16];
+    snprintf(want, sizeof want, left < 60 ? "<1h use left" : "%uh use left", (unsigned)(left / 60u));
+    CHECK(!strcmp(last_status, want), "the notice '%s', want '%s'", last_status, want);
+    /* Behind a busy band it waits, and is given when the band frees. */
+    display_set_param_status("Normal power");
+    last_status[0] = 0;
+    power_wake_notice();
+    ltick();
+    CHECK(last_status[0] == 0, "waits behind a busy band: '%s'", last_status);
+    lrun_s(3);
+    CHECK(!strncmp(last_status, want, strlen(want)), "then given: '%s'", last_status);
+}
+
+/* With hours to spare (the plateau, ~689 pm: ~35 h), nothing. */
+static void l_wake_notice_high(void) {
+    power_init();
+    vdd_mv = 3900; c5 = 96;
+    lrun_s(30);
+    idle_ms = 0;
+    lrun_s(61 * 60);
+    CHECK(battery_time_left_min() >= 600u, "over 10 h left: %u min", battery_time_left_min());
+    last_status[0] = 0;
+    power_wake_notice();
+    lrun_s(3);
+    CHECK(last_status[0] == 0, "over 10 h: no notice ('%s')", last_status);
+}
