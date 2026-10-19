@@ -120,7 +120,12 @@ slept time from the PCF; the radio retries as often awake as after a wake; a
 per-colour RGB model within 0.6%. **Deep sleep and the mode icons are on
 the board** (`83d8768c64`, since 16:16 10-19; [docs/hardware.md](docs/hardware.md),
 "Deep sleep"); its soak passed 97 of 100, the three failures UART overruns
-at the link's long-standing rate (~1-2 an hour, not the sleep's; `BACKLOG.md`).
+at the link's long-standing rate (~1-2 an hour, not the sleep's; `BACKLOG.md`);
+Balanced's real 7-min sleep passed; what is left is the plan's "Validation
+results (10-19)". **Gremlin** (the Windows PC, its own AK820) has the
+lock-light channel, the 2.4G dongle and Windows testing
+([`plans/GREMLIN-HANDOFF-2026-10-19.md`](plans/GREMLIN-HANDOFF-2026-10-19.md),
+[`plans/GREMLIN-RESULTS.md`](plans/GREMLIN-RESULTS.md)).
 The mode names are settled (Always on / Balanced / Power saver / Lights
 out, [`plans/POWER-MODE-ICONS-PLAN.md`](plans/POWER-MODE-ICONS-PLAN.md)),
 built separately as the flash after.

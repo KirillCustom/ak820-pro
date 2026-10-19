@@ -548,6 +548,16 @@ the session left unlocked for a window (JD's call).
   timed-out steps and the daemon's first clock offset after each wake. `--arm` uses the
   experiment's op 14 sub 4 instead; `--awake` is the awake control;
   `--tap-ms 25` the input gate's short taps.
+- `scripts/ladder_sleep.py --mode N [--asleep-s S] [--charge-wake]`: one
+  sleep through the ladder at the mode's real time (Balanced 420 s, Power
+  saver 180, Lights out 30): a rig tap starts the idle, data off, the sleep
+  timed from the tap, the wake (the rig, or relay 2 on), then the daemon's
+  first clock sync before any read of its own (macOS opens raw HID
+  exclusively), and the board's figures. The mode is put back.
+- `scripts/fnb_caps_test.py [--control]`: the Mac's Caps Lock toggled through
+  IOKit while JD presses Fn+B on the pack (or nobody, `--control`), against
+  the stall counters. ⚠️ Every keyboard on the Mac types in capitals while it
+  runs. It found the CAPS paint's 25 ms (`history/fnb-caps-20261019-jd/`).
 - ⚠️ `key_presses` counts every key: **hands off the keyboard** while any of
   these runs. With `--trial-csv` they wait for the gap after a running trial's
   read. A test during a drain shifts its load slightly and shows in

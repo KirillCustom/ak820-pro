@@ -515,6 +515,17 @@ sleep, no deferred flash write (the board config's or the RGB's), no legacy
 clock SET, and every PCF transaction under the wake's arbiter
 ([clock.md](clock.md), "Across a deep sleep").
 
+**Measured on the build (10-19,** the plan's "Validation results"):
+- **Through the ladder, 100 cycles:** every one slept and woke on the rig's
+  key with exactly that key counted, no reset, no pass of 25 ms or more, and
+  the PCF's slept seconds within 1 s of the power logger's edges. The Mac's
+  key-down a median 64 ms after the relay, worst 115.
+- **Balanced** slept 421 s after the last key (the ladder's 420).
+- **A second unit** (Windows, over 2.4G) woke on a key burst, the knob and
+  the cable's insertion, the waking key and turn kept each time.
+- Three cycles of the 100 saw a UART overrun, at the link's rate on builds
+  without sleep (~1-2 an hour; `plans/BACKLOG.md`).
+
 **Reading it:** `hostagent/ak820battery.py sleep [--json]`: sleeps since boot
 (the last one's sequence number), seconds asleep in all, the last sleep's PCF
 and counted seconds, what woke it, the acquisition's step, PLL lock loops,

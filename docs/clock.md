@@ -147,6 +147,24 @@ synchronously, is refused through the recovery (the host retries);
 running** (in any state, not only after a sleep): until it lands, the PCF
 holds the time from before a host's sync.
 
+**Measured across sleeps (10-19):**
+- After 100 wakes in 85 minutes with no host sync (the bench cut USB data
+  each cycle), the daemon's first sync read **+288.4 ms**: the board had
+  followed the PCF, whose crystal runs ~58 ppm off (0.30 s in 85 min). As
+  designed with no host.
+- After 8 minutes off USB (7 awake with no SOF reference, then a 65 s
+  sleep), the first sync read **+143.6 ms**. The board's frequency loop had
+  been reset by a flash 15 minutes before, so how much is the sleep's is not
+  yet separated.
+- The per-wake offset is measured only by a run that leaves the daemon its
+  raw HID after the wake (`scripts/ladder_sleep.py` waits for the daemon's
+  sync before its own reads); `deep_cycles.py` holds it, so the daemon's
+  syncs fail during a soak.
+- ⚠️ `flash.sh` used to sync with `ak820ctl` beside the daemon: two clock
+  owners. Since `9880f47` it leaves the sync to a daemon that owns the clock.
+  A −2064.5 ms offset three minutes after a flash (16:20 10-19) may have been
+  that collision.
+
 **What the sleep must not move** (validation 4): the awake period `P_nom` and
 the persistence candidate (`HC_RTC`). Neither learns from asleep seconds.
 The calendar can move at the wake, and `clock_gen` counts each change so the

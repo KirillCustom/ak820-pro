@@ -871,3 +871,24 @@ fixed; `frz_nj` the right remainder. **Flashed 12:57 10-19** (dev, token
 |---|---|---|
 | W1 | should fix: a sleep on USB power (`p_uw` 0) can still debit history from a RELAX remainder left at the floor before a charge raised the level; the ladder never sleeps on USB, the bench arm can | **Fixed, codex's own one-liner** (`7df8a08e96`, `sleep_level_at` returns the entry level for `p_uw` 0); 149 pass. Not flashed: it rides with the next build (the power-mode icons), whose codex review covers it. |
 | W2 | should fix: the guard's restore has no outer deadline, and a fired guard can overlap the run's own cleanup (a tap, the relay handle's close), possibly leaving relay 1 held | **Fixed** (`sleep_baseline.py`, `deep_sleep.py`): one re-entrant `cleanup_lock`, held by the guard across its restore and its exit; `restore()` runs once and later callers get its result; the guard opens relay 1 and turns relay 2 on last; an independent hard exit (300 s) after one more bounded try at both relays. Tested offline with the relays stubbed: the guard alone, the guard firing during the run's restore (one restore, then exit 3), and a stuck restore (exit 4 at the hard deadline). |
+
+## Validation results (10-19)
+
+On the Mac's board (`26fcafaeca`, then `83d8768c64`: the same code plus
+bulb art) unless marked **Gremlin** (the second unit on Windows, `de5450e487`,
+over 2.4G: [`GREMLIN-RESULTS.md`](GREMLIN-RESULTS.md)). Smoke tests first, on
+`752d4bcda7`: a rig-woken bench sleep and the 32-bit widths, both pass
+(`history/deep-sleep-smoke-20261019-*`).
+
+| # | item | result |
+|---|---|---|
+| 1 | the soak through the ladder | **97 of 100** (`history/deep-cycles-20261019-icons/`): every cycle one key, a fresh sequence, no reset, no pass ≥ 25 ms, the PCF **within 1 s** of the logger's edges, the recovery closed with nothing timed out; the Mac's key-down median 63.8 ms, worst 114.8. The 3 failures were UART overruns at the link's long-standing base rate (~1-2 an hour on builds with no sleep; `BACKLOG.md`), not the sleep's: the gate assumed a zero rate the link never had. **The per-wake clock check got no data:** the script holds raw HID and cuts the data each cycle, so the daemon's syncs failed; the one after the run read +288.4 ms after 85 min, the PCF's ~58 ppm. |
+| 2 | Balanced's real threshold | **Pass** (`history/ladder-sleep-20261019-balanced/`): asleep **421.0 s** after the tap (want 420), woke on the key, two keys, the PCF 65 s against the logger's 64. The clock +143.6 ms at the first sync after 8 min off USB (7 awake with no SOF, then the sleep), its frequency loop reset by a flash 15 min before. **Gremlin:** dark at ~7 min, Esc woke it and typed. |
+| 3 | an hour asleep | **Running** (`history/ladder-sleep-20261019-hour/`, Lights out, asleep 16:41:55, 30.6 s after the tap; woken ~17:42). Read `run.log` and `ladder-sleep.json`: the PCF against the logger, the clock's first sync, the battery log's slept entries. |
+| 4 | the clock without the daemon; the acquisition's split (op 14 sub 6) | Not run. |
+| 5 | wake sources | The rig's key (P2), hundreds of times. **Gremlin:** key bursts (all registered), the knob (the waking turn kept: it changed the volume). Not run: a P0 key or a chord by hand, the repaint hold's terminal cases, 25 ms taps. |
+| 6 | charge and USB | **Gremlin: the cable's insertion woke it** (charge, 21 s by the PCF). Not run: the full-pack insertion with no CHRG edge, a host appearing while asleep, frames around the re-attach's deadlines. |
+| 7 | the backstop | The 32-bit widths **pass** (60 counted s past 65,500; the PCF 71). The real 24 h length over a weekend: not run. |
+| 8 | the builds | All four flavours build with no warnings; `build.sh`'s new checks pass on the right builds and fail on a dev ELF judged as daily and on a pre-sleep build. A daily build on the board: not run. |
+| 9 | the stage test | **Fn+B on the pack: no pass ≥ 25 ms**, worst 21 ms (`history/fnb-caps-20261019-jd/`). The CAPS paint alone reached exactly 25 ms once in ~600 toggles (a blit): its own item, not the sleep's. The first-key latency: item 1's. |
+| 10 | R5, a drain in Normal at JD's use | Not run. |

@@ -107,21 +107,46 @@ I2C masking interrupts up to ~2.9 ms (inferred). **Fn+B** on the pack: no pass o
 21 ms; **the CAPS paint alone reached 25 ms once in ~600 toggles**
 ([`../history/fnb-caps-20261019-jd/`](../history/fnb-caps-20261019-jd/README.md)).
 
+**Afterwards, 16:16-17:45** (the plan's "Validation results (10-19)" has
+every item's state):
+- **Balanced's real ladder sleep passes**: asleep 421.0 s after the rig's tap
+  (want 420), the PCF 65 s against the logger's 64
+  (`../history/ladder-sleep-20261019-balanced/`). **An hour asleep in Lights
+  out** ran 16:41-17:42 (`../history/ladder-sleep-20261019-hour/`; its result
+  is in the plan's table, or read `run.log`). `scripts/ladder_sleep.py` runs
+  one ladder sleep at a mode's real time; `--charge-wake` was not needed
+  (Gremlin's board passed the cable wake).
+- **The firmware is pushed** (`ak820pro-jdlien` to `de5450e487`, ChibiOS-Contrib
+  `ak820pro-patches` to `27e852d25a`) and **`deps.lock` pins it**: a fresh
+  `setup.sh` builds the board's code. JD: push freely now (after the
+  family-details scrub); tags and releases still ask.
+- **Gremlin** (the Windows 11 PC, its own AK820 on `de5450e487`, a Claude
+  session reachable over Remote Control as "Go ahead confirmation") took the
+  lock-light channel, the 2.4G dongle and Windows testing:
+  [`GREMLIN-HANDOFF-2026-10-19.md`](GREMLIN-HANDOFF-2026-10-19.md), results in
+  [`GREMLIN-RESULTS.md`](GREMLIN-RESULTS.md). Deep sleep passes there in 2.4G
+  (key, knob and cable wakes, the waking key kept); its `flash.sh` fixes
+  (Documents under MSYS2, the keymap tool's reply match, no HID enumeration,
+  and the post-flash clock left to a daemon that owns it, both platforms)
+  are pushed; a Windows lock-light route over 2.4G exists
+  (`IOCTL_KEYBOARD_SET_INDICATORS`, Num and Scroll only).
+- **A clock oddity, not ours:** −2064.5 ms at 16:20:16, three minutes after
+  another session's flash, with `flash.sh` then syncing beside the daemon
+  (fixed since, `BACKLOG.md`).
+
 **Next, in order:**
-1. **The overruns (pre-existing, ~1-2 an hour, `BACKLOG.md`):** confirm
-   the cause (do overruns line up with PCF transactions?), then a plan: the
-   PCF's I2C without a whole-transaction lock (its pin-mode writes are
-   read-modify-writes on P0, which also carries two key rows, so each needs
-   a short lock of its own). Not a deep-sleep blocker.
-2. **The CAPS paint's 25 ms** (the lock band; `display.c`): split or queue it.
-3. **The rest of the validation** (the plan's list):
-   the soak through the ladder (`deep_cycles.py --n 100`), an hour asleep,
-   the clock without the daemon, the wake sources (the knob by hand: JD, one
-   action at a time), charge and USB, the backstop's widths
-   (`deep_sleep.py --preset 65500 --no-press`), the stage test, R5.
-   The stage test is 10-18's wake/key test through the stages (the Mac
-   unlocked, the keyboard untouched ~10 min); R5 a logged drain in Normal at
-   JD's daily use.
+1. **The rest of the validation** (the plan's table): the clock without the
+   daemon and the acquisition's split (op 14 sub 6); a P0 key and a chord by
+   hand; the full-pack insertion; a host appearing while asleep; the backstop's
+   real length over a weekend; a daily build on the board; R5, a logged drain
+   at JD's daily use. The per-wake clock offset needs a run that leaves the
+   daemon its HID (`ladder_sleep.py` does).
+2. **The overruns** (pre-existing, ~1-2 an hour, `BACKLOG.md`): confirm the
+   cause (do they line up with PCF transactions?), then a plan: the PCF's I2C
+   without a whole-transaction lock (its pin-mode writes are read-modify-
+   writes on P0, which also carries two key rows, so each needs a short lock
+   of its own).
+3. **The CAPS paint's 25 ms** (the lock band, `display.c`): split or queue it.
 
 ## 2026-10-18
 
