@@ -407,12 +407,14 @@ The text slot holds one of:
 | blank | on battery, the level unknown: after a boot until the first estimate, or for 30 min after unplugging an unknown charge |
 | `No Batt`, red cross in the bolt's slot | no pack fitted (`indicators.c`) |
 
-**The bolt's slot shows the power mode on battery (`26fcafaeca`).** The slot
-right of the icon is one 13×15 RAM tile at (35, 108) (`draw_bolt_slot`). On
-USB it holds the bolt while charging, the cross with no pack, or nothing. On
-battery it holds the `Fn`+`B` mode as a bulb: **Always on** lit with rays,
-**Balanced** lit, **Power saver** a white outline over grey glass, **Lights
-out** an unlit outline. The bolt and the cross need USB and the modes act only
+**The bolt's slot shows the power mode on battery (`26fcafaeca`; the bulbs
+as now, `83d8768c64`).** The slot right of the icon is one 13×15 RAM tile at
+(35, 108) (`draw_bolt_slot`). On USB it holds the bolt while charging, the
+cross with no pack, or nothing. On battery it holds the `Fn`+`B` mode as a
+bulb: **Always on** lit with rays, **Balanced** lit, **Power saver** a white
+outline over grey glass, **Lights out** an unlit slate outline struck through
+by a light-grey slash; each has a light-grey screw base under a darker
+collar. The bolt and the cross need USB and the modes act only
 on battery, so the two never want the slot at once. At 15% or below, while the
 low cap holds Always on or Balanced to Power saver's stages, the slot shows
 Power saver's bulb: it shows what the lights are doing
@@ -424,8 +426,9 @@ mode (`batt_bulb_stale`), so the bulb follows `Fn`+`B`'s overlay within a
 tenth of a second. Measured on the pack, 30 presses: no pass of 25 ms or
 more, the worst 20-21 ms
 ([`history/fnb-caps-20261019-jd/`](../history/fnb-caps-20261019-jd/README.md)).
-The greys (`COL_BULB_*`) are starting values, not yet judged on the panel.
-Design and gate:
+The shapes and colours (`COL_BULB_*`) were judged on the panel: greys read
+darker there than on a monitor and the slate less blue, so judge them on the
+board. Art, colours, the gate and the versions that lost:
 [`plans/POWER-MODE-ICONS-PLAN.md`](../plans/POWER-MODE-ICONS-PLAN.md).
 
 **The charging display (Phase 1b, flash 2).** While charging, `5C` reads a

@@ -7,20 +7,24 @@ panel, not decisions.
 
 ## Status
 
-**On the board since 13:18 10-19: `26fcafaeca`** (dev, token `0x47773c72`),
-cleared by codex (`61a425a721`, the follow-up `6926a17c80` and a comment
-fix, on `7df8a08e96`). The deep-sleep session fast-forwarded
-`ak820pro-jdlien` to it, flashed it and soaked it: 97 of 100 deep-sleep
-cycles through the ladder, the three failures UART overruns that are the
-deep-sleep session's
+**On the board since 16:16 10-19: `83d8768c64`** (dev, token `0xcf9da0e0`),
+the bulbs as judged on the panel ("On the panel", below). It sits on
+`7df85fb89b` (the wider base and its collar) and `26fcafaeca`, the icons
+build codex cleared (`61a425a721`, the follow-up `6926a17c80` and a comment
+fix, on `7df8a08e96`). The two since `26fcafaeca` change `display.c`'s art
+and colours only, plus one more colour index in the rasterizer: the same
+tile, the same rect, the same triggers, so they went on without a codex
+round. `26fcafaeca` went on at 13:18 and was soaked by the deep-sleep
+session: 97 of 100 deep-sleep cycles through the ladder, the three failures
+UART overruns, the link's own
 ([`../history/deep-cycles-20261019-icons/`](../history/deep-cycles-20261019-icons/README.md)).
 It carries `7df8a08e96`, battery.c's guard against a historical debit for a
-sleep on USB (codex's own fix, reviewed with this branch). The docs are
-updated (display.md's battery row; battery.md, hardware.md, test-bench.md
-and CLAUDE.md's Fn line name the modes). **Next: the bulb's shape and
-colours on the panel** ("On the panel", below).
+sleep on USB (codex's own fix, reviewed with this branch). The docs name the
+modes (display.md's battery row; battery.md, hardware.md, test-bench.md and
+CLAUDE.md's Fn line). ⚠️ Local on `ak820pro-jdlien`, not pushed.
 
-- Compiles clean, dev, daily and fpb: +1,016 bytes (the art is 784).
+- Compiles clean, dev, daily and fpb: +1,016 bytes at `26fcafaeca` (the art
+  is 784).
 - `scripts/battery_sim` passes against both firmware trees (`ladder.c`
   takes the names from `POWER_HAS_BULB`). Through `BATTERY_SIM_SRC` both
   give 146, the same list line for line; a plain run gives 150 because it
@@ -32,8 +36,9 @@ colours on the panel** ("On the panel", below).
   indices are unchanged).
 
 Done: codex's review and verify (no must-fix, below); the flash; the gate's
-Fn+B part on the pack (below); the docs. Left: the shape and colours on the
-panel ("On the panel", below), then a flash of whichever wins.
+Fn+B part on the pack (below); the shape and colours on the panel; the docs.
+Left: nothing for the icons. The bezel clipping the slot when the panel is
+seen at an angle is noted, not one for software yet.
 
 ## The names
 
@@ -72,103 +77,99 @@ Fn table, battery.md, display.md). The enum identifiers can stay.
 
 ## The glyphs: one bulb losing its light
 
-13×14 frame, placed at (35, 108): the rays reach y 108 and x 47, the bulb
-sits at y 111-121, bottom-aligned with the battery (y 110-121). `#` is the
-main colour, `*` the dimmed glass, `+` the screw base.
+As on the board (`83d8768c64`). 13×14 frame, placed at (35, 108): the rays
+reach y 108 and x 47, the bulb sits on the battery's bottom row (y 121).
+`#` is the outline or the lit glass, `*` the dimmed glass, `=` the collar,
+`+` the screw base, `/` the slash.
 
 ```
 Always on       Balanced        Power saver     Lights out
 ......#......   .............   .............   .............
 .#.........#.   .............   .............   .............
-..#.......#..   .............   .............   .............
-.....###.....   .....###.....   .....###.....   .....###.....
-...#######...   ...#######...   ...##***##...   ...##...##...
-##.#######.##   ...#######...   ...#*****#...   ...#.....#...
-..#########..   ..#########..   ..#*******#..   ..#.......#..
-..#########..   ..#########..   ..#*******#..   ..#.......#..
-..#########..   ..#########..   ..#*******#..   ..#.......#..
-...#######...   ...#######...   ...#*****#...   ...#.....#...
-....#####....   ....#####....   ....#***#....   ....#...#....
+..#.......#..   .............   .............   .//..........
+.....###.....   .....###.....   .....###.....   ..//..##.....
+...#######...   ...#######...   ...##***##...   ...//...##...
+##.#######.##   ...#######...   ...#*****#...   ....//...#...
+..#########..   ..#########..   ..#*******#..   ..#..//...#..
+..#########..   ..#########..   ..#*******#..   ..#...//..#..
+..#########..   ..#########..   ..#*******#..   ..#....//....
+...#######...   ...#######...   ...#*****#...   ...#....//...
+....#####....   ....#####....   ....#***#....   ....#....//..
+....=====....   ....=====....   ....=====....   ....====..//.
+....+++++....   ....+++++....   ....+++++....   ....+++++....
 .....+++.....   .....+++.....   .....+++.....   .....+++.....
-.....+++.....   .....+++.....   .....+++.....   .....+++.....
-......+......   ......+......   ......+......   ......+......
 ```
 
-Starting colours, RGB565:
+Colours, RGB565:
 
-| | `#` | `*` | `+` |
-|---|---|---|---|
-| Always on, Balanced | white `0xFFFF` | — | grey `0x8C71` |
-| Power saver | white `0xFFFF` | mid grey `0x8410` | dark grey `0x4228` |
-| Lights out | light grey, to try | — | dark grey `0x4228` |
+| | `#` | `*` | `=` | `+` | `/` |
+|---|---|---|---|---|---|
+| Always on, Balanced | white `0xFFFF` | — | grey `0x632C` | light grey `0xB5B6` | — |
+| Power saver | white `0xFFFF` | mid grey `0x8410` | grey `0x632C` | light grey `0xB5B6` | — |
+| Lights out | slate `0x8D18` | — | dark slate `0x4AAD` | darker slate `0x6BD2` | light grey `0xDEFB` |
 
-Power saver's white outline over grey glass reads as dimmed, and grey already
-means "not in use" on the connection icons. Its base is darker than the
-others so the grey glass does not run into it at the neck.
+- **Power saver's white outline over grey glass** reads as dimmed, and grey
+  already means "not in use" on the connection icons.
+- **The base is the metal, so it does not change with the light**: the same
+  light grey under the three lit or dimmed bulbs, lighter than Saver's glass
+  and darker than white. Its top row is a darker collar, which parts the base
+  from the glass the way a real bulb's does.
+- **Lights out is slate all over**, so the whole bulb looks switched off. On
+  the panel the slate reads far less blue than on a monitor, nearer a cool
+  grey, so the worry that it would be the only blue on the screen did not
+  bite.
+- **Lights out is struck through**, the usual mark for "switched off" (a
+  muted bell, a hidden eye). Its screen is dark but for a few seconds after a
+  message, so the bulb has to read at a glance, and the slash parts it from
+  Power saver by shape rather than by fill alone. The slash is 2 px (1 px was
+  too faint), from above the glass's top left to beside the collar, stopping
+  short of the base; the bulb is cut back a pixel wherever it touches the
+  slash at an edge or a corner, so the slash lies over it.
 
-## Colours to try on the panel
+## Colour rules
 
 - ⚠️ **Mid grey `0x8410` was "near-illegible" as 5×7 text on this panel**
-  (`COL_AMPM`'s comment, `graphics/display.c`). The glass is a filled area and
-  should survive, but try `0x8410` against `0xA514` side by side.
-- **Lights out's outline is the riskier one**: a 1 px stroke, the kind that
-  failed. Use a light neutral grey (`0xA514` or `0xC618`), not the mockup's
-  slate: slate would be the only blue on the screen, and the missing fill
-  already tells it from Power saver.
+  (`COL_AMPM`'s comment, `graphics/display.c`). As Power saver's glass, a
+  filled area, it reads fine.
 - **Keep yellow, red and amber out of the slot.** Yellow is the bolt's colour
   in the bolt's place; red and amber mean a low battery on this row.
 - **No green tint on Power saver's glass.** Green already means a healthy
   battery (the fill beside it) and playing (the transport icon).
+- **Greys read darker on the panel than on a monitor**, and the slate less
+  blue. Judge colours on the board; a mockup only settles shapes.
 
-## On the panel (first look, 10-19)
+## On the panel (10-19)
 
-On the board the bulb reads very small, and **the screw base barely shows**:
-it needs to be lighter, at least Power saver's glass grey. Viewed at an
-angle, the screen cover's bezel clips the slot a little; not one for
-software yet.
+How the bulbs went from `26fcafaeca` to `83d8768c64`, each step seen on the
+board or in the pixel mockup:
 
-Why the base vanishes: it is 7 pixels (3 wide, two rows and a tip) under
-56 of white glass, grey, and touching the glass, so it reads as the glass's
-shading. Under the dimmed and unlit bulbs it is `0x4228`, near black. A
-lighter grey alone would not fix it: Power saver's glass runs straight into
-the base at the neck (`....#***#....` over `.....+++.....`), so a base in the
-glass's grey merges with it. One-colour icon sets solve this with a blank
-line between glass and base, and the base in the outline's colour.
+1. **First look: the bulb is small and the screw base barely shows.** The
+   base was 7 pixels (3 wide, two rows and a tip) of grey `0x8C71` touching
+   56 of white glass, so it read as the glass's shading; under the dimmed
+   and unlit bulbs it was `0x4228`, near black. Seen at an angle, the cover's
+   bezel clips the slot a little.
+2. **Two fixes with a black row between glass and base, dropped.** One kept
+   the 13×14 frame and gave up a row of glass for the gap; one widened the
+   bulb to 15×15. Both looked too squashed to be a bulb.
+3. **The original glass with a wider, lighter base, chosen.** The base two
+   pixels wider (5, with a 3-pixel tip) in `0xB5B6`, its top row a darker
+   collar (`0x632C`) instead of a black gap. Lights out back to the first
+   mockup's slate, with a darker slate base and collar. Flashed as
+   `7df85fb89b` (15:54).
+4. **A struck-through bulb for Lights out.** An X was rejected before it was
+   drawn: the slot already shows a red X with no pack. A slash in the
+   outline's slate (preview `ea7b7e7e3a`, on the board 16:00) merged with the
+   outline where they cross. In white it separated; a black gap around it,
+   at its edges only or at its edges and corners, gave it room, and the
+   corners won. White then stood out as the brightest pixel of an "off"
+   icon.
+5. **The slash's shade, picked on the panel.** A preview drew the slashed
+   bulb in every mode, one slash shade a mode (`d66c27993a`, 16:08):
+   `#DCDCDC`, `#CCCCCC`, `#C0C0C0` and white. `#DCDCDC` (`0xDEFB`) won:
+   clearly not white, still well apart from the slate. Flashed as
+   `83d8768c64` (16:16).
 
-Two versions, each with that black row and a 5-wide base in the outline's
-colour (white; `0xA514` under Lights out):
-
-- **Separated base, 13×14 as now:** the glass gives up its third 9-wide
-  row. No change to the tile.
-- **Wider bulb, 15×15 at (35, 107) (recommended):** the glass keeps its 8
-  rows and grows from 9 to 11 wide, about a fifth more glass; the tile grows
-  from 13×15 to 15×16 at (35, 107) (480 bytes against 390, ~30 µs more on
-  the wire). Its right edge, x 49, leaves 4 columns before time left's
-  furthest reach (x 54). It moves no lower; its top rises a row.
-
-```
-Always on (wider)  Balanced           Power saver        Lights out
-.......#.......    ...............    ...............    ...............
-.#...........#.    ...............    ...............    ...............
-..#.........#..    ...............    ...............    ...............
-.....#####.....    .....#####.....    .....#####.....    .....#####.....
-##.#########.##    ...#########...    ...##*****##...    ...##.....##...
-..###########..    ..###########..    ..#*********#..    ..#.........#..
-..###########..    ..###########..    ..#*********#..    ..#.........#..
-..###########..    ..###########..    ..#*********#..    ..#.........#..
-...#########...    ...#########...    ...#*******#...    ...#.......#...
-....#######....    ....#######....    ....#*****#....    ....#.....#....
-.....#####.....    .....#####.....    .....#####.....    .....#####.....
-...............    ...............    ...............    ...............
-.....+++++.....    .....+++++.....    .....+++++.....    .....+++++.....
-.....+++++.....    .....+++++.....    .....+++++.....    .....+++++.....
-......+++......    ......+++......    ......+++......    ......+++......
-```
-
-The wider tile changes the rect codex checked (its item 2: nothing else
-draws into x 35-49, y 107-122, and every clear of the band repaints the
-slot). That needs re-checking before it flashes; the separated base does
-not, since its rect is unchanged.
+The previews are on the firmware branch `bulb-slash-preview` only.
 
 ## Drawing it without a stall
 
@@ -274,3 +275,9 @@ start at x 44, over the icon.
 - **The icon on USB during Fn+B's overlay**, to show what unplugging will
   give: two more slot paints a press, and it would push the bolt out while
   charging. The overlay's name is enough.
+- **A black row between glass and base, and a wider 15×15 bulb** (the first
+  fixes for the faint base): too squashed to read as a bulb.
+- **An X through Lights out's bulb**: it would echo the red no-pack cross in
+  the same slot, and read as a fault.
+- **A slate or white slash**: slate merged with the outline it crosses;
+  white was the brightest pixel in an "off" icon.

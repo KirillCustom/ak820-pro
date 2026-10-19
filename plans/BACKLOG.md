@@ -22,16 +22,15 @@ The order agreed after the sleep experiments:
    - a final pass for anything personal (the public-repo rule: no family or
      household details).
 
-## Power mode icons and names: on the board, the bulb to refine (2026-10-19)
+## Power mode icons and names: done (2026-10-19)
 
 The modes are renamed (Always on, Balanced, Power saver, Lights out), and on
-battery the bolt's slot shows the mode as a bulb: lit with rays, lit, dimmed
-(white outline, grey glass), unlit. Same RAM tile and one transfer as the
-bolt. On the board since 13:18 10-19 (`26fcafaeca`); Fn+B on the pack showed
-no pass of 25 ms or more. On the panel the bulb reads small and its screw
-base barely shows. Next: a base split from the glass by a black row, in the
-outline's colour, and perhaps a wider bulb. Glyphs, rules, the gate and the
-options: [`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
+battery the bolt's slot shows the mode as a bulb: lit with rays, lit, dimmed,
+and unlit and struck through. Same RAM tile and one transfer as the bolt; Fn+B
+on the pack showed no pass of 25 ms or more. On the board since 16:16 10-19
+(`83d8768c64`), the shapes and colours judged on the panel. Left: nothing,
+but the bezel clipping the slot at an angle, noted. The record:
+[`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
 
 ## UART overruns on the radio link, ~1-2 an hour, likely the PCF's I2C (2026-10-19)
 
