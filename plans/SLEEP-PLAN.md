@@ -351,3 +351,17 @@ the bare `51h` reads as use or as wall clock (`100% 51h` fills the 8 cells).
 A calendar figure ("~6d at your pace") needs the awake fraction learned
 over several days (frozen on USB, like the average) and a second place on
 screen; later, if wanted.
+
+**Where it earns its place: deciding whether to plug in.** Today's warning,
+"Battery low", fires at 3550 mV, ~2.3 h before the cut: too late to plan a
+day around. A sketch, keyed on hours of use, not on the level (the same 20%
+is ~10 h at JD's settings and ~28 h with the RGB off):
+
+- **The battery row** shows the hours beside the level once under ~10 h of
+  use (`18% 6h`; `No Batt` already fits 7 cells): absent while it does not
+  matter, glanceable when it does.
+- **A wake after a long sleep** (some hours: the morning, not every pause),
+  while under that, lights `6h use left` in the text band for its 4 s (11
+  of the overlay's 12 cells).
+- Rounded down; the gauge is within 2.5 points below 20% (A1), ~1.3 h at
+  JD's settings, before any change in how the next hours are used.
