@@ -242,3 +242,19 @@ open. Fixed in `f38bb1e8a4` and the scripts commit after it.
 | 3 | relay 1's in-process call has no deadline; the deep cleanup gives up on USB at once; "restored" is printed on relay 2 alone | **Fixed:** relay 1 in a thread with a 5 s deadline; the deep cleanup waits up to 30 s for USB; every step's result aggregated, and an incomplete cleanup fails the run. |
 | — | the unfed verdict reads `site`, but the CLI emits `site_id: 27`; entry judged against the USB-on draw, before the delay ends; sizing has no boot continuity, allows `--n 0`, no final mask check | **Fixed:** `valid` and `site_id`; a data-off awake baseline and samples after the delay; uptime monotonic per entry, `--n` >= 10, the mask read back after the presses. |
 | — | notes: the idle hook masks and unmasks even with WFI off; the parser resync check was unguarded in daily; the UART drain's 32-byte ceiling; short waking taps untested | The hook's mask is a few cycles in the idle thread (which does not run while the main loop spins); the resync now dev-only; the FIFO depth is undocumented, 32 covers any plausible one; the deep run now presses a 40 ms tap. |
+
+## Codex's second verify (10-18)
+
+[Verbatim](review-codex-sleep-verify2-2026-10-18.md), prompt
+[`review-prompt-sleep-verify2.txt`](review-prompt-sleep-verify2.txt), of
+`f38bb1e8a4` and `04e94db`: **no firmware blocker to flashing with sleep off,
+or to the attended deep-sleep run; the WFI steps not yet hands-free.**
+`f38bb1e8a4` went on at 18:24 10-18.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | must fix for hands-free sizing: if setting the transceiver bit back does not restore USB, nothing else can (relay 2 does not power-cycle a board on its pack) | **Accepted as attended:** the WFI steps (bits 2 and 4, the probe included) run with JD at hand, with the deep run. The hands-free run takes only scan-only and the yield, which do not touch USB. |
+| 2 | must fix for hands-free sizing: keyboard HID calls in cleanup and the relay calls in the press loops are unbounded | **Fixed (`62b9b17`):** a whole-run deadline in each script, a timer that restores relay 2 (and the data on the deep run), bounded, then ends the process. |
+| 3 | should fix: uptime increasing does not prove no reset; ACK timeouts and the timebase ratio only reported | **Fixed:** the uptime must keep pace with the wall clock (0.8 or better) and the consecutive-reset count must not move. ACK timeouts stay reported, judged against mask 0's. |
+| — | note: byte 22 renamed; false inside 20 s of the wake can mean pending | **Done** (`usb_back_20s`); the deep run reads the record 8+ s after the press, so its false is read as "not yet" until 20 s. |
+| — | verify #1's keystroke loss closed; the UART path, the smaller firmware fixes, the deep script's fixes, default-off and the daily build fine | Agreed. |

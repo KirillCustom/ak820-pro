@@ -26,6 +26,20 @@ of 18 frames exact ([`LOCK-LED-CHANNEL-PLAN.md`](LOCK-LED-CHANNEL-PLAN.md),
 frames exact, P3 included** (below). **The channel is parked; next is the
 power work** (the ladder, an accurate gauge, a runtime estimate).
 
+### Sleep experiments on the board (10-18, 18:24)
+
+**Flashed `f38bb1e8a4`** (dev, token `0xc8da78d5`): Minimal mode plus the
+sleep experiments of [`SLEEP-PLAN.md`](SLEEP-PLAN.md), all off unless
+`HC_DEVHOOK` op 14 sub 3 (light sleep's sizing mask) or sub 4 (the
+deep-sleep experiment) turns them on. Codex: a plan review, an
+implementation review and two verifies, every finding dispositioned there.
+The SN32F299 manual is distilled in [`../docs/sn32f299.md`](../docs/sn32f299.md).
+
+**Running now:** `scripts/sleep_sizing.py --masks 0,1,3:2,3:4,0`, hands-free
+(scan-only and the yield; no WFI). **With JD at hand, later:** the WFI steps
+(`--masks 0,7:2,15:2,0`, the 30 s probe first) and `scripts/deep_sleep.py`
+(a key wake, then `--no-press`, then `--no-feed`).
+
 ### Minimal mode on the board (10-18, 17:31)
 
 **Flashed `460ca22840`** (dev, token `0x4adb46b6`): Phase 2 plus a fourth

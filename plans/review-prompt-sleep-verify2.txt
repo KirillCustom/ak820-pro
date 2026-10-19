@@ -1,0 +1,8 @@
+You are verifying fixes before a flash (AK820 Pro: QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a CH582F radio on UART2). Read only files inside /Users/jdlien/code/ak820-pro, plus /Users/jdlien/code/ajazz-ak820-pro/docs/SN32F299_V1.8_EN.pdf by page ranges if you need it. Do not search or list anything else outside the repo; there is no AGENTS.md. Read-only: do not modify, build or run anything.
+
+Your verify is plans/review-codex-sleep-verify-2026-10-18.md; the dispositions are the last section of plans/SLEEP-PLAN.md. The fixes:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show f38bb1e8a4   (firmware: no USB restart anywhere; the transceiver bit after either WFI bit ends; the resync dev-only)
+  git -C /Users/jdlien/code/ak820-pro show 04e94db                               (scripts)
+Both dev and daily builds compile cleanly.
+
+Check, citing file:line: (a) the three open must-fixes are closed and nothing new broke; (b) the smaller items as listed; (c) the default-off path and the daily build; (d) anything left that could cost a keystroke with the features off, or leave the board unrecoverable without hands during the planned runs (the sizing run hands-free; the deep run with JD at hand). Rank must-fix / should-fix / note; be brief where fine. If nothing blocks the flash and the runs, say so plainly.
