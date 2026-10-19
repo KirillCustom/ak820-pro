@@ -7,9 +7,12 @@ panel, not decisions.
 
 ## Status
 
-**Built on the firmware branch `power-mode-icons`** (`5ed981aed9`, local,
-rebased onto the deep-sleep review's fixes `44605c1a9e`, cleanly); not
-flashed. It goes on as **its own
+**Built on the firmware branch `power-mode-icons`** (`61a425a721`, local,
+rebased cleanly onto `7df8a08e96`); not flashed. The deep-sleep build is on
+the board (`752d4bcda7`, flashed 12:57 10-19). **`7df8a08e96`, battery.c's
+guard against a historical debit for a sleep on USB, is codex's own fix from
+its second verify and is not flashed: it is reviewed with this branch and
+rides on its flash.** It goes on as **its own
 flash after the deep-sleep flash, with its own codex review**: two deltas
 under one review would muddy both. The deep-sleep session owns the flash
 queue.
@@ -17,7 +20,7 @@ queue.
 - Compiles clean, dev, daily and fpb: +1,016 bytes (the art is 784).
 - `scripts/battery_sim` passes against both firmware trees (`ladder.c`
   takes the names from `POWER_HAS_BULB`). Through `BATTERY_SIM_SRC` both
-  give 144, the same list line for line; a plain run gives 148 because it
+  give 145, the same list line for line; a plain run gives 149 because it
   adds the four pinned-baseline checks (flash 1's `battery.c`, which never
   reads the tree under test), and the variable skips them. New checks
   in `l_modes` and `l_low_cap` catch three mutants of `power_lights_mode()`
@@ -26,9 +29,9 @@ queue.
   indices are unchanged).
 
 Left, in order:
-1. Rebase onto any further deep-sleep fixes (the first set, `44605c1a9e`,
-   touched none of this branch's files).
-2. Codex's review of the branch.
+1. Rebase onto any further deep-sleep fixes (none so far touched this
+   branch's files).
+2. Codex's review of the branch, with `7df8a08e96` in its scope.
 3. The flash, after the deep-sleep flash; then the gate below.
 4. The colours on the panel (below).
 5. At merge: display.md's battery row (the slot, the bulb, the 13×15 tile),
