@@ -22,6 +22,20 @@ The order agreed after the sleep experiments:
    - a final pass for anything personal (the public-repo rule: no family or
      household details).
 
+## `raw_edges` undercounts by design; it could be exact (2026-10-19)
+
+The health counter `raw_edges` comes up ~0.5% short of 2 per press (797-799
+of 800 on 10-18, 397-399 of 400 per burst on 10-19) while `key_presses`
+counts every press. Why: `matrix_scan_custom()` (sn32f2xx.c) counts edges
+UNLOCKED, before the locked compare and copy, so an edge the row ISR
+publishes between the two is copied (and processed) but never counted; the
+next consume sees nothing to count. Keystrokes are not affected: all n
+presses register, and a key cannot register again without its release, so
+all 2n edges reached QMK. The comment gives the reason as a timer read,
+which moved into the ISR since (`input_note_row_scan()`), so the count could
+now go inside the lock (a popcount over 6 rows) and be exact, and the tests
+could check `edges == 2n` again. Cheap; for a flash that is happening anyway.
+
 ## The bench's restore dies with the run (2026-10-18)
 
 The sleep scripts restore relay 2, the data and the board in a `finally`,
