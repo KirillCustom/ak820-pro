@@ -68,6 +68,20 @@ def present(node):
 sys.exit(0 if present(plistlib.loads(sys.stdin.buffer.read())) else 1)
 ' "$1" 2>/dev/null
             ;;
+        MINGW*|MSYS*|CYGWIN*)
+            # ⚠️ NOT hidapi on Windows. This probe runs once a second for up to
+            # ten minutes while waiting for Fn+Esc, and `hid_enumerate` OPENS
+            # every HID device on the machine each time -- the repeated sweep
+            # that twice wedged the APC UPS attached to this one
+            # (`../jdrgb/docs/ups-wedge-incident.md`). Windows can answer from
+            # the device tree instead: Get-PnpDevice reads properties and opens
+            # nothing. The bootloader is an ordinary HID device here (no Zadig),
+            # so it appears in the tree exactly as the running board does.
+            powershell.exe -NoProfile -NonInteractive -Command "
+                \$id = 'VID_0C45&PID_$(printf '%04X' "$1")'
+                if (Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue |
+                        Where-Object { \$_.InstanceId -like \"*\$id*\" }) { exit 0 } else { exit 1 }" >/dev/null 2>&1
+            ;;
         *) "$PY" -c 'import hid,sys; sys.exit(0 if hid.enumerate(0x0C45, int(sys.argv[1],16)) else 1)' "$1" 2>/dev/null ;;
     esac
 }

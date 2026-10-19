@@ -20,7 +20,7 @@ the read times out even with the cable plugged in. Set the dip switch to cable.
 """
 import argparse, json, os, sys, time
 import venv_bootstrap  # noqa: F401 -- re-execs under the repo venv if hid is missing
-import hid
+import ak820text       # the one safe opener; see open_device() below
 
 VID, PID = 0x0C45, 0x8009
 USAGE_PAGE, USAGE = 0xFF60, 0x61          # QMK raw HID
@@ -40,13 +40,20 @@ DEFAULT    = os.path.expanduser("~/Documents/ak820pro-keymap.json")
 
 
 def open_device():
-    """Match on usage page/usage: the board publishes several HID interfaces
-    and only 0xFF60/0x61 is QMK raw HID."""
-    for d in hid.enumerate(VID, PID):
-        if d.get("usage_page") == USAGE_PAGE and d.get("usage") == USAGE:
-            return hid.Device(path=d["path"])
-    raise SystemExit("raw HID interface not found "
-                     "(is VIA holding it? close the usevia.app tab)")
+    """Reuse ak820text's opener rather than enumerating here.
+
+    ⚠️ `hid.enumerate()` opens EVERY HID device on the machine, which twice
+    wedged the APC UPS attached to this one
+    (`../jdrgb/docs/ups-wedge-incident.md`); that UPS is still attached, and
+    this tool ran unguarded until 2026-09-27. ak820text's version is the fixed
+    one -- cached path, exponential backoff and a mains-settle gate -- and
+    `ak820lighting.py` already shares it. So this is the third caller of one
+    safe opener rather than a third copy of the hazard (`plans/BACKLOG.md`).
+
+    It matches the same way this did: on usage page/usage, because the board
+    publishes several HID interfaces and only 0xFF60/0x61 is QMK raw HID.
+    """
+    return ak820text.open_device()
 
 
 def xfer(h, payload, timeout=1000):
