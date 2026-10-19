@@ -24,8 +24,8 @@ frames committed, preambles reached, each abort reason's count, and the last
 frame (profile, type, seq, payload, its anchor and commit times). `frames
 reset` zeroes it; `frames json` prints it as one JSON object.
 """
-import sys
-sys.path.insert(0, "/Users/jdlien/code/ak820-pro/hostagent")
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hostagent"))
 from ak820health import open_device
 SET_VALUE, CH, HC = 0x07, 0x13, 0x76
 NAMES = [f"restore clear band {i}" for i in range(1, 9)] + [
