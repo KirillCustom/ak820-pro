@@ -165,3 +165,26 @@ byte for byte against what `lockchan.c` committed. Results in
   module frames in ~2 s; the overruns did not cost a frame here (the
   repeats cover a lost copy), but they are the link's known weakness and a
   long run should count them.
+
+## 4. The RX tap (firmware branch `gremlin/rx-tap`, 10-19)
+
+The parser's 3-byte window drops any byte outside a 5A/5B/5C frame or an ACK
+without a trace, so whether the dongle's `FF60` interface relays to the board
+could not be told from "no reply". The tap: a dev-only 260-byte ring of every
+raw module byte while armed, `HC_DEVHOOK` ops 15-16, `scripts/devhook.py rxtap
+arm | stop | json` (the read splits frames, ACKs and the rest).
+
+**Two codex reviews of `f2e22aae`**, the same prompt
+([`review-prompt-rx-tap.txt`](review-prompt-rx-tap.txt)): the Mac's
+([verbatim](review-codex-rx-tap-2026-10-19.md)) and gremlin's
+([verbatim](review-codex-rx-tap-2026-10-19-gremlin.md)). **Neither has a
+must-fix.** Dispositions:
+
+| finding | both reviews | disposition |
+|---|---|---|
+| The count's 2^32 rollover skips slots 256-259 (2^32 % 260 = 256) | should-fix | **Fixed in `4ee56290`:** the slot is its own index, wrapping at 260; the count is only a total. It also drops the M0's software modulo per byte. |
+| Injected bytes reach the tap in a build with both `WDT_TEST_HOOKS` and `AK820_DEV_HOOKS` | Mac: should-fix; gremlin: note (no standard flavour combines them) | **Fixed in `4ee56290`:** the tap sits in the real, unmuted read's branch only. |
+| Zero added overruns cannot be certified statically; the ring holds ~231 ms at the burst rate | note | **Agreed.** Captures stop before reading, and the probes are short and spaced; overruns are counted beside every capture. |
+
+Bounds, header layout, placement (each real byte once, before the parser),
+main-loop-only access and the dev-only guards: passed by both.

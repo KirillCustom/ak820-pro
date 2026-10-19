@@ -23,6 +23,11 @@ object, for scripts/ledchannel_test.py.
 frames committed, preambles reached, each abort reason's count, and the last
 frame (profile, type, seq, payload, its anchor and commit times). `frames
 reset` zeroes it; `frames json` prints it as one JSON object.
+`rxtap` reads the RX tap (gremlin/rx-tap, ops 15-16): every raw byte from the
+CH582F while armed, the last 260 kept. `rxtap arm` clears and starts it,
+`rxtap stop` stops it (stop before reading); the read splits the bytes into
+5A/5B/5C frames, 61 0D 0A ACKs and anything else, which is what it is for: a
+module frame type nobody has documented. `rxtap json` prints it as JSON.
 """
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "hostagent"))
@@ -33,7 +38,8 @@ NAMES = [f"restore clear band {i}" for i in range(1, 9)] + [
     "restore: battery (outline)", "restore: lock band", "restore: text slot",
     "hk: text slot", "hk: status overlay", "hk: lock band", "hk: clock", "hk: battery",
     "hk: conn digit", "text icon", "band clear", "debug page compose", "debug glyph pump"]
-USAGE = "usage: devhook.py press | reset | read | lcd [LEVEL | on | off] | leds [reset | json] | frames [reset | json]"
+USAGE = ("usage: devhook.py press | reset | read | lcd [LEVEL | on | off] | leds [reset | json]"
+         " | frames [reset | json] | rxtap [arm | stop | json]")
 def xfer(h, op, arg=0):
     h.write(bytes([0, SET_VALUE, CH, HC, op, arg]) + bytes(27))   # report id + 32 bytes
     for _ in range(5):
@@ -45,7 +51,8 @@ def xfer(h, op, arg=0):
             return bytes(r)
     sys.exit("no reply")
 args = sys.argv[1:]
-ok = (len(args) == 1 and args[0] in ("press", "reset", "read", "lcd", "leds", "frames")) or (
+ok = (len(args) == 1 and args[0] in ("press", "reset", "read", "lcd", "leds", "frames", "rxtap")) or (
+    len(args) == 2 and args[0] == "rxtap" and args[1] in ("arm", "stop", "json")) or (
     len(args) == 2 and args[0] == "lcd" and (args[1] in ("on", "off") or
                                            (args[1].isdigit() and int(args[1]) <= 255))) or (
     len(args) == 2 and args[0] in ("leds", "frames") and args[1] in ("reset", "json"))
@@ -124,6 +131,51 @@ elif cmd == "frames":
                   f"{(st['board_ms'] - l['commit_ms']) & 0xFFFFFFFF} ms ago, "
                   f"{(l['commit_ms'] - l['anchor_ms']) & 0xFFFFFFFF} ms from anchor to commit")
             print(f"  payload {bytes.fromhex(l['payload'])!r}")
+elif cmd == "rxtap" and args[1:] in (["arm"], ["stop"]):
+    r = xfer(h, 15, 1 if args[1] == "arm" else 2)
+    print(f"rx tap {'armed' if r[4] else 'stopped'}, {int.from_bytes(r[5:9], 'little')} bytes")
+elif cmd == "rxtap":
+    # Stop it first (`rxtap stop`) for a consistent read; the header is read
+    # before and after the pages as for the 5A trace.
+    u32 = lambda b: int.from_bytes(b, "little")
+    for _ in range(5):
+        r = xfer(h, 15, 0)
+        armed, count, size = r[4], u32(r[5:9]), int.from_bytes(r[9:11], "little")
+        if size != 260: sys.exit(f"unexpected tap size {size}")
+        pages = [xfer(h, 16, pg) for pg in range(size // 26)]
+        if any(p[4] != pg or p[5] != 0 for pg, p in enumerate(pages)):
+            sys.exit("a tap page did not echo its number")
+        if u32(xfer(h, 15, 0)[5:9]) == count: break
+    else:
+        sys.exit("the tap kept moving while it was read: `rxtap stop` first")
+    ring = b"".join(p[6:32] for p in pages)
+    n = min(count, size)
+    start = count % size if count > size else 0
+    data = (ring[start:] + ring[:start])[-n:] if n else b""
+    # Tokenise as the parser would: 5A/5B/5C with a good sum, the 61 0D 0A ACK,
+    # and anything else, which is what the tap is for.
+    toks, i = [], 0
+    while i < len(data):
+        b = data[i:i + 3]
+        if len(b) == 3 and b[0] in (0x5A, 0x5B, 0x5C) and b[2] == (b[0] + b[1]) & 0xFF:
+            toks.append(("frame", b)); i += 3
+        elif b == b"\x61\x0d\x0a":
+            toks.append(("ack", b)); i += 3
+        else:
+            if toks and toks[-1][0] == "other": toks[-1] = ("other", toks[-1][1] + data[i:i + 1])
+            else: toks.append(("other", data[i:i + 1]))
+            i += 1
+    other = sum(len(t) for k, t in toks if k == "other")
+    if args[1:] == ["json"]:
+        import json
+        print(json.dumps({"armed": bool(armed), "count": count, "bytes": data.hex(),
+                          "tokens": [[k, t.hex()] for k, t in toks], "unrecognised": other}))
+    else:
+        print(f"rx tap {'ARMED' if armed else 'stopped'}: {count} bytes since arming, "
+              f"{n} held, {other} not part of a known frame"
+              + (f" (the first {count - n} have scrolled out)" if count > n else ""))
+        for k, t in toks:
+            print(f"  {k:5} {t.hex(' ')}")
 elif cmd == "read":
     vals = []
     for pg in (0, 1):
