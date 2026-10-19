@@ -317,6 +317,15 @@ first write, 130-376 ms measured) to each frame.
 the publication policy, the daemon's sender, and acting on frames. Those
 follow once the board shows frames arriving intact.
 
+**Text stays 7-bit.** The atlases draw the 95 printable ASCII characters
+(`ak820text.py` folds everything else into them), so a 6-bit alphabet (64
+codes, codex's row 13) cannot carry them all without an escape: the 63
+commonest in one 6-bit code, the rest as the escape plus a second. That
+saves ~18 bits on a 30-character title with a couple of escapes (210 bits
+as 7-bit), ~4 P3 writes or ~0.1 s of a ~2 s frame; base-95 packing (6.57
+bits a character) saves less. Not worth the complexity unless a corpus of
+real titles says otherwise.
+
 **Windows:** JD has a second AK820 Pro on the Windows PC (not on a relay), the
 test bed for the Windows routes when they come.
 
