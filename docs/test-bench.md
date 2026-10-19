@@ -72,6 +72,21 @@ venv/bin/python scripts/usb_relay.py on 2     # VBUS: the keyboard charges
 venv/bin/python scripts/usb_relay.py off 2    # no VBUS: on battery, still on USB
 ```
 
+**By hand, from any folder: `relay`** (`scripts/relay`, linked into `~/bin` on
+JD's Mac; `ln -s "$PWD/scripts/relay" ~/bin/relay` elsewhere). The relays go
+by name: `key` is relay 1 (the wake rig's F19), `power` relay 2.
+
+```sh
+relay status            # relay 1 off (key), relay 2 ON (power)
+relay tap [ms]          # press F19 once (default 100 ms)
+relay off power         # on battery; `relay on power` charges again
+relay toggle key        # hold F19 down / let it go
+```
+
+Every switch is read back, and `tap` refuses while the key is already held.
+⚠️ Not during a bench run: the trial, the maps and the sleep runs own the
+relay while they run.
+
 **Measured 18:28 10-08, with a bus-powered ESP32 on the cable:** it left USB
 within 1 s of `off 2` and was back within 1 s of `on 2`, in both directions,
 twice. Relay 1 has nothing wired to it: `on 1` did nothing.

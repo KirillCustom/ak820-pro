@@ -1,0 +1,6 @@
+#!/bin/sh
+# The bench's USB relay, from any folder: `relay status`, `relay tap`,
+# `relay off power`, `relay toggle key` (scripts/usb_relay.py has the rest).
+# To have it on PATH: ln -s "$PWD/scripts/relay" ~/bin/relay
+here=$(dirname "$(readlink -f "$0")")
+exec "$here/../venv/bin/python" "$here/usb_relay.py" "$@"
