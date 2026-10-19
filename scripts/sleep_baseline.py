@@ -14,7 +14,8 @@ forced stage, so the board stays dark throughout):
    rig's fast edge (25 ms, 40 ms);
 3. one press after each idle in --idles, the first press after a silence.
 Each counted at the board: raw_edges (before debounce, two per press) and
-key_presses (after). Pass: every press counted, and no new stall >= 25 ms.
+key_presses (after). Pass: every press counted, raw edges at least 98% of 2n
+(the plain firmware's own short count), and no new stall >= 25 ms.
 
 Nothing here reads the Mac, so it runs with the Mac locked (keydrop_test.py
 times presses at the Mac, unlocked). ⚠️ Hands off the keyboard: key_presses
@@ -222,7 +223,9 @@ def main():
                         press(dev, held, gap)
                     time.sleep(0.15)   # the last release's debounce
                     d = delta(c0, counts())
-                    good = d["presses"] == a.n and d["edges"] == 2 * a.n and d["stalls"] == 0
+                    # Raw edges come up a few short of 2n on the plain firmware too
+                    # (791/800, 798/800 on 10-18): at least 98%, as sleep_sizing.py.
+                    good = d["presses"] == a.n and d["edges"] >= 0.98 * 2 * a.n and d["stalls"] == 0
                     ok &= good
                     res["bursts"].append({"held_ms": held, "gap_ms": gap, "n": a.n, **d, "ok": good})
                     cm.say(f"burst {held}/{gap} ms #{b + 1}: presses {d['presses']}/{a.n}, "
