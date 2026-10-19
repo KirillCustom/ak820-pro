@@ -300,3 +300,17 @@ flag is not a blocker (its flush is synchronous in the main loop; accepted).
   and charges regardless, but the host's enumeration of a sleeping device
   may fail): reconnect the bus if host frames are seen and the device is not
   configured, in steps that never block the main loop.
+- **The ladder with deep sleep, a first draft to try in use** (deep sleep
+  starts at screen-off: the backlight's dim level needs the 20 kHz tick, and a
+  lit screen would freeze):
+
+  | mode | dim | lights off (screen dim) | screen off + deep sleep |
+  |---|---|---|---|
+  | Full | never | never | never |
+  | Normal | 1 min | 5 min | 7 min (was screen off at 15, no sleep) |
+  | Saver | 30 s | 2 min | 3 min (was 5) |
+  | Minimal | at once | at once | 30 s (dark already; waits out a typing pause) |
+
+  Low battery keeps Saver's timings. Each minute in the dim-screen stage
+  instead of asleep costs ~25 mA-min; Normal's 2 min keeps a glance at the
+  screen. To be tuned by how it feels in use.
