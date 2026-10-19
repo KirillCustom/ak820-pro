@@ -22,14 +22,15 @@ The order agreed after the sleep experiments:
    - a final pass for anything personal (the public-repo rule: no family or
      household details).
 
-## Power mode icons and names: designed, not built (2026-10-19)
+## Power mode icons and names: built on a branch, not flashed (2026-10-19)
 
 Rename the modes (Always on, Balanced, Power saver, Lights out) and show the
 mode as a bulb in the bolt's slot, on battery only: lit with rays, lit,
 dimmed (white outline, grey glass), unlit. Same RAM tile and one transfer as
-the bolt, so no new stall; the colours are to try on the panel first (mid
-grey was near-illegible as small text). Glyphs, rules and the gate:
-[`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
+the bolt, so no new stall. Built on the firmware branch `power-mode-icons`
+(`df159438f8`), its own flash after the deep-sleep one. The colours are to
+try on the panel first (mid grey was near-illegible as small text). Glyphs,
+rules and the gate: [`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
 
 ## `raw_edges` undercounts by design; it could be exact (2026-10-19)
 

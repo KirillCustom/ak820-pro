@@ -50,7 +50,7 @@ from ak820health import open_device
 SET_VALUE, HEALTH_CHANNEL = 0x07, 0x13
 HC_CONN, HC_BATTLOG, HC_BATTCFG, HC_POWER = 0x02, 0x0A, 0x0B, 0x0F
 LOG_PENDING = 0xFF   # HC_BATTLOG's version byte while a deep sleep's entries are laid in (v7)
-POWER_MODES = ["Full power", "Normal power", "Power saver", "Minimal mode"]
+POWER_MODES = ["Always on", "Balanced", "Power saver", "Lights out"]
 POWER_STAGES = ["active", "dim", "lights off", "screen off"]
 COUNT_STATES = ["off (not on battery)", "counting", "counting at the clamp", "held below the band",
                 "relaxing after an unplug", "cut (0%)"]

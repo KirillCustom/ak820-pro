@@ -4,6 +4,20 @@
 
 rgb_t rgb_matrix_hsv_to_rgb(hsv_t hsv);   /* power.c's override of QMK's weak hook */
 
+/* The overlay's names: POWER_HAS_BULB's (plans/POWER-MODE-ICONS-PLAN.md), or
+ * the ones before them, so the scenarios run against either power.c. */
+#ifdef POWER_HAS_BULB
+#define NAME_FULL    "Always on"
+#define NAME_NORMAL  "Balanced"
+#define NAME_SAVER   "Power saver"
+#define NAME_MINIMAL "Lights out"
+#else
+#define NAME_FULL    "Full power"
+#define NAME_NORMAL  "Normal power"
+#define NAME_SAVER   "Power saver"
+#define NAME_MINIMAL "Minimal mode"
+#endif
+
 static void ltick(void) {
     tick();
     power_task();
@@ -42,7 +56,7 @@ static void l_modes(void) {
     on_battery_mid();
     power_cycle_mode();
     CHECK(power_mode() == POWER_MODE_SAVER, "Normal -> Saver, got %d", power_mode());
-    CHECK(!strcmp(last_status, "Power saver"), "overlay '%s'", last_status);
+    CHECK(!strcmp(last_status, NAME_SAVER), "overlay '%s'", last_status);
     uint8_t m = 0xFF;
     CHECK(kb_eeconfig_get_power_mode(&m) && m == POWER_MODE_SAVER, "persisted %u", m);
     idle_ms = 30000;  ltick(); expect_stage(POWER_STAGE_DIM, 255, 0xFF, 64, "Saver, 30 s");
@@ -50,12 +64,17 @@ static void l_modes(void) {
     idle_ms = 180000; ltick(); expect_stage(POWER_STAGE_SCREEN_OFF, 0, 0, 255, "Saver, 3 min");
     power_cycle_mode();
     CHECK(power_mode() == POWER_MODE_MINIMAL, "Saver -> Minimal, got %d", power_mode());
-    CHECK(!strcmp(last_status, "Minimal mode"), "overlay '%s'", last_status);
+    CHECK(!strcmp(last_status, NAME_MINIMAL), "overlay '%s'", last_status);
     power_cycle_mode();
     CHECK(power_mode() == POWER_MODE_FULL, "Minimal -> Full, got %d", power_mode());
     idle_ms = 86400000u; ltick(); expect_stage(POWER_STAGE_ACTIVE, 255, 0xFF, 255, "Full, a day idle");
     power_cycle_mode();
     CHECK(power_mode() == POWER_MODE_NORMAL, "Full -> Normal, got %d", power_mode());
+#ifdef POWER_HAS_BULB
+    /* Above the low cap the bulb is the mode's own. */
+    for (unsigned k = 0; k < POWER_MODE_COUNT; k++, power_cycle_mode())
+        CHECK(power_lights_mode() == power_mode(), "mid level, mode %d: bulb %d", power_mode(), power_lights_mode());
+#endif
 }
 
 /* On USB every mode is Full Power. */
@@ -78,6 +97,15 @@ static void l_low_cap(void) {
     last_status[0] = 0;
     idle_ms = 30000; ltick(); expect_stage(POWER_STAGE_DIM, 255, 0xFF, 64, "low, Normal, 30 s");
     CHECK(last_status[0] == 0, "said once, then '%s'", last_status);
+#ifdef POWER_HAS_BULB
+    /* The bulb says whose stages the lights follow: Saver's for the two
+     * lighter modes, Lights out its own. Four presses come back to Normal. */
+    static const power_mode_t bulb_low[POWER_MODE_COUNT] = {
+        [POWER_MODE_FULL] = POWER_MODE_SAVER, [POWER_MODE_NORMAL] = POWER_MODE_SAVER,
+        [POWER_MODE_SAVER] = POWER_MODE_SAVER, [POWER_MODE_MINIMAL] = POWER_MODE_MINIMAL};
+    for (unsigned k = 0; k < POWER_MODE_COUNT; k++, power_cycle_mode())
+        CHECK(power_lights_mode() == bulb_low[power_mode()], "low, mode %d: bulb %d", power_mode(), power_lights_mode());
+#endif
     power_cycle_mode(); power_cycle_mode(); power_cycle_mode();   /* Normal -> Saver -> Minimal -> Full */
     CHECK(power_mode() == POWER_MODE_FULL, "mode %d", power_mode());
     idle_ms = 120000; ltick(); expect_stage(POWER_STAGE_LIGHTS_OFF, 0, 4, 255, "low, Full, 2 min");
@@ -118,7 +146,7 @@ static void l_announce(void) {
     lrun_s(2);
     CHECK(last_status[0] == 0, "nothing before 3 s, got '%s'", last_status);
     lrun_s(2);
-    CHECK(!strcmp(last_status, "Normal power"), "overlay '%s'", last_status);
+    CHECK(!strcmp(last_status, NAME_NORMAL), "overlay '%s'", last_status);
     uint8_t m = 0xFF;
     CHECK(kb_eeconfig_get_power_mode(&m) && m == POWER_MODE_NORMAL, "persisted %u", m);
 }
@@ -173,7 +201,7 @@ static void l_minimal_enter(void) {
     idle_ms = 0; ltick();
     expect_stage(POWER_STAGE_ACTIVE, 255, 0xFF, 255, "Saver, typing");
     power_cycle_mode();
-    CHECK(power_mode() == POWER_MODE_MINIMAL && !strcmp(last_status, "Minimal mode"),
+    CHECK(power_mode() == POWER_MODE_MINIMAL && !strcmp(last_status, NAME_MINIMAL),
           "mode %d, overlay '%s'", power_mode(), last_status);
     ltick();
     CHECK(power_stage() == POWER_STAGE_SCREEN_OFF && scale == 0 && bkl_cap == 0xFF,
@@ -183,7 +211,7 @@ static void l_minimal_enter(void) {
 }
 
 /* A "Saving power" owed in Saver (low, the screen dark) is not given over
- * Fn+B's "Minimal mode", nor anywhere in Minimal; it waits, and is given on
+ * Fn+B's NAME_MINIMAL, nor anywhere in Minimal; it waits, and is given on
  * the way out, after the next mode's own overlay has had its 2 s. */
 static void l_minimal_owed(void) {
     kb_eeconfig_set_power_mode(POWER_MODE_SAVER);
@@ -195,20 +223,20 @@ static void l_minimal_owed(void) {
     CHECK(last_status[0] == 0 && bkl_cap == 0, "owed, not shown: '%s', cap %u", last_status, bkl_cap);
     power_cycle_mode();       /* Fn+B: Saver -> Minimal */
     lrun_s(10);
-    CHECK(!strcmp(last_status, "Minimal mode"), "Minimal's overlay kept, got '%s'", last_status);
+    CHECK(!strcmp(last_status, NAME_MINIMAL), "Minimal's overlay kept, got '%s'", last_status);
     idle_ms = 0;              /* typing in Minimal: still dark, still not said */
     lrun_s(5);
-    CHECK(!strcmp(last_status, "Minimal mode"), "nothing said in Minimal, got '%s'", last_status);
+    CHECK(!strcmp(last_status, NAME_MINIMAL), "nothing said in Minimal, got '%s'", last_status);
     power_cycle_mode();       /* Minimal -> Full: low, so Saver's ladder, lit while typing */
     uint32_t t0 = now_ms;
     lrun_s(1);
-    CHECK(!strcmp(last_status, "Full power"), "'Full power' first, got '%s'", last_status);
+    CHECK(!strcmp(last_status, NAME_FULL), "'Full power' first, got '%s'", last_status);
     while (now_ms - t0 < 2500u) ltick();
     CHECK(!strcmp(last_status, "Saving power"), "then the owed notice, got '%s'", last_status);
 }
 
 /* Notices into a free band only: behind an alert (60 s from its post) the
- * flash's "Normal power" and the low cap's "Saving power" would expire
+ * flash's NAME_NORMAL and the low cap's "Saving power" would expire
  * unseen, so they wait it out, then come one after the other. */
 static void l_low_alert(void) {
     power_init();
@@ -219,7 +247,7 @@ static void l_low_alert(void) {
     CHECK(battery_level_permille() <= 150, "level %u pm, want <= 150", battery_level_permille());
     CHECK(last_status[0] == 0, "nothing over the alert, got '%s'", last_status);
     while (now_ms - t0 < 60500u) ltick();
-    CHECK(!strcmp(last_status, "Normal power"), "the announcement once it ends, got '%s'", last_status);
+    CHECK(!strcmp(last_status, NAME_NORMAL), "the announcement once it ends, got '%s'", last_status);
     while (now_ms - t0 < 63000u) ltick();
     CHECK(!strcmp(last_status, "Saving power"), "then the low notice, got '%s'", last_status);
 }

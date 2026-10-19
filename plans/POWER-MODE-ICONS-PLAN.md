@@ -1,9 +1,36 @@
-# Power mode icons and names — designed, not built (2026-10-19)
+# Power mode icons and names — built, not flashed (2026-10-19)
 
 An icon for the power mode in the battery row, and friendlier mode names.
 Designed with pixel-accurate mockups (the firmware's own geometry and the
-shipped Iosevka 20 px atlas); nothing is in the firmware yet. The colours are
-starting values to try on the panel, not decisions.
+shipped Iosevka 20 px atlas). The colours are starting values to try on the
+panel, not decisions.
+
+## Status
+
+**Built on the firmware branch `power-mode-icons`** (`df159438f8`, local, off
+the deep-sleep build `bf7d7d0280`); not flashed. It goes on as **its own
+flash after the deep-sleep flash, with its own codex review**: two deltas
+under one review would muddy both. The deep-sleep session owns the flash
+queue.
+
+- Compiles clean, dev and daily: +1,016 bytes (the art is 784).
+- `scripts/battery_sim` passes against both firmware trees (`ladder.c`
+  takes the names from `POWER_HAS_BULB`): 146 on the deep-sleep tree, 142 on
+  the branch (`BATTERY_SIM_SRC` skips the four baseline checks). New checks
+  in `l_modes` and `l_low_cap` catch three mutants of `power_lights_mode()`
+  (low ignored, everything Saver when low, Lights out taken to Saver).
+- `hostagent/ak820battery.py` prints the new names (display only; the
+  indices are unchanged).
+
+Left, in order:
+1. Rebase onto the deep-sleep codex fixes (they may touch display.c's wake
+   hold and battery row, and power.c).
+2. Codex's review of the branch.
+3. The flash, after the deep-sleep flash; then the gate below.
+4. The colours on the panel (below).
+5. At merge: display.md's battery row (the slot, the bulb, the 13×15 tile),
+   battery.md and test-bench.md where they name the modes, CLAUDE.md's Fn
+   table line.
 
 ## The names
 
