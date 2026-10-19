@@ -132,9 +132,11 @@ ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
   has the resume list; what the module forwards is in
   [docs/wireless.md](docs/wireless.md)).
 - **On the board: Phase 2, Minimal mode and the sleep experiments**,
-  `f38bb1e8a4` (a `dev` build, token `0xc8da78d5`, since 18:24 10-18); the
+  `53afebd553` (a `dev` build, token `0x2243da5a`, since 19:12 10-18); the
   experiments are off unless op 14 sub 3/4 turns them on
-  ([`plans/SLEEP-PLAN.md`](plans/SLEEP-PLAN.md)). ⚠️ **Firmware commits from flash 2f on
+  ([`plans/SLEEP-PLAN.md`](plans/SLEEP-PLAN.md)). **Measured that evening:
+  deep sleep draws 3.2 mA against ~27 awake and dark, wakes on a key, and
+  the waking key is not lost; light sleep with WFI saves ~4.7 mA.** ⚠️ **Firmware commits from flash 2f on
   (`523744c30f`..) are local on `ak820pro-jdlien`, not pushed**, and
   `deps.lock` still pins `3e18c70a74`, so a fresh `setup.sh` builds Phase 1b's
   firmware, not this.

@@ -35,10 +35,18 @@ deep-sleep experiment) turns them on. Codex: a plan review, an
 implementation review and two verifies, every finding dispositioned there.
 The SN32F299 manual is distilled in [`../docs/sn32f299.md`](../docs/sn32f299.md).
 
-**Running now:** `scripts/sleep_sizing.py --masks 0,1,3:2,3:4,0`, hands-free
-(scan-only and the yield; no WFI). **With JD at hand, later:** the WFI steps
-(`--masks 0,7:2,15:2,0`, the 30 s probe first) and `scripts/deep_sleep.py`
-(a key wake, then `--no-press`, then `--no-feed`).
+**Measured the same evening** (on `53afebd553` since 19:12: USB judged by
+its frame number, which the first deep run needed):
+- **Light sleep with WFI: ~4.7 mA less dark (17%)**, no press lost;
+  without WFI the steps cost current instead.
+- **Deep sleep: 3.2 mA asleep against ~27 awake (88% less); a key wakes it
+  and the waking key is not lost** (the rig's column and JD's A, which
+  reached the Mac). The watchdog does not count asleep.
+[`SLEEP-PLAN.md`](SLEEP-PLAN.md), last section; the history folders.
+
+**Next (JD's call):** many sleep/wake cycles in a row on the rig, the knob,
+long sleeps, what the radio loses while asleep; then a real standby rung
+(plan, codex, build). 5 UART overruns at light sleep's mask 6 to explain.
 
 ### Minimal mode on the board (10-18, 17:31)
 

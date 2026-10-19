@@ -258,3 +258,27 @@ or to the attended deep-sleep run; the WFI steps not yet hands-free.**
 | 3 | should fix: uptime increasing does not prove no reset; ACK timeouts and the timebase ratio only reported | **Fixed:** the uptime must keep pace with the wall clock (0.8 or better) and the consecutive-reset count must not move. ACK timeouts stay reported, judged against mask 0's. |
 | — | note: byte 22 renamed; false inside 20 s of the wake can mean pending | **Done** (`usb_back_20s`); the deep run reads the record 8+ s after the press, so its false is read as "not yet" until 20 s. |
 | — | verify #1's keystroke loss closed; the UART path, the smaller firmware fixes, the deep script's fixes, default-off and the daily build fine | Agreed. |
+
+## Codex's third verify (10-18), and the board results
+
+[Verbatim](review-codex-sleep-verify3-2026-10-18.md), prompt
+[`review-prompt-sleep-verify3.txt`](review-prompt-sleep-verify3.txt), of
+`53afebd553` (USB judged by its frame number; the flash blocker for a
+program or erase only): **no must-fix; nothing blocks the flash or the
+attended run.** Should fix: the wording, "no host" means no recent SOFs and
+byte 22 means frames seen again, not configured USB (**accepted**, comment
+only, for the next build); notes: the external SPI flash can stay busy after
+its transaction (do not upload assets during a run), and the RGB's own dirty
+flag is not a blocker (its flush is synchronous in the main loop; accepted).
+`53afebd553` went on at 19:12 10-18.
+
+**Measured** (`history/sleep-sizing-20261018-*`, `history/deep-sleep-20261018-*`):
+- **Light sleep with WFI saves ~4.7 mA of the ~27.7 mA dark draw (17%)**
+  with every bit (scan-only, the yield, WFI, the tick stopped); ~3.5 mA
+  without the tick; WFI alone ~0.6 mA. Without WFI the steps cost up to
+  ~1 mA. No press lost at any step. ⚠️ 5 UART overruns at mask 6 only.
+- **Deep sleep: 3.2 mA asleep against ~27 awake (88% less), wakes on a key on
+  either column port, and the waking key registers and reaches the Mac**
+  (JD's "a", 19:42). The watchdog does not count asleep.
+- At 3.2 mA the pack's ~4,000 mAh would last ~52 days asleep; at 27.5 mA,
+  ~6 days (arithmetic, not measured).
