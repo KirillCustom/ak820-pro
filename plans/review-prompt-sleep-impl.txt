@@ -1,0 +1,19 @@
+You are reviewing firmware before it is flashed (AK820 Pro keyboard: QMK on a Sonix SN32F299 Cortex-M0 at 48 MHz, ChibiOS, a CH582F BLE module on UART2). Read only files inside /Users/jdlien/code/ak820-pro, plus the MCU's manual at /Users/jdlien/code/ajazz-ak820-pro/docs/SN32F299_V1.8_EN.pdf (read it by page ranges; docs/sn32f299.md in the repo is a distilled reference with page numbers). Do not search or list anything else outside the repo, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
+
+You reviewed the plan (plans/review-codex-sleep-plan-2026-10-18.md); plans/SLEEP-PLAN.md now has "As built" and every disposition. The implementation:
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro show 9f46337b6f            (firmware; main file keyboards/a_jazz/ak820pro/sleep.c)
+  git -C /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/lib/chibios-contrib show 27e852d25a   (rtc_lld_add_secondsI)
+  git -C /Users/jdlien/code/ak820-pro show 541fed3                                    (the bench scripts: scripts/sleep_sizing.py, scripts/deep_sleep.py; they reuse scripts/sleep_baseline.py and scripts/current_map.py)
+Both the dev and the daily builds compile cleanly. The flash is tonight; JD is at hand for the deep-sleep run.
+
+Check, citing file:line and manual page:
+1. Must-not-break: with every sleep feature OFF (the default after boot), is the dev build's behaviour identical to before (the idle hooks now write no PMU mode on idle entry; sleep_task() runs after watchdog_kick() each pass; the scan-only check in the row ISR; power_task order unchanged)? Is the daily build free of all of it?
+2. The scan-only ISR (drivers/led/sn32f2xx.c): the period change and row counter as built, the exit path, the flash guard, and any interaction with sn32f2xx_flush or the LED drive accounting.
+3. light_task(): the gating on power_rgb_dark(), bit 3's tick stop/start (pwm_tick_run, the pins, ind_last_out), the WFI/PMU flags and the idle hook in chconf.h (the WFI race, PMU_CTRL handling), the yield's placement.
+4. deep_sleep(), step by step, against the manual and your plan findings: anything still unlocked inside the locked section (gpio_set_pin_* / palSetLineMode, pwmDisableChannelI, gptStopTimerI/gptStartContinuousI, rtc_lld_add_secondsI), the GPIO wake configuration (IS/IBS/IEV/IE/IC and the DATA read), the RTC and NVIC handling, the clock switch and PLL relock (bounded, the reset path), the flash LPCTRL values, UART2 CTRL RXEN, the ADC ADM bits, SysTick, the restore order, rtc_account_sleepI's two clocks, restart_usb_driver() after unlock, and the record.
+5. The preconditions (blockers()): anything missing that could make the sleep unsafe or the wake wrong, and whether any can be true forever (so the run gives up at 60 s rather than sleeping, which is fine).
+6. The op 14 sub 3/4 parsing and replies in hid_protocol.c, against what the scripts send and decode.
+7. The scripts: the sequences, the restores in `finally`, the pass criteria, and anything that could leave the board on battery or with data off.
+8. Anything that could cost a keystroke or the 25 ms budget when the features are off, or make the board unrecoverable without hands.
+
+Rank findings must-fix / should-fix / note; say plainly what is fine. Be concrete.

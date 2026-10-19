@@ -205,3 +205,25 @@ must-fixes (all deep sleep), three should-fixes, the scan-only design sound.**
 | 8 | should fix: 5.2 ms sampling lets debounce accept a stale sample; a 5 ms yield is too long for the RX queue | **Done:** 3,000 ticks (~3.9 ms per key); the yield capped at 4 ms. |
 | 9 | should fix: gate the tick on the effective backlight and the wanted indicators; reset `last_out` on restart | **Done** (`display_backlight_effective()`, `indicators_any_lit()`, `ind_last_out`). |
 | 10 | should fix: read back the mask in force and WFI entries; per-window counters; a data-off baseline for bit 4; delivery, not only board counts; for deep sleep, verify F19, take the after-count late, test a P0 column by hand | **Done** in the scripts: the applied mask and WFI rate, a health reset per window, the key count 1 s after the wake; bit 4 is left for a data-off run; F19 is in the restored VIA keymap; a P0 column (Esc's) is JD's press. Delivery at the Mac needs it unlocked. |
+
+## Codex's implementation review (10-18) and what changed
+
+[Verbatim](review-codex-sleep-impl-2026-10-18.md), prompt
+[`review-prompt-sleep-impl.txt`](review-prompt-sleep-impl.txt), of
+`9f46337b6f` and the scripts at `541fed3`: **nothing on the default-off path
+that blocks scanning or costs 25 ms; four must-fixes before enabling the
+experiments.** Fixed in `1486620cff` (firmware) and `dcd8899` (scripts).
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | must fix: `restart_usb_driver()`'s 50 ms wait right after the wake holds the main loop while the waking key is down | **Fixed:** the transceiver bit (`USB_CFG.PHY_EN`) is set back under the lock instead, and recorded; a USB restart runs only if the host has not configured it 20 s after the wake. |
+| 2 | must fix: UART2's stale receive data and errors, the parser's 3-byte window, and the serial output queue (the module's ACKs bypass the protocol queue) | **Fixed:** the receiver drained (`LS.RDR`, bounded) and its errors read off, the input queue reset, the parser's window reset (`ch582_rx_resync`); the output queue's emptiness is a precondition, rechecked under the lock. |
+| 3 | must fix: the WFI probe (bit 2) can run forever if it breaks USB | **Fixed:** the whole mask ends by itself (240 s default, set per call); the transceiver bit is set back when PMU Sleep's window ends. |
+| 4 | must fix: a failing cleanup step skips the rest; no way to cancel an armed deep sleep | **Fixed:** each step on its own, bounded (relay 20 s, `uhubctl` 15 s); op 14 sub 4 arg 2 cancels, and the scripts use it. |
+| 5 | should fix: the daily build still carries the scan-only branch and the `sleep_task()` call | **Fixed:** `SN32F2XX_SLEEP_HOOKS`, defined only in dev builds; the call under `AK820_DEV_HOOKS`. |
+| 6 | should fix: entry/exit transitions can reach ~8 ms of row gap, hidden by resetting after the settle; the period change before the ISR's lock | **Fixed:** the sizing run records the entry transition's gap separately (reported, not gated); the period change moved into the ISR's locked re-arm. |
+| 7 | should fix: the LLD's GPT stop leaves a latched match; a deep wake restarts the tick behind light sleep's back; the idle WFI's mode can be lost to a preemption | **Fixed:** CT16B3's flags and NVIC pending cleared on stop; `ls_applied` reconciled after a wake; the idle hook's mode and WFI under one mask. |
+| 8 | should fix: every RTC wake counted as a stray; unbounded clock-select waits; PWMD1's latched match on wake | **Fixed:** a second is not a stray; the waits bounded (a reset); PWMD1's flags and NVIC pending cleared before the re-arm. |
+| 9 | should fix: also check SPI0/SPI1 and DMA idle, the serial output queue; recheck under the lock | **Fixed:** `STAT.BUSY` on both, SPI0's `DMACTRL.DMAEN`; the radio side rechecked under the lock. |
+| 10 | should fix: the length check before reading arguments; the yield in the reply; the echoed op checked; the sizing run's stall baseline after the window; no deep verdict; entry not confirmed; `--cap` unvalidated | **Fixed:** all of them; the deep run waits for the logger's current to fall before pressing, and passes only on a key (press), the cap (no press), or a reset recorded in site 27 (unfed). Delivery at the Mac and a P0 column stay JD's part. |
+| — | the locked section, the GPIO wake setup, the RTC and NVIC handling, the clock order, the ADC, SysTick, the RTC accounting, the protocol layouts: fine | Agreed. |
