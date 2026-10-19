@@ -294,6 +294,9 @@ flag is not a blocker (its flush is synchronous in the main loop; accepted).
 - **Wake sources: a key, or the slider.** A keypress wakes it; moving the
   slider is a power-source change that resets the MCU anyway. The knob, a
   cable plugged in and the radio's messages do not need to wake it.
+  (**Revised in the build plan, 10-19:** the knob and the charger's CHRG pin
+  wake it too, so the volume works after 7 minutes of listening and a
+  plugged-in host finds an awake device; `DEEP-SLEEP-BUILD-PLAN.md`.)
 - So the build still needs, after a key wake: the radio resynced (its link
   state and the host's lock LEDs, whatever it sent while asleep being lost);
   and USB recovered if a host appeared while asleep (the charger is hardware

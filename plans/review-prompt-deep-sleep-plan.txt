@@ -1,0 +1,29 @@
+You are reviewing a firmware PLAN before it is built (AK820 Pro: QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2, a PCF8563 RTC on bit-banged I2C). Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. You may read the SN32F299 manual at /Users/jdlien/code/ajazz-ak820-pro/docs/SN32F299_V1.8_EN.pdf if you need a register fact, but docs/sn32f299.md (the manual distilled, with page numbers) should answer most. You are read-only: do not modify, build or run anything.
+
+The plan: plans/DEEP-SLEEP-BUILD-PLAN.md. It turns the deep-sleep experiment you reviewed five times (plans/review-codex-sleep-*.md; dispositions in plans/SLEEP-PLAN.md) into the board's standby: the idle ladder's last stage, on by default on battery, in every build. Its inputs are plans/SLEEP-PLAN.md ("Decided", "Asleep, the RTC's second runs ~13% slow", "Time left with deep sleep") and the measurements in history/deep-soak-20261019/, history/deep-sleep-20261019-1h/, history/awake-control-20261019/.
+
+The code it changes, all under /Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/ (branch ak820pro-jdlien, HEAD 442c9f49c9, which is on the board):
+- keyboards/a_jazz/ak820pro/sleep.c and sleep.h (the experiment; deep_sleep() and blockers())
+- keyboards/a_jazz/ak820pro/power.c and power.h (the ladder and its modes)
+- keyboards/a_jazz/ak820pro/battery.c and battery.h (the energy count, time left, the log v6)
+- keyboards/a_jazz/ak820pro/rtc/rtc.c (rtc_account_sleepI, the PCF discipline and trim window, the boot acquisition, rtc_set_time_ms)
+- keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c (the radio: battery poll, parser resync, link state)
+- keyboards/a_jazz/ak820pro/graphics/display.c (the battery row, the camera page, overlays)
+- keyboards/a_jazz/ak820pro/hid_protocol.c (HC_POWER), config.h, chconf.h, indicators.c (the 20 kHz tick)
+- drivers/led/sn32f2xx.c (the LED driver: the sleep hooks, the committed-frame drive accounting)
+- tmk_core/protocol/chibios/usb_main.c and lib/chibios-contrib/os/hal/ports/SN32/LLD/SN32F2xx/USB/ (USB)
+- platforms/chibios/timer.c (QMK's timer)
+Host side: hostagent/ak820battery.py, scripts/battery_sim/, scripts/deep_cycles.py.
+
+Please check, citing file:line, and answer the plan's own "Questions put to the review" (eight of them). In particular:
+1. Section 3's choice to leave QMK's timer standing still across a sleep and account the slept time explicitly: list every consumer of timer_read/timer_read32/timer_elapsed* or chVTGetSystemTime in the board code, the drivers it uses and QMK's enabled features (keyboard.json) that would misbehave when hours pass in an instant, and say which the plan misses.
+2. The slept time from two PCF reads, the whole-second calendar set at the wake, the re-armed boot acquisition (and clearing host_synced), the trim window restarted: correct against rtc.c as written? Races with the PCF write machine, the 60 s discipline, the SOF reference state machine, rtc_persist?
+3. The new wake sources (encoder pins P1.2 and P0.10 on both edges, CHRG P1.16 falling, IRQ30 in the NVIC): anything in the locked sequence, the pin check before sleeping, or after the wake (the encoder driver's stored state, QMK's encoder queue) that breaks or loses input?
+4. The USB re-attach after a wake with no host frames: is usbDisconnectBus/usbConnectBus enough on this LLD, is it non-blocking, and what does it do to a host that is merely suspended?
+5. Moving deep sleep into daily builds: what in sleep.c, the LED driver hooks and the build flags must change, and what dev-only scaffolding must not ship.
+6. The gauge: the sleep term, "time left is already hours of use", log v7 taking vdd_avg, and the catch-up that lays a long sleep onto 15-minute entries one per 10 Hz call: correct, and anything it breaks for the host tools or the simulator's replay?
+7. The display and HC_POWER page 1: fit, cost (no main-loop pass >= 25 ms), compatibility.
+8. The validation: what would let a broken build pass it, and what is missing?
+9. Anything that could cost a keystroke, stall the main loop, leave the board asleep with no way to wake, or ship a dev hook.
+
+Rank findings must-fix / should-fix / note. Be concrete; say plainly what is fine.

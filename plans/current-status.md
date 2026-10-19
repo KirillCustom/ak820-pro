@@ -51,7 +51,10 @@ wake rig checked after JD's switch shorted when the keyboard was moved: 200
 of 200 presses at 40/60 and 25/40 ms.
 
 **Next, in order:**
-1. **The deep-sleep build plan, for codex:** the ladder's sleep stage and
+1. **The deep-sleep build plan, for codex** — **written 10-19,
+   [`DEEP-SLEEP-BUILD-PLAN.md`](DEEP-SLEEP-BUILD-PLAN.md), at codex's plan
+   review.** It adds the knob and the charger as wake sources, a 24 h
+   backstop, a USB re-attach, log v7 and `HC_POWER` page 1. The ladder's sleep stage and
    timings (`SLEEP-PLAN.md`, "Decided"), the radio resynced and USB recovered
    after a wake, slept time from the PCF and out of the trim window, the
    gauge's sleep term, no sleep while the screen is lit, time left as hours
