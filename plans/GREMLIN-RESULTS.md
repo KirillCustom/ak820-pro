@@ -188,3 +188,28 @@ must-fix.** Dispositions:
 
 Bounds, header layout, placement (each real byte once, before the parser),
 main-loop-only access and the dev-only guards: passed by both.
+
+## 5. ⚡ The dongle relays raw HID to the board: module frame `81` (10-19, 17:45)
+
+Flashed `via-dev-4ee56290` (the RX tap, hands-free through the dev build's
+jump). Control first: two Scroll changes through the keyboard-class route
+showed in the tap as `5a 05 5f` x3, `5a 01 5b` x3, beside an ACK and a `5c`.
+
+Then, the tap armed, one 32-byte output report on the dongle's `MI_03`
+(`FF60`/`61`) each, 2 s of baseline before:
+
+```
+sent 01 + 31 zeros        -> board: 81 01 00 .. 00 82            (34 bytes)
+sent 07 13 01 + 29 zeros  -> board: 81 07 13 01 00 .. 00 9c      (34 bytes)
+```
+
+**A new module-to-SN32 frame: `81`, the 32-byte report verbatim, then a sum
+by the same rule as `5A`/`5B`/`5C`** (`(0x81 + Σ payload) & 0xFF`). Both
+arrived intact; the parser's 3-byte window drops them, which is why it was
+never seen. No reply reached the host (our firmware does not handle `81`).
+No overrun, no stall.
+
+So **host-to-board raw HID over 2.4G exists**, with the full 32-byte report.
+Unknown: the reverse (a board-to-module frame the dongle returns on `MI_03`'s
+input report: look in the stock firmware first), the latency and loss of `81`,
+and whether BLE has an equivalent.

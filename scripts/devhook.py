@@ -150,8 +150,10 @@ elif cmd == "rxtap":
         sys.exit("the tap kept moving while it was read: `rxtap stop` first")
     ring = b"".join(p[6:32] for p in pages)
     n = min(count, size)
-    start = count % size if count > size else 0
-    data = (ring[start:] + ring[:start])[-n:] if n else b""
+    # Not yet wrapped: slots 0..count-1 in order. Wrapped: the oldest is the
+    # next slot to be written, count % size (the firmware's own slot index
+    # agrees with it until the count wraps at 2^32).
+    data = ring[:n] if count <= size else ring[count % size:] + ring[:count % size]
     # Tokenise as the parser would: 5A/5B/5C with a good sum, the 61 0D 0A ACK,
     # and anything else, which is what the tap is for.
     toks, i = [], 0
