@@ -325,6 +325,34 @@ flag is not a blocker (its flush is synchronous in the main loop; accepted).
   ("Battery low", a link lost) waits for the next wake: the battery reading
   comes from the radio, which the sleeping SN32 does not hear.
 
+## Asleep, the RTC's second runs ~13% slow (measured 10-19)
+
+**The 1-hour run's record counted 3139 s for ~3604 s asleep** (armed
+05:44:13 with a 15 s delay; the rig tapped at 06:44:32): 0.871 of real
+time. The 10-18 cycle run says the same: the record's seconds against the
+dwell over its 50 cycles fit a slope of **0.842**. The awake clock does not
+do this (the SOF loop holds it to ms), so the RTC's second, clocked by the
+ILRC, comes ~13-16% late while the chip is in Deep-sleep. Why is not known:
+the ILRC's frequency depends on supply and temperature, and the manual says
+nothing of it in Deep-sleep.
+
+What it explains: each ~20 s soak cycle lost ~3 s, and the PCF discipline
+snapped it back at its 2 s threshold, which is the soak's 16 syncs at -1.5 to
++2.1 s (not whole-second rounding, as first guessed). After the hour the
+board woke ~465 s behind and the daemon found it 1.6 s off 12 s later, so
+something caught it in between, presumably the PCF snap (not checked).
+
+For the build:
+- **Take the slept time from the PCF, not the RTC's count.** The PCF keeps
+  its crystal running through the sleep; on the wake, the boot's PCF edge
+  hunt (<= 1.5 s, +13 ms at a boot, `docs/clock.md`) sets the phase.
+- **Keep slept seconds out of the PCF trim's window,** or it reads the ILRC
+  as slow and mis-trims the awake period.
+- **Everything else that counts slept seconds** (the cap, the ladder's idle,
+  the gauge's sleep energy, QMK's timer) takes the corrected figure.
+- `deep_cycles.py` now logs each cycle's wall-clock time asleep
+  (`asleep_s`) beside the record's seconds.
+
 ## Time left with deep sleep (adopted 10-19, not built)
 
 Today's figure (`battery_time_left_min`, `Fn`+`D`'s camera page) is the

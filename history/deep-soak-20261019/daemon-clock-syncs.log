@@ -1,0 +1,17 @@
+2026-10-19 04:03:50 sync (enumerated): clock set (sub-second): before -215.9 ms, after -209.5 ms, rtt 4.3 ms, U ~1.9 ms, lead now 4.36 ms, bias sent (slewing)
+2026-10-19 04:08:38 sync (enumerated): clock set (sub-second): before -256.1 ms, after -254.7 ms, rtt 3.9 ms, U ~2.5 ms, lead now 4.14 ms, bias sent (slewing)
+2026-10-19 04:24:17 sync (enumerated): clock set (sub-second): before +911.1 ms, after +1.6 ms, rtt 4.9 ms, U ~1.7 ms, lead now 4.14 ms, bias sent
+2026-10-19 04:25:19 sync (enumerated): clock set (sub-second): before -886.3 ms, after +3.4 ms, rtt 4.0 ms, U ~2.6 ms, lead now 4.14 ms, bias sent
+2026-10-19 04:25:51 sync (enumerated): clock set (sub-second): before +353.4 ms, after +360.1 ms, rtt 4.0 ms, U ~2.3 ms, lead now 4.03 ms, bias sent (slewing)
+2026-10-19 04:34:58 sync (enumerated): clock set (sub-second): before -459.7 ms, after -454.9 ms, rtt 4.0 ms, U ~2.5 ms, lead now 5.03 ms, bias sent (slewing)
+2026-10-19 04:37:31 sync (enumerated): clock set (sub-second): before -1050.4 ms, after +3.1 ms, rtt 4.6 ms, U ~1.7 ms, lead now 5.03 ms, bias sent
+2026-10-19 04:45:01 sync (enumerated): clock set (sub-second): before -647.9 ms, after +5.2 ms, rtt 3.6 ms, U ~1.4 ms, lead now 5.03 ms, bias sent
+2026-10-19 04:52:54 sync (enumerated): clock set (sub-second): before +1686.5 ms, after +2.7 ms, rtt 4.8 ms, U ~1.5 ms, lead now 5.03 ms, bias sent
+2026-10-19 04:59:33 sync (enumerated): clock set (sub-second): before +998.6 ms, after +3.6 ms, rtt 5.1 ms, U ~1.4 ms, lead now 5.03 ms, bias sent
+2026-10-19 05:05:43 sync (enumerated): clock set (sub-second): before -1475.4 ms, after -1.2 ms, rtt 3.1 ms, U ~2.1 ms, lead now 5.03 ms, bias sent
+2026-10-19 05:14:59 sync (enumerated): clock set (sub-second): before +1299.0 ms, after -2.6 ms, rtt 3.8 ms, U ~2.2 ms, lead now 5.03 ms, bias sent
+2026-10-19 05:24:40 sync (enumerated): clock set (sub-second): before +2064.6 ms, after +2.5 ms, rtt 3.5 ms, U ~2.2 ms, lead now 5.03 ms, bias sent
+2026-10-19 05:27:28 sync (enumerated): clock set (sub-second): before +715.6 ms, after +0.9 ms, rtt 4.7 ms, U ~1.5 ms, lead now 5.03 ms, bias sent
+2026-10-19 05:30:48 sync (enumerated): clock set (sub-second): before +1218.8 ms, after +1.4 ms, rtt 3.8 ms, U ~1.7 ms, lead now 5.03 ms, bias sent
+2026-10-19 05:43:35 sync (enumerated): clock set (sub-second): before +2015.3 ms, after +2.4 ms, rtt 3.9 ms, U ~2.6 ms, lead now 5.03 ms, bias sent
+2026-10-19 06:44:49 sync (enumerated): clock set (sub-second): before +1581.5 ms, after -0.0 ms, rtt 5.5 ms, U ~1.4 ms, lead now 5.03 ms, bias sent

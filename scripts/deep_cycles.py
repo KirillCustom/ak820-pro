@@ -83,7 +83,7 @@ def main():
     devs = hid.enumerate(sb.VID, sb.PID)
     if len(devs) != 1:
         sys.exit(f"expected one USB relay, found {len(devs)}")
-    cycles, ok = [], True
+    cycles, ok, stopped = [], True, None
     guard = sb.deadline_guard(a.n * 75 + 300, lambda: ds.uhub("on"))
     with hid.Device(path=devs[0]["path"]) as dev:
         sb.hold_relay(dev)
@@ -127,6 +127,8 @@ def main():
                         time.sleep(dwell)
                 off = os.path.getsize(kd.LOG)
                 t_press = time.time()
+                if not a.awake and t_sleep:
+                    c["asleep_s"] = round(t_press - t_sleep, 1)   # wall clock, seen asleep to the tap: against rec["secs"]
                 sb.press(dev, 40, 200)
                 t_wake = wait_current(a.log, lambda x: x > 15.0, t_press - 0.5, 10)
                 c["awake_seen"] = t_wake is not None
@@ -160,6 +162,10 @@ def main():
                        + (f"{c['mac_latency_ms']:.0f} ms" if c["mac_latency_ms"] is not None else "nothing")
                        + f", link sent {c['link']['sent']} timeouts {c['link']['timeouts']} giveups {c['link']['giveups']}"
                        + f"  {'ok' if c['ok'] else 'FAIL'}")
+        except (Exception, SystemExit) as e:   # a stop mid-run keeps the cycles so far (the 10-19 soak lost its JSON)
+            ok = False
+            stopped = f"{type(e).__name__}: {e}"
+            cm.say(f"stopped: {stopped}")
         finally:
             done = [sb.attempt("relay 1 open", sb.bounded, sb.relay1, dev, False),
                     sb.attempt("data on", ds.uhub, "on")]
@@ -177,7 +183,7 @@ def main():
                 ok = False
                 cm.say("⚠️ cleanup incomplete: see above")
     lat = sorted(c["mac_latency_ms"] for c in cycles if c.get("mac_latency_ms") is not None)
-    summary = {"cycles": len(cycles), "passed": sum(1 for c in cycles if c.get("ok")),
+    summary = {"cycles": len(cycles), "passed": sum(1 for c in cycles if c.get("ok")), "stopped": stopped,
                "mac_latency_ms": {"median": lat[len(lat) // 2], "max": lat[-1]} if lat else None}
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "deep-cycles.json"), "w") as f:

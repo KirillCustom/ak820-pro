@@ -230,8 +230,9 @@ Left for when it resumes, in order:
    then": the display reads the SN32's RTC, clocked by the ILRC, which
    wandered ~0.9% across a day (09-03/04, `docs/clock.md`) and a few hundred
    ppm on 5-minute scales. With no host, the PCF discipline holds it only to
-   its 2 s snap, visibly (a wander, then a jump), and each deep sleep adds up
-   to ~1 s more (the 10-19 soak: 16 syncs found it -1.5 to +2.1 s off). So
+   its 2 s snap, visibly (a wander, then a jump). Deep sleep is a separate
+   bug the sleep build fixes (asleep, the RTC's second runs ~13% slow and
+   the snap catches it: `SLEEP-PLAN.md`). So
    a clock frame every few minutes, and the board learns the ILRC's
    frequency from successive frames (a sparse SOF loop: each sync's residual
    over the time since the last), to within the jitter of a lock-light
