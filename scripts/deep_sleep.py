@@ -80,10 +80,12 @@ def need_bus(wait_s=30.0):
     time.sleep(2)
 
 
-def open_dev(wait_s=8.0):
+def open_dev(wait_s=30.0):
     """The board's raw HID, retried: on macOS it opens exclusively, and the
     now-playing daemon reopens it the moment USB comes back (the cycle run's
-    seventh cycle, 20:14 10-18: "raw HID interface busy")."""
+    seventh cycle, 20:14 10-18: "raw HID interface busy"). 30 s, not 8: the
+    daemon's clock sync on enumeration held it 11 s (05:43:24-35 10-19) and
+    stopped the 300-cycle soak at cycle 248."""
     deadline = time.time() + wait_s
     while True:
         try:
