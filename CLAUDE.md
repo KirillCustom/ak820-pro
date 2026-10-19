@@ -117,9 +117,10 @@ ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 cycles and an hour asleep at 3.17 mA, every waking key kept; ⚠️ **asleep, the
 RTC's second runs ~13% slow** (3139 s counted for 3600), so the build takes
 slept time from the PCF; the radio retries as often awake as after a wake; a
-per-colour RGB model within 0.6%. **The deep-sleep build is on the board**
-(`752d4bcda7`, since 12:57 10-19, after codex's review and two verifies;
-[docs/hardware.md](docs/hardware.md), "Deep sleep"); the board tests next.
+per-colour RGB model within 0.6%. **Deep sleep and the mode icons are on
+the board** (`26fcafaeca`, since 13:18 10-19; [docs/hardware.md](docs/hardware.md),
+"Deep sleep"); its soak passed 97 of 100, the three failures UART overruns
+(likely the PCF's I2C masking interrupts at the wake; next to fix).
 The mode names are settled (Always on / Balanced / Power saver / Lights
 out, [`plans/POWER-MODE-ICONS-PLAN.md`](plans/POWER-MODE-ICONS-PLAN.md)),
 built separately as the flash after.
@@ -141,11 +142,14 @@ Two workstreams, Phase 2 first:
   no light ([`plans/LOCK-LED-CHANNEL-PLAN.md`](plans/LOCK-LED-CHANNEL-PLAN.md)
   has the resume list; what the module forwards is in
   [docs/wireless.md](docs/wireless.md)).
-- **On the board: the deep-sleep build**, `752d4bcda7` (a `dev` build,
-  token `0x4aeddcd6`, since 12:57 10-19; `442c9f49c9` before it): the
-  ladder sleeps on battery (Normal 7 min, Saver 3, Minimal 30 s, Full
-  never), and the bench's sleep controls are op 14 subs 4-6
-  ([`plans/DEEP-SLEEP-BUILD-PLAN.md`](plans/DEEP-SLEEP-BUILD-PLAN.md)). **Measured that evening:
+- **On the board: deep sleep and the power-mode icons**, `26fcafaeca` (a
+  `dev` build, token `0x47773c72`, since 13:18 10-19; `752d4bcda7` before
+  it): the ladder sleeps on battery (Balanced 7 min, Power saver 3, Lights
+  out 30 s, Always on never; the enum keeps Full/Normal/Saver/Minimal), a
+  bulb in the bolt's slot shows the mode on battery, and the bench's sleep
+  controls are op 14 subs 4-6
+  ([`plans/DEEP-SLEEP-BUILD-PLAN.md`](plans/DEEP-SLEEP-BUILD-PLAN.md),
+  [`plans/POWER-MODE-ICONS-PLAN.md`](plans/POWER-MODE-ICONS-PLAN.md)). **Measured that evening:
   deep sleep draws 3.2 mA against ~27 awake and dark, wakes on a key, and
   the waking key is not lost; light sleep with WFI saves ~4.7 mA.** ⚠️ **Firmware commits from flash 2f on
   (`523744c30f`..) are local on `ak820pro-jdlien`, not pushed**, and
