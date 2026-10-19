@@ -69,12 +69,18 @@ change every few minutes, a clock sync every few minutes (resume item 5).
 - **The board's decoder is cheap:** main-loop context, a Cortex-M0 at 48 MHz
   with ~72% of the CPU already in the row ISR, no LCD drawing in the decoder,
   bounded work per frame.
-- **Windows** (unproven, from memory): `HidD_SetOutputReport` on a keyboard
-  collection is probably refused; `IOCTL_KEYBOARD_SET_INDICATORS` is untested;
-  the last resort is toggling the real Num and Scroll Lock (global state, so
-  only while the user is idle, restored after). That gives 2 data lights, not 4.
+- **Windows** (measured on gremlin over the 2.4G dongle, 10-19; "Windows,
+  measured" below): `WriteFile` and `HidD_SetOutputReport` on the keyboard
+  collection are refused (error 1); **`IOCTL_KEYBOARD_SET_INDICATORS` on the
+  keyboard-class interface works, unprivileged, per device, and leaves
+  Windows' lock state alone** -- Num and Scroll only (no Kana in the dongle's
+  descriptor, no padding bits in the API), so **P0**, at ~125 changes/s.
+  Toggling the real locks is rejected: JD's PC shows every lock change on
+  screen (a Logitech utility), the clearest case of codex's finding 19.
+  Bluetooth on Windows is untested.
 - **2.4G** goes through a USB dongle on the host; quill4gen7 measured 42/42
-  frames intact at 8-40 ms a bit there. Untested here.
+  frames intact at 8-40 ms a bit there. Here: every LED change reaches the
+  board three times, 0-5 ms apart (the dongle repeats it).
 
 ## quill4gen7's scheme, for comparison
 
@@ -357,7 +363,41 @@ bits a character) saves less. Not worth the complexity unless a corpus of
 real titles says otherwise.
 
 **Windows:** JD has a second AK820 Pro on the Windows PC (not on a relay), the
-test bed for the Windows routes when they come.
+test bed for the Windows routes. Measured below.
+
+## Windows, measured (gremlin, 2.4G dongle, 10-19)
+
+Details and every run in [`GREMLIN-RESULTS.md`](GREMLIN-RESULTS.md), section
+2. In short:
+
+- **The route:** `IOCTL_KEYBOARD_SET_INDICATORS` (`0x000B0008`) on the
+  dongle's keyboard-class interface, found in the Configuration Manager's
+  `GUID_DEVINTERFACE_KEYBOARD` list (no HID enumeration) and opened with
+  access 0 (read is refused). Unprivileged; it addresses only that device;
+  **`GetKeyState` never moves**, so nothing watching the system's locks sees
+  the channel. `LedFlags`: Scroll `1`, Num `2`, Caps `4`, Kana `8`.
+- **Flags come from `GetKeyState`, never from `IOCTL_KEYBOARD_QUERY_INDICATORS`:**
+  the class driver answered `0x0000` with Num on, so query-then-set would
+  turn the user's Num off.
+- **Num and Scroll only, so P0.** Kana is refused with
+  `HIDP_STATUS_USAGE_NOT_FOUND` (the dongle's descriptor has no Kana LED), and
+  the API cannot express padding bits. P3's and P1's bits are out of reach on
+  this route.
+- **Speed:** changes issued back to back merge (6 of 16 arrive); spaced 3 ms
+  or more, 16 of 16 in every run, 5-10 ms apart on the board: **~125
+  changes/s**, about 4x BLE, so P0 at ~200 bit/s (a 30-character title in
+  ~1.5 s). No pass >= 25 ms and no UART error after the bursts, with each
+  change arriving 3x.
+- **Not yet:** P0 frames through the receiver on this route; a long error-rate
+  run; the user's own Num or Scroll press mid-frame (Windows then sends its
+  own LED report, which is a real transition on P0's bits: the frame aborts
+  or decodes wrong-and-CRC-fails, never commits wrong, if the receiver is
+  right); the Bluetooth route on Windows (the board paired over BLE, its
+  keyboard-class interface).
+
+This changes resume item 4: the daemon's Windows sender is this IOCTL, with P0
+as its only profile over 2.4G, while the Mac's is `IOHIDDeviceSetReport` with
+P3. The publication policy can afford P0's ~1.5 s frames over 2.4G.
 
 ## Codex's review (10-18) and what changed
 
