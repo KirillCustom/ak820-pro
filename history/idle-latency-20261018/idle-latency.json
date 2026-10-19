@@ -1,0 +1,71 @@
+{
+ "summary": {
+  "n": 12,
+  "median_ms": 36.3,
+  "min_ms": 30.7,
+  "max_ms": 41.6
+ },
+ "rows": [
+  {
+   "i": 1,
+   "quiet_s": 17.5,
+   "mac_latency_ms": 37.0
+  },
+  {
+   "i": 2,
+   "quiet_s": 24.3,
+   "mac_latency_ms": 30.7
+  },
+  {
+   "i": 3,
+   "quiet_s": 14.8,
+   "mac_latency_ms": 36.3
+  },
+  {
+   "i": 4,
+   "quiet_s": 20.4,
+   "mac_latency_ms": 39.8
+  },
+  {
+   "i": 5,
+   "quiet_s": 24.6,
+   "mac_latency_ms": 39.2
+  },
+  {
+   "i": 6,
+   "quiet_s": 9.7,
+   "mac_latency_ms": 33.0
+  },
+  {
+   "i": 7,
+   "quiet_s": 15.1,
+   "mac_latency_ms": 30.9
+  },
+  {
+   "i": 8,
+   "quiet_s": 18.9,
+   "mac_latency_ms": 31.8
+  },
+  {
+   "i": 9,
+   "quiet_s": 7.8,
+   "mac_latency_ms": 37.4
+  },
+  {
+   "i": 10,
+   "quiet_s": 21.8,
+   "mac_latency_ms": 41.6
+  },
+  {
+   "i": 11,
+   "quiet_s": 11.0,
+   "mac_latency_ms": 35.2
+  },
+  {
+   "i": 12,
+   "quiet_s": 24.3,
+   "mac_latency_ms": 35.7
+  }
+ ],
+ "at": "2026-10-18 20:47:35"
+}
