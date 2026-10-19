@@ -111,9 +111,10 @@ I2C masking interrupts up to ~2.9 ms (inferred). **Fn+B** on the pack: no pass o
 every item's state):
 - **Balanced's real ladder sleep passes**: asleep 421.0 s after the rig's tap
   (want 420), the PCF 65 s against the logger's 64
-  (`../history/ladder-sleep-20261019-balanced/`). **An hour asleep in Lights
-  out** ran 16:41-17:42 (`../history/ladder-sleep-20261019-hour/`; its result
-  is in the plan's table, or read `run.log`). `scripts/ladder_sleep.py` runs
+  (`../history/ladder-sleep-20261019-balanced/`). **Nearly an hour asleep in Lights
+  out** (16:41-17:37, `../history/ladder-sleep-20261019-hour/`): 55 min 55 s
+  until a key, **13.25 mW asleep** on the logger against the firmware's 13.35;
+  a slider move then reset the board, losing its record of the sleep. `scripts/ladder_sleep.py` runs
   one ladder sleep at a mode's real time; `--charge-wake` was not needed
   (Gremlin's board passed the cable wake).
 - **The firmware is pushed** (`ak820pro-jdlien` to `de5450e487`, ChibiOS-Contrib

@@ -1,0 +1,132 @@
+{
+ "args": {
+  "mode": 3,
+  "asleep_s": 3600.0,
+  "charge_wake": false,
+  "log": "/Users/jdlien/code/ak820-pro/scripts/../history/power-bench-2026-10-15/power.csv",
+  "out": "history/ladder-sleep-20261019-hour"
+ },
+ "mode_before": 1,
+ "want_s": 30,
+ "before": {
+  "presses": 49,
+  "ge25": 0,
+  "uptime_ms": 1390526,
+  "link": {
+   "sent": 288,
+   "timeouts": 167,
+   "queue_full": 0,
+   "giveups": 0,
+   "replaced": 0,
+   "uart_overrun": 0,
+   "uart_framing": 0,
+   "uart_parity": 0
+  },
+  "page": {
+   "wake": "key",
+   "valid": [
+    "pcf",
+    "acq_done",
+    "reattach",
+    "usb_20s",
+    "slept"
+   ],
+   "flags": 91,
+   "open": [],
+   "sleeps": 1,
+   "slept_total_s": 65,
+   "pcf_s": 65,
+   "counted_s": 55,
+   "acq_step_ms": -82,
+   "pll_loops": 126,
+   "strays": 0,
+   "blocked": [
+    "usb",
+    "flash"
+   ],
+   "timed_out": []
+  }
+ },
+ "sleep_after_tap_s": 30.6,
+ "clock": {
+  "at_s": 3,
+  "why": "enumerated",
+  "before_ms": 562.7
+ },
+ "after": {
+  "presses": 379,
+  "ge25": 0,
+  "uptime_ms": 213233,
+  "link": {
+   "sent": 802,
+   "timeouts": 0,
+   "queue_full": 0,
+   "giveups": 0,
+   "replaced": 0,
+   "uart_overrun": 0,
+   "uart_framing": 0,
+   "uart_parity": 0
+  },
+  "page": {
+   "wake": "none",
+   "valid": [],
+   "flags": 0,
+   "open": [],
+   "sleeps": 0,
+   "slept_total_s": 0,
+   "pcf_s": 0,
+   "counted_s": 0,
+   "acq_step_ms": 888,
+   "pll_loops": 0,
+   "strays": 0,
+   "blocked": [],
+   "timed_out": []
+  }
+ },
+ "record": {
+  "state": 0,
+  "reason": "none",
+  "blocked": 0,
+  "flags": 0,
+  "slept": false,
+  "pcf": false,
+  "usb_back_20s": false,
+  "pll_ceiling": false,
+  "bound": false,
+  "reattach": false,
+  "secs": 0,
+  "strays": 0,
+  "p0": 0,
+  "p2": 0,
+  "p1": 0,
+  "pll_loops": 0,
+  "key_gain": 0,
+  "seq": 0,
+  "timed_out": []
+ },
+ "asleep_s": 3355.0,
+ "pcf_s": 0,
+ "counted_s": 0,
+ "key_gain": 330,
+ "new_ge25": 0,
+ "no_reset": false,
+ "link": {
+  "sent": 514,
+  "timeouts": -167,
+  "queue_full": 0,
+  "giveups": 0,
+  "replaced": 0,
+  "uart_overrun": 0,
+  "uart_framing": 0,
+  "uart_parity": 0
+ },
+ "checks": {
+  "asleep at the mode's time": true,
+  "woke on key": false,
+  "the PCF within 2 s of the logger": false,
+  "the recovery closed, nothing timed out": true,
+  "2 keys (the taps)": false,
+  "no reset": false,
+  "no pass of 25 ms or more": true
+ }
+}
