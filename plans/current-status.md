@@ -97,16 +97,19 @@ the PCF 71 s for them). JD then asked for the soak on the icons build.
 ([`../history/deep-cycles-20261019-icons/`](../history/deep-cycles-20261019-icons/README.md)).
 Every cycle slept and woke through the ladder, one key, no reset, no pass
 of 25 ms or more, the PCF within 1 s of the logger. **The three failures
-were UART overruns** (module to board; no key lost), likely the PCF's
-bit-banged I2C masking interrupts ~2.9 ms while the wake's module burst
-arrives (inferred). **Fn+B** on the pack: no pass of 25 ms or more, worst
+were UART overruns** (module to board; no key lost) **at the link's
+long-standing base rate, not the sleep's**: ~1.8 an hour on flash 2f's
+drain (92 in 51.9 h), ~2 an hour in the soak. Likely the PCF's bit-banged
+I2C masking interrupts up to ~2.9 ms (inferred). **Fn+B** on the pack: no pass of 25 ms or more, worst
 21 ms; **the CAPS paint alone reached 25 ms once in ~600 toggles**
 ([`../history/fnb-caps-20261019-jd/`](../history/fnb-caps-20261019-jd/README.md)).
 
 **Next, in order:**
-1. **The overruns:** a plan (keep PCF transactions off the wake's radio
-   burst: hold them while the battery poll's reply is due, or poll after the
-   acquisition), codex, a flash, and the soak again.
+1. **The overruns (pre-existing, ~1-2 an hour, `BACKLOG.md`):** confirm
+   the cause (do overruns line up with PCF transactions?), then a plan: the
+   PCF's I2C without a whole-transaction lock (its pin-mode writes are
+   read-modify-writes on P0, which also carries two key rows, so each needs
+   a short lock of its own). Not a deep-sleep blocker.
 2. **The CAPS paint's 25 ms** (the lock band; `display.c`): split or queue it.
 3. **The rest of the validation** (the plan's list):
    the soak through the ladder (`deep_cycles.py --n 100`), an hour asleep,

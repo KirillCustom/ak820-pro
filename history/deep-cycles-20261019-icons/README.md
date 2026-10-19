@@ -24,14 +24,25 @@ The link: 507 ACK timeouts in 838 frames sent (~60%, as the 10-19 soak and
 its awake control: not the wake's); no give-up, no full queue, no replaced
 frame; 3 UART overruns, no framing or parity error.
 
-**The overruns, a likely cause (inferred, not measured):** the PCF's I2C is
+**The overruns are the link's base rate, not the sleep's** (found after the
+run): the drains' health snapshots, on builds with no deep sleep, show
+**92 overruns in 51.9 h awake on flash 2f** (~1.8 an hour,
+`../battery-2026-10-15-drain-2f/guard-cut-20261018-020553.txt`) and **13 in
+16.9 h on 2e** (~0.8 an hour). The soak's 3 in 85 min is ~2 an hour, and a
+51 s cycle at that rate catches one ~3% of the time: 3 in 100 is what an
+unchanged base rate predicts (the awake control's 0 in ~30 min too). Six
+since this flash at 15:45, two of them with the board awake all along. The
+gate ("no new transport error" per cycle) assumed a zero base rate the link
+never had.
+
+**Their likely cause (inferred, not measured):** the PCF's I2C is
 bit-banged, and ChibiOS runs each whole transaction under `osalSysLock()`
 (`lib/chibios/os/hal/src/hal_i2c.c:203-214`), so UART2 is not serviced for
 its length; the longest since the flash was 101 ILRC cycles, ~2.9 ms
 (`rtc_phase0.py status`, page 2). The UART is 16550-style; if its unstated
-FIFO is 16 bytes, it holds ~1.4 ms at 115200. The wake bunches PCF
-transactions (the coarse read, then the acquisition's) with the module's
-burst (the battery poll's three `5C` and the waking key's ACK). The driver's
+FIFO is 16 bytes, it holds ~1.4 ms at 115200. Awake, a host's clock sync queues a PCF time write every 5 min (two of
+them fell in the Caps windows after the soak, while the module was busy); a
+wake bunches PCF reads with the module's burst too. The driver's
 input queue is 128 bytes (QMK's `halconf.h`), so not the cause. A lost byte
 here costs a module frame (an ACK, retried; a `5C`; a link state), never a
 key: every failed cycle's key reached the Mac (68, 56, 45 ms).

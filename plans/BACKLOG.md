@@ -33,6 +33,32 @@ base barely shows. Next: a base split from the glass by a black row, in the
 outline's colour, and perhaps a wider bulb. Glyphs, rules, the gate and the
 options: [`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
 
+## UART overruns on the radio link, ~1-2 an hour, likely the PCF's I2C (2026-10-19)
+
+The module-to-board link loses a byte now and then: **92 overruns in 51.9 h
+on flash 2f's drain, 13 in 16.9 h on 2e, 6 in the 2.5 h after the 10-19
+icons flash** (HC_LINK `uart_overrun`; no framing or parity errors). It is
+the link's base rate, not deep sleep's: the 10-19 soak's 3 in 85 min match
+it (`history/deep-cycles-20261019-icons/`). A lost byte costs a module frame
+(an ACK, retried; a `5C`; a link state), never a key, which goes the other
+way.
+
+**The likely cause, inferred:** the PCF8563's I2C is bit-banged (ChibiOS's
+fallback LLD), and `i2cMasterTransmitTimeout` runs the whole transaction
+under `osalSysLock()` (`lib/chibios/os/hal/src/hal_i2c.c:203-214`), so UART2
+goes unserviced for its length: up to 101 ILRC cycles, ~2.9 ms, against a
+16550-style FIFO whose unstated depth, if 16 bytes, holds ~1.4 ms at 115200.
+The host's sync writes the PCF every 5 min; two syncs fell in the Caps
+windows after the soak, when the module was busy.
+
+**To do:** first confirm it (do the overruns line up with PCF transactions:
+a cheap per-overrun stamp, or an hour's correlation with the daemon's sync
+times). Then a bit-bang without the whole-transaction lock. ⚠️ The open-drain
+emulation switches pin modes with read-modify-writes of P0's `MODE`
+(`SW_I2C_USE_OPENDRAIN FALSE`, `hal_pal_lld.c:202-227`), and P0 also carries
+two key rows (A18, A19) that the row ISR drives, so each mode switch needs a
+short lock of its own (or `BSET`/`BCLR`-only writes). A plan and codex first.
+
 ## `raw_edges` undercounts by design; it could be exact (2026-10-19)
 
 The health counter `raw_edges` comes up ~0.5% short of 2 per press (797-799
