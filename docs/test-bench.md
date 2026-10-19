@@ -451,7 +451,11 @@ fragile (JD broke and re-bent them on 10-16); give the cable strain relief.
 **The keymap** (written over VIA's dynamic-keymap commands between the
 trial's reads, not with VIA): (0,13) is **F19** on both base layers (0, 2).
 F19 rides the keyboard report like any letter, which the media keys do
-not, and macOS gives it no action. The knob's press, (0,14), became
+not, and macOS gives it no action. ⚠️ **Except in a terminal**: one with no
+F19 mapping prints the tail of F19's escape sequence (`ESC [ 3 3 ~`) as a
+**`~`** (JD, 20:20 10-18, typing in a terminal while the deep-sleep cycles
+ran). Keep a terminal out of focus during rig runs, or move the rig to a key
+no app turns into text, if that becomes a nuisance. The knob's press, (0,14), became
 **play/pause** on both base layers; mute is `Fn` + knob press (layer 3). The
 keymap before: `~/Documents/ak820pro-keymap-before-f19-20261016.json`. To
 watch a test type, remap (0,13) to a visible key the same way, and back.
