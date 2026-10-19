@@ -282,3 +282,21 @@ flag is not a blocker (its flush is synchronous in the main loop; accepted).
   (JD's "a", 19:42). The watchdog does not count asleep.
 - At 3.2 mA the pack's ~4,000 mAh would last ~52 days asleep; at 27.5 mA,
   ~6 days (arithmetic, not measured).
+
+## Decided (10-18, after the runs)
+
+- **Deep sleep is the standby; light sleep is optional.** Deep sleep draws
+  3.2 mA against light sleep's best 23.0 (the plain dark board ~27.7), keeps
+  the waking key, and costs ~28 ms on the first key only. Light sleep
+  remains worth ~3.5 mA only in the stage where the screen is still dimly lit
+  (the backlight's software PWM needs the 20 kHz tick, which deep sleep
+  stops); build it later, if at all.
+- **Wake sources: a key, or the slider.** A keypress wakes it; moving the
+  slider is a power-source change that resets the MCU anyway. The knob, a
+  cable plugged in and the radio's messages do not need to wake it.
+- So the build still needs, after a key wake: the radio resynced (its link
+  state and the host's lock LEDs, whatever it sent while asleep being lost);
+  and USB recovered if a host appeared while asleep (the charger is hardware
+  and charges regardless, but the host's enumeration of a sleeping device
+  may fail): reconnect the bus if host frames are seen and the device is not
+  configured, in steps that never block the main loop.
