@@ -1,0 +1,14 @@
+You are reviewing a design before anything is built: raw HID between a PC and a keyboard over its 2.4 GHz dongle (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2). Read only files inside the repository you were started in (the ak820-pro checkout); do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
+
+The plan: plans/RAWHID-24G-PLAN.md. The measurement behind it: plans/GREMLIN-RESULTS.md, sections 4 and 5. The firmware it changes: qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/ (bluetooth/ch582f_ajazz.c: ch582_task()'s parser and the TX queue; hid_protocol.c: via_custom_value_command_kb() and the handlers it calls), quantum/via.c (raw_hid_receive), quantum/raw_hid.c (raw_hid_send). The module protocol as previously known is described in ch582f_ajazz.c's comments and docs/wireless.md. The lock-LED channel (plans/LOCK-LED-CHANNEL-PLAN.md) shares the parser.
+
+Go wide and be adversarial. In particular:
+1. The `81` collector's start, commit and abort rules (plan section 1): find byte sequences the module really sends (5A/5B/5C frames, the 61 0D 0A ACK, 5A bytes under the lock channel's P3 profile, a frame cut by a UART overrun) that would start, corrupt or falsely commit a collection, and say what rule closes each. How likely is a false commit, and is the allow-list in section 4 the right backstop?
+2. The interaction with the existing 3-byte window: what is lost or misparsed while collecting, at the boundaries, and after an abort.
+3. Dispatching raw_hid_receive() from ch582_task(): reentrancy with the USB raw-HID path (both in the main loop?), the WDT scopes, the handlers' I2C/LCD work and the 25 ms main-loop budget (no keystroke may be lost; read docs/hardware.md and plans/ for the budget).
+4. The reply path (section 3): the core hook versus the alternatives in question 3; what happens to a reply when the radio flag is set and the request was really from USB, or the reverse.
+5. The TX side: a 32-byte payload through a queue built for 16, retransmits if the module does not ACK `91`, starvation of keyboard reports (A1) behind replies.
+6. The allow-list: is it the right set, enforced in the right place, and does anything on it write flash or the EEPROM?
+7. The stages and what each must measure before the next.
+
+Rank findings must-fix / should-fix / note, cite file:line, be brief, and say plainly whether the plan is ready to build stage 1 once the must-fixes are taken.

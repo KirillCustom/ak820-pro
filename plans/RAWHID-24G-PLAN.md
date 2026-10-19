@@ -1,0 +1,136 @@
+# Raw HID over the 2.4 GHz dongle: a plan to review
+
+Status: **draft for codex's review (10-19), nothing built.** The findings are
+measured on gremlin's board and read out of the stock firmware; the design is
+untested. Owner: the Gremlin session.
+
+## What is known
+
+**Measured** (RX tap, `GREMLIN-RESULTS.md` section 5): a 32-byte output report
+written to the dongle's `MI_03` (`0C45:FDFD`, usage page `FF60`, usage `61`,
+33-byte reports) reaches the SN32 from the CH582F as
+
+```
+81  <the 32 bytes verbatim>  <sum = (0x81 + Σ32) & 0xFF>        34 bytes
+```
+
+Two probes, both intact (`81 01 00.. 82`, `81 07 13 01 00.. 9c`). Our parser's
+3-byte window drops them.
+
+**Read out of the stock V1.13 image** (fpb's `StockFWBinaries`, base 0;
+capstone, `GREMLIN-RESULTS.md` will carry the addresses):
+
+- Stock frames the module's bytes **by silence**: the UART ISR counts bytes into
+  `0x20002670`, a tick countdown (`0x186E4`) marks the frame complete when the
+  line goes quiet, and the main loop dispatches on the count: 3 for
+  `5A/5B/5C/ACK`, **34 (`0x22`) for `81`, and only in 2.4G mode** (mode byte
+  `== 2`; `0xC890`).
+- The `81` handler (`0x689C`): checks the sum over 33 bytes and the type,
+  copies the 32 bytes to a request buffer, clears a 32-byte reply buffer,
+  echoes the first three bytes into it, sets a reply flag, and dispatches on
+  byte 0 (AJAZZ's own configurator protocol; e.g. command 2 returns 28 bytes
+  of a flash page). The reply's byte 31 is the sum of bytes 0-30 (that
+  protocol's checksum, not the transport's).
+- The reply (`0xC3CC`): builds `91 <32-byte reply> <sum = (0x91 + Σ32)>`, 34
+  bytes, and sends it through the same TX routine as the `A1` keyboard report
+  (`0x1871A`). No `61 0D 0A` ACK is sent for an `81` on that path.
+
+So raw HID runs both ways over 2.4G: **host → board `81`, board → host `91`**.
+Not known: whether the module ACKs a `91` (our TX queue waits for an ACK per
+frame and retransmits up to 8 times), the round-trip time, the loss rate,
+whether a `91` reaches `MI_03`'s input report as the stock configurator
+implies, and whether BLE has any equivalent (stock gates `81` on 2.4G).
+
+## What it buys
+
+Every raw-HID command the board answers on the cable, answered over the dongle:
+the clock sync (`ak820-agent`'s transaction), now-playing text, health reads,
+VIA. Against the lock-light channel's ~200 bit/s one way, this is 32-byte
+reports with replies.
+
+## Design
+
+### 1. Receive: an `81` collector beside the 3-byte window
+
+The 3-byte window stays as it is for `5A/5B/5C` and the ACK. A collector runs
+on the same bytes:
+
+- **Starts** on a byte `0x81` that arrives **at a frame boundary**: the window
+  was just cleared by a matched frame or ACK, or the byte is the first of a
+  `ch582_task()` drain after the input queue was found empty. A `0x81` inside
+  another frame (a `5A` byte under the lock channel's P3 can be `0x81`) is
+  never a start. Only while the module is linked **in 2.4G**, as stock gates
+  it.
+- **Collects** 33 more bytes. While it collects, its bytes are not fed to the
+  3-byte window (they would form phantom frames: a payload byte `5C` followed
+  by two bytes that happen to sum).
+- **Commits** only if byte 33 equals `(0x81 + Σ bytes 1..32) & 0xFF`.
+- **Aborts** on a bad sum, or when the next byte has not come within a bound
+  (the drain finds the queue empty for more than N ms mid-frame; at the link's
+  baud a 34-byte frame takes ~3 ms). An aborted frame's bytes are dropped and
+  counted (a new `HC_LINK` field, `raw81_bad`), never replayed into the window:
+  a lost `81` costs one request, which the host retries; replaying risks
+  phantom `5x` frames.
+- A false start that happens to sum (1 in 256 for a frame-shaped run that
+  begins with `0x81` at a boundary) executes a request nobody sent. See 4.
+
+### 2. Dispatch: the same handler as the cable
+
+A committed `81` is handed to `raw_hid_receive()` (VIA's, which calls our
+`via_custom_value_command_kb()`) from `ch582_task()`'s main-loop context, with
+a flag set for the duration: "this request came over the radio". VIA edits the
+32-byte buffer in place and ends with `raw_hid_send()`.
+
+### 3. Reply: `raw_hid_send()` diverted while the flag is set
+
+`raw_hid_send()` is core (`quantum/raw_hid.c`) and not weak. A seventh core
+change, weak-hooked and a no-op for other boards: a
+`raw_hid_send_kb(data, length)` hook that returns true when it has taken the
+report. The board's hook, while the radio flag is set, queues `91 <32> <sum>`
+on the CH582F TX queue and returns true, so the reply does not also go out
+over USB (where every open handle on the host would see a stray report).
+
+The TX queue's payload cap rises from 16 to 32 bytes (`TX_MAX_PAYLOAD`), which
+grows every queue slot; or a separate one-slot buffer for `91`, sent through
+the same pump. Whether the module ACKs `91` decides which: if it does not,
+the reliable queue would retransmit it 8 times. **Stage 1 measures that.**
+
+### 4. What the radio may do
+
+A program on the host that opens the dongle's `MI_03` gets the board's raw HID,
+the same as a program on the USB cable; the dongle's pairing is the trust
+boundary. The board's raw HID includes VIA's keymap and EEPROM writes, our
+`HC_BOOTLOADER` (behind a `BOOT` magic), and `ak820ctl`'s flash writes. And a
+false start (section 1) could execute any of them. So **an allow-list on the
+radio path in the first builds**: the text channel (`0x12`), health (`0x13`,
+less `HC_BOOTLOADER` and the dev hook), and the RTC's get and set. Everything
+else answers `unhandled` over the radio. VIA over the dongle is a later,
+separate decision.
+
+### Stages
+
+1. **Echo (dev only).** A committed `81` is answered with `91` + the same 32
+   bytes, no dispatch. Measures: does `91` reach `MI_03`'s input report; does
+   the module ACK it; round-trip time; loss over a few thousand requests; UART
+   overruns and stalls beside it. `scripts/` gains a host probe (the dongle's
+   path from the Configuration Manager, never HID enumeration).
+2. **Dispatch with the allow-list (dev only).** Health and text over the
+   dongle; then the clock's GET/SET, with the transaction's timing measured
+   against the cable's.
+3. **The daemon's second transport,** when the cable is absent and the dongle
+   is present. The one-clock-owner rule holds across transports: the radio
+   path is the same owner's.
+
+## Questions for the review
+
+1. The collector's start rule: is "a `0x81` at a frame boundary, or first in a
+   drain after an empty queue" enough against false starts, with the
+   allow-list behind it? What else (a stricter gap rule, a magic in the
+   payload) would cost little?
+2. Feeding the window while collecting: dropped, as above, or fed in parallel?
+3. The reply hook in core versus alternatives (VIA's in-place buffer read back
+   after `raw_hid_receive()` returns, with USB send suppressed another way).
+4. TX: grow the queue's slots or a separate `91` buffer, given the ACK unknown.
+5. Anything in this that could cost a keystroke or stall the main loop: the
+   dispatch runs our raw-HID handlers from `ch582_task()`, some of which (text,
+   RTC set) do I2C or LCD work.
