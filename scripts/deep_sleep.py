@@ -2,7 +2,7 @@
 """The deep-sleep experiment on the bench (plans/SLEEP-PLAN.md): does a key
 wake it, what does it draw asleep, and is the waking key itself lost.
 
-    venv/bin/python scripts/deep_sleep.py [--wait 20] [--no-press] [--no-feed] [--cap 120] [--out DIR]
+    venv/bin/python scripts/deep_sleep.py [--wait 20] [--no-press] [--no-feed] [--cap 120] [--preset N] [--out DIR]
 
 In order: relay 2 off (the pack); the stage forced to SCREEN_OFF and light
 sleep off; arm (op 14 sub 4: a 15 s delay, the cap); USB data off
@@ -18,6 +18,13 @@ transceiver after the wake.
 counts in Deep-sleep (the record is then gone with the RAM; the retained
 watchdog record, `ak820 health --json`, names site 27); the cap reached
 unfed means it does not. Measured 19:16 10-18: it does not.
+
+--preset N (with --no-press) is the 32-bit widths' test
+(plans/DEEP-SLEEP-BUILD-PLAN.md, validation 7): the counted seconds start
+at N and the cap is N + --cap, so with N near 65,535 the count crosses 16
+bits asleep. A 16-bit count would wrap and never reach the cap. Pass: it
+woke on the cap with exactly --cap seconds counted past the preset (the
+clocks take only those).
 
 Pass: entry seen in the logger; the record says it slept and why (a key on a
 press run, the cap on a --no-press run, a reset in the deep-sleep site on a
@@ -36,7 +43,9 @@ import sleep_baseline as sb  # noqa: E402
 
 cm = sb.cm
 HUB, PORT = "0-1.4", "2"   # docs/test-bench.md: the relay cable's port
-REASONS = {0: "none", 1: "key", 2: "cap", 3: "strays", 4: "blocked"}
+REASONS = {0: "none", 1: "key", 2: "cap", 3: "strays", 4: "blocked", 5: "knob", 6: "charge"}   # SLEEP_WAKE_*; 2 is the cap or the backstop
+# The record's flags (SLEEP_V_* in sleep.h)
+V_PCF, V_ACQ_DONE, V_USB_SOF, V_REATTACH, V_USB_20S, V_PLL_CEIL, V_SLEPT, V_BOUND = (1 << i for i in range(8))
 AK820 = os.path.expanduser("~/Library/Application Support/ak820pro/bin/ak820")
 DELAY_S = 15
 
@@ -56,18 +65,35 @@ def on_bus():
     return "AK820 PRO@" in out
 
 
-def deep(h, arg=0, delay=DELAY_S, cap=120, no_feed=False):
-    """op 14 sub 4: arg 0 reads, 1 arms, 2 cancels; returns the record."""
-    r = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 14, 4, arg, delay,
-                    cap & 0xFF, cap >> 8, 1 if no_feed else 0] + [0] * 22)
-    if len(r) < 29 or r[3] != 14 or r[4] != 4:
+def deep(h, arg=0, delay=DELAY_S, cap=120, no_feed=False, preset=0):
+    """op 14 sub 4: arg 0 reads, 1 arms, 2 cancels; returns the record (v2,
+    sleep.h: 32-bit counts, the knob's and the charger's P1 bits, a sequence
+    number). cap is counted seconds, 0 the 24 h backstop; preset starts the
+    count there (the 32-bit widths' test)."""
+    r = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 14, 4, arg, delay]
+                + list(cap.to_bytes(4, "little")) + [1 if no_feed else 0]
+                + list(preset.to_bytes(4, "little")) + [0] * 16)
+    if len(r) < 32 or r[3] != 14 or r[4] != 4:
         raise SystemExit(f"a reply to another op: {r[:12].hex()}")
-    o = r[5:29]
-    return {"state": o[0], "reason": REASONS.get(o[1], o[1]), "blocked": o[2], "slept": bool(o[3]),
-            "secs": o[4] | o[5] << 8, "strays": o[6] | o[7] << 8,
-            "p0": int.from_bytes(o[8:12], "little"), "p2": int.from_bytes(o[12:16], "little"),
-            "pll_loops": o[16] | o[17] << 8, "key_gain": o[18] | o[19] << 8, "pll_ceiling": bool(o[20]),
-            "phy_was_off": bool(o[21]), "usb_back_20s": bool(o[22])}   # false inside 20 s of the wake can mean pending
+    o = r[5:32]
+    if o[0] != 2:
+        raise SystemExit(f"record version {o[0]}, not 2: an older firmware")
+    u16 = lambda i: o[i] | o[i + 1] << 8
+    u32 = lambda i: int.from_bytes(o[i:i + 4], "little")
+    f = o[5]
+    return {"state": o[1], "reason": REASONS.get(o[2], o[2]), "blocked": u16(3), "flags": f,
+            "slept": bool(f & V_SLEPT), "pcf": bool(f & V_PCF), "usb_back_20s": bool(f & V_USB_20S),
+            "pll_ceiling": bool(f & V_PLL_CEIL), "bound": bool(f & V_BOUND), "reattach": bool(f & V_REATTACH),
+            "secs": u32(6), "strays": u16(10), "p0": u16(12), "p2": u16(14), "p1": u32(16),
+            "pll_loops": u16(20), "key_gain": u16(22), "seq": u16(24)}
+
+
+def bench_sleep(h, ms):
+    """op 14 sub 5: the ladder's sleep time for the bench (ms, at least 30 s;
+    0 clears it). Not persisted."""
+    r = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 14, 5, 0] + list(ms.to_bytes(4, "little")) + [0] * 22)
+    if len(r) < 5 or r[3] != 14 or r[4] != 5:
+        raise SystemExit(f"a reply to another op: {r[:12].hex()}")
 
 
 def need_bus(wait_s=30.0):
@@ -108,6 +134,52 @@ def light_off(h):
     cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 14, 3, 0, 2, 0, 0] + [0] * 23)
 
 
+def power_op(h, sub=0, arg=0):
+    """op 14 sub 0 (read), 1 (set the mode to arg) or 2 (hold the stage at
+    arg, 0xFF releases): returns (mode, stage). Sub 1 persists the mode."""
+    r = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 14, sub, arg] + [0] * 26)
+    if len(r) < 6 or r[3] != 14:
+        raise SystemExit(f"a reply to another op: {r[:12].hex()}")
+    return r[4], r[5]
+
+
+def tail_rows(path, kb=48):
+    """The logger's rows in the file's last `kb` KB (~400 rows at 48), as
+    (epoch, mA)."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - kb * 1024))
+            lines = f.read().decode(errors="replace").splitlines()[1:]
+    except OSError:
+        return []
+    out = []
+    for ln in lines:
+        p = ln.split(",")
+        try:
+            out.append((float(p[1]), float(p[5])))
+        except (IndexError, ValueError):
+            pass
+    return out
+
+
+def edges(rows, t_lo, t_hi, thr=15.0):
+    """The sleep's fall and rise in the logger, each the midpoint between
+    the last sample on one side of `thr` and the first on the other (the
+    logger samples ~1 s apart, so each is within ~0.5 s): the first fall
+    after t_lo and the rise after it, both before t_hi. None if either is
+    missing."""
+    rows = [r for r in rows if t_lo <= r[0] <= t_hi]
+    fall = None
+    for (t0, c0), (t1, c1) in zip(rows, rows[1:]):
+        if fall is None:
+            if c0 >= thr > c1:
+                fall = (t0 + t1) / 2
+        elif c1 >= thr > c0:
+            return fall, (t0 + t1) / 2
+    return None
+
+
 def tail_ma(path, n=8):
     """The logger's last n rows (n <= ~35), (epoch, mA), read from the file's end (it is large)."""
     try:
@@ -133,11 +205,14 @@ def main():
     ap.add_argument("--no-press", action="store_true")
     ap.add_argument("--no-feed", action="store_true")
     ap.add_argument("--cap", type=int, default=120)
+    ap.add_argument("--preset", type=int, default=0, help="counted seconds to start from (the widths' test)")
     ap.add_argument("--log", default=os.path.join(HERE, "..", "history", "power-bench-2026-10-15", "power.csv"))
     ap.add_argument("--out", default=os.path.join(HERE, "..", "history", "deep-sleep-" + time.strftime("%Y%m%d-%H%M")))
     a = ap.parse_args()
     if not 10 <= a.cap <= 7200:
         sys.exit("--cap: 10-7200 s")
+    if not 0 <= a.preset <= 0xFFFFFFFF - 7200 or (a.preset and not a.no_press):
+        sys.exit("--preset: 0 to 2^32 less 7200, and with --no-press")
     if not a.no_press and not 5 <= a.wait <= a.cap - 5:
         sys.exit("--wait: 5 s to the cap less 5")
     if not cm.relay_on():
@@ -167,7 +242,7 @@ def main():
             res["awake_ma"] = sum(base) / len(base) if base else None
             kp0 = sb.counts()["presses"]
             l0 = with_dev(lambda h: sb.health.read_link(h))
-            with_dev(deep, 1, DELAY_S, a.cap, a.no_feed)
+            with_dev(deep, 1, DELAY_S, a.preset + a.cap, a.no_feed, a.preset)
             t_arm = time.time()
             cm.say(f"armed ({DELAY_S} s delay, cap {a.cap} s); awake {res['awake_ma']:.2f} mA with data; data off")
             uhub("off")
@@ -229,7 +304,7 @@ def main():
                 res["watchdog_counts_asleep"] = True if reset_asleep else (False if slept_through else None)
                 ok = t_asleep is not None and (reset_asleep or slept_through)
             elif a.no_press:
-                ok = t_asleep is not None and rec["slept"] and rec["reason"] == "cap"
+                ok = t_asleep is not None and rec["slept"] and rec["reason"] == "cap" and rec["secs"] == a.cap
             else:
                 ok = (t_asleep is not None and rec["slept"] and rec["reason"] == "key" and rec["key_gain"] >= 1
                       and res["link"]["giveups"] == 0)

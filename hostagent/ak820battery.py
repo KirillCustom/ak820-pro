@@ -19,6 +19,10 @@ Three log formats exist:
                      host reads it once from HC_BATTCFG
     v6 (Phase 2)     as v5, but vdd_min is the period's modelled battery
                      energy (0.1 mWh, column e_mwh), and the period is 15 min
+    v7 (deep sleep)  as v6, but vdd_avg is the seconds the period spent
+                     asleep (column slept_s); while a wake's entries are being
+                     laid in the reply's version byte is 0xFF, and the read
+                     is retried
 v3+ firmware says so in HC_CONN byte 31 (BATTERY_PROTO_VERSION, 3 or 4), and
 the log reply's first byte says which of v3/v4; older firmware leaves the
 host's own zero there. ⚠️ Never assume the period: a 10-minute log
@@ -37,6 +41,7 @@ Usage:
     ak820battery.py log [out.csv]   dump the log (stdout without a file)
     ak820battery.py cfg [WARN CUT]  read, or set, the thresholds in mV (0 = off);
                                     PACK mV on v3 firmware, VDD mV before it
+    ak820battery.py sleep [--json]  the deep sleep's figures (HC_POWER page 1)
 """
 import csv, sys, time
 import venv_bootstrap  # noqa: F401 -- re-execs under the repo venv if hid is missing
@@ -93,6 +98,55 @@ def power(h):
         if rep[1] == HEALTH_CHANNEL and rep[2] == HC_POWER:
             return bytes(rep) if rep[0] == SET_VALUE and rep[3] == 1 else None
     return None
+
+
+SLEEP_WAKES = ["none", "key", "backstop", "strays", "blocked", "knob", "charge"]   # SLEEP_WAKE_*
+SLEEP_V = ["pcf", "acq_done", "usb_sof", "reattach", "usb_20s", "pll_ceiling", "slept", "bound"]   # SLEEP_V_*
+SLEEP_RC = ["input", "clock", "gauge", "radio", "supply", "usb", "display"]   # SLEEP_RC_*
+SLEEP_DSB = ["key", "usb", "tx", "display", "flash", "rtc", "pins", "wdt", "lit", "rgb", "pairing",
+             "recovery", "knob", "charge"]   # DSB_* in sleep.c
+
+
+def sleep_page(h):
+    """The deep sleep's figures (HC_POWER page 1, sleep.h's sleep_page1_fill),
+    or None from firmware without them: an older one answers page 0, whose
+    first byte is 1, never 0x81."""
+    h.write(bytes([0x00, SET_VALUE, HEALTH_CHANNEL, HC_POWER, 1] + [0x00] * 28))
+    for _ in range(5):
+        rep = h.read(32, 1000)
+        if not rep:
+            return None
+        if rep[1] == HEALTH_CHANNEL and rep[2] == HC_POWER:
+            if rep[0] != SET_VALUE or rep[3] != 0x81:
+                return None
+            r = bytes(rep)
+            names = lambda f, ns: [n for i, n in enumerate(ns) if f & (1 << i)]
+            return {"wake": SLEEP_WAKES[r[4]] if r[4] < len(SLEEP_WAKES) else r[4],
+                    "valid": names(r[5], SLEEP_V), "flags": r[5], "open": names(r[6], SLEEP_RC),
+                    "sleeps": u32(r, 7), "slept_total_s": u32(r, 11), "pcf_s": u32(r, 15),
+                    "counted_s": u32(r, 19), "acq_step_ms": i16(r, 23), "pll_loops": u16(r, 25),
+                    "strays": u16(r, 27), "blocked": names(u16(r, 29), SLEEP_DSB)}
+    return None
+
+
+def sleep_status(h, as_json=False):
+    p = sleep_page(h)
+    if p is None:
+        sys.exit("no deep-sleep page: firmware before the deep-sleep build")
+    if as_json:
+        import json
+        print(json.dumps(p))
+        return
+    if not p["sleeps"]:
+        print("deep sleep   none since boot")
+    else:
+        pcf = f"{p['pcf_s']} s by the PCF" if "pcf" in p["valid"] else "the PCF unread"
+        print(f"deep sleep   {p['sleeps']} since boot, {p['slept_total_s']} s asleep in all")
+        print(f"last sleep   woke on {p['wake']}; {pcf}, {p['counted_s']} s counted; "
+              f"acquisition step {p['acq_step_ms']} ms; PLL {p['pll_loops']} loops; {p['strays']} strays")
+        print(f"recovery     {'open: ' + ' '.join(p['open']) if p['open'] else 'done'}; "
+              f"valid: {' '.join(p['valid']) or '-'}")
+    print(f"blockers     {' '.join(p['blocked']) or '-'} (when a sleep was last wanted)")
 
 
 def i16(b, i):
@@ -333,6 +387,8 @@ def main():
             dump_log(h, sys.argv[2] if len(sys.argv) > 2 else None)
         elif len(sys.argv) > 1 and sys.argv[1] == "cfg":
             cfg(h, sys.argv[2:])
+        elif len(sys.argv) > 1 and sys.argv[1] == "sleep":
+            sleep_status(h, "--json" in sys.argv[2:])
         else:
             status(h)
     finally:

@@ -889,6 +889,72 @@ stage, the count's state, the draw and its average, time left, the energy since
 FULL, the band. **The log, v6:** 15-minute entries (180 h), the period's
 modelled energy in `vdd_min`'s place.
 
+## The gauge across a deep sleep (the deep-sleep build)
+
+The design and its five codex rounds:
+[`plans/DEEP-SLEEP-BUILD-PLAN.md`](../plans/DEEP-SLEEP-BUILD-PLAN.md),
+sections 4 and 6. **Why it needs anything:** QMK's timer stands still asleep
+(the system timer is stopped), so a count driven by elapsed time would simply
+lose the sleep. The slept time comes from the PCF ([clock.md](clock.md),
+"Across a deep sleep") and is handed over explicitly (`battery.h`):
+
+- **`battery_sleep_enter()`**, just before the lock: the awake energy
+  integrated up to the sleep, and the log's state noted (flags, level,
+  charging state, the open period's start).
+- **`battery_sleep_wake()`**, at the wake, before any other battery work:
+  the open period frozen, the live intake reset (the radio's `5C` after the
+  wake lands there), the `5C` estimate forgotten (reports from before the
+  sleep never pass for fresh), and `HC_BATTLOG` pending.
+- **`battery_sleep_account(ms)`**, once the slept time is known: the sleep's
+  energy at **`BATTERY_P_SLEEP_UW` = 13,350 µW** (3.24 mA at 4.12 V on the
+  logger, the hour asleep of 10-19; assumed constant power) comes off the
+  level and goes into the energy since FULL, **never into the average**; the
+  relaxation after an unplug is aged by the slept time (the pack relaxed
+  while the board slept); the log's entries are laid in; time left is
+  recomputed at once, for the wake's message. A sleep on USB power costs the
+  pack nothing.
+
+**Time left is hours of use.** The average is the awake draw's, so time left
+says how long the board can be *used*: asleep at 13.35 mW against 107-300
+awake, the sleeps stretch the calendar, not the hours. The battery row shows
+it under 10 hours (`18% 6h`), and a wake after 2 h or more asleep says `6h use
+left` once ([display.md](display.md)).
+
+**The log, v7.** Each 15-minute entry carries **the seconds it spent asleep**
+(`slept_s`, in `vdd_avg`'s place: on battery that was the buck-boost's 3.90 V,
+and the supply is in the flags anyway). The log keeps its own time base,
+**log time** = the timer + the slept ms accounted so far, so the period
+cadence, the newest entry's end and the reply's age all hold across sleeps and
+the host's dating (newest − k × period) stays right. The sleep is laid onto
+the periods it spans: none crossed, and the frozen and live periods merge; else
+the first to close keeps its frozen contents plus its share of the sleep, each
+later one holds only the sleep's share (no `5C`, a dark load), with the level
+stepped down linearly across the sleep, and the period open now keeps the
+intake since the wake. No period closes between the wake and the accounting,
+and until then `HC_BATTLOG`'s version byte is **0xFF** (`BATTERY_LOG_PENDING`):
+its age would date the old entries hours too recently, so
+`ak820battery.py log` retries.
+
+**The RGB model is per colour** (riding along; the curve:
+`history/power-bench-2026-10-15/rgb-curve-20261019/`). The driver keeps three
+channel sums of the committed frames instead of one, and the model weighs
+them: **8.64 mW while any LED is lit, plus 3,636 / 2,533 / 2,294 nW per unit
+of the red / green / blue sum**, replacing Phase 2's single 2.857 µW per unit.
+Against the map every step is within 0.6%, purple within 0.2%. The log's
+single `led_pm` cannot recover the split, but its energy field carries the
+model's total.
+
+**Measured on the host** (`scripts/battery_sim`, **146 cases**, sanitizers
+included): 15 sleep scenarios (`sleeps.c`): the energy, time left as hours of
+use, the floor and the cut, an unknown level, a stale band hold, remainders,
+the relaxation, the log within / across / far beyond a period, pending,
+the boundary between the wake and the accounting, USB, and a v7 replay with
+sleeps; six planted bugs, each caught. With the per-colour model the two
+drains' replays (R3 and 2e) are worst **+1.9 / +2.1 points** (were +1.1 /
++1.2 on the single-channel model): the logs record only the total drive,
+which the replay splits evenly over the three colours. Still inside 3. **Not yet measured: the
+sleep's energy against the logger across a drain, high, mid and low (R5).**
+
 ## Hardware facts
 
 **The pack** (JD's unit, printed on the cell): `JKJ606090 4000mAh 72.9g,
@@ -1222,7 +1288,14 @@ only:
 |---|---|---|---|---|
 | RGB dimmed (its value capped at 64 of 255) | never | 1 min idle | 30 s | -- |
 | RGB off, screen capped at level 4 | never | 5 min | 2 min | -- |
-| screen backlight off | never | 15 min | 5 min | always, typing too |
+| screen backlight off | never | 7 min | 3 min | always, typing too |
+| deep sleep (the deep-sleep build) | never | 7 min | 3 min | 30 s |
+
+The screen goes off when the board sleeps (its dim needs the 20 kHz tick the
+sleep stops), so the screen-off times moved from 15 and 5 min to the sleep's.
+Below 15% Normal sleeps at Saver's 3 min; Full never sleeps, at low battery
+too. Deep sleep and what holds it off: [hardware.md](hardware.md), "Deep
+sleep"; the gauge across it: "The gauge across a deep sleep", above.
 
 **Minimal** keeps the RGB and the backlight off even while typing (~107 mW,
 ~6 days a charge by the model), and lights the backlight at the user's level
@@ -1241,8 +1314,8 @@ discharge ("Saving power", on a lit screen; a real charge re-arms it).
 
 Measured (R1, A8): the RGB is 189 of the board's 306 mW at JD's settings,
 and JD's keyboard sits idle ~88% of the time, so Normal should roughly double
-a charge's runtime (a model estimate; R5 measures it). Light sleep, the
-radio and deep sleep are not built yet.
+a charge's runtime (a model estimate; R5 measures it). Deep sleep is built
+(above); light sleep and the radio's own idle are not.
 
 ## Open questions
 

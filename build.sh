@@ -132,6 +132,23 @@ case "$FLAVOR" in
   dev)       [[ -n "$jump" ]] || { echo "FAIL: the dev build lacks the raw-HID bootloader jump" >&2; fail=1; }
              [[ -n "$hooks" ]] || { echo "FAIL: the dev build lacks the dev hooks" >&2; fail=1; } ;;
 esac
+# The deep sleep (plans/DEEP-SLEEP-BUILD-PLAN.md, validation 8). Its
+# production path is in every flavour: the ladder's question, the PCF's
+# "before" read, the battery's hand-over and the driver's sleep pair, each
+# reachable only through sleep_task, so with --gc-sections their presence
+# says the path was linked. The bench's handlers that change what the board
+# does (op 14's arm, light sleep, the bench sleep time, a held stage or mode,
+# the acquisition's delay) are dev only: a released build answers none.
+for sym in sleep_task power_sleep_wanted rtc_sleep_prepare battery_sleep_enter battery_sleep_account \
+           sn32f2xx_sleep_enterI sn32f2xx_sleep_exitI rtc_wake_beginI sleep_page1_fill; do
+  [[ -n "$(awk -v s=$sym '$3 == s' <<<"$nm_out")" ]] || { echo "FAIL: the deep sleep's $sym is missing" >&2; fail=1; }
+done
+if [[ "$FLAVOR" == (daily|fpb) ]]; then
+  for sym in sleep_deep_arm sleep_deep_cancel sleep_light_set power_set_bench_sleep_ms power_force_stage \
+             power_set_mode rtc_dev_delay_full_once; do
+    [[ -z "$(awk -v s=$sym '$3 == s' <<<"$nm_out")" ]] || { echo "FAIL: a $FLAVOR build carries $sym" >&2; fail=1; }
+  done
+fi
 if (( fail )); then echo "Structural checks FAILED; nothing published." >&2; exit 1; fi
 
 # The manifest scripts/symbolize.sh resolves a board-reported token through.

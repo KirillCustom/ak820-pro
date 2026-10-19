@@ -92,6 +92,59 @@ this is the operative bound.
 3. *Applying the full correction* — quantisation overshoot becomes a
    standing oscillation. Hence half-step damping.
 
+## Across a deep sleep (the deep-sleep build)
+
+The board sleeps in the SN32's Deep-sleep with the system timer stopped
+([hardware.md](hardware.md), "Deep sleep"). The SN32 RTC counts on asleep,
+but its second interrupts are cleared rather than served, and ⚠️ **asleep its
+second runs ~13% slow** (3,139 counted for 3,600 over the hour of 10-19; the
+ILRC unloaded): the counted seconds are a fallback, not the slept time. The
+design: [`plans/DEEP-SLEEP-BUILD-PLAN.md`](../plans/DEEP-SLEEP-BUILD-PLAN.md),
+section 4; the code: `rtc.c`, "Deep sleep's recovery".
+
+1. **Before the lock** (`rtc_sleep_prepare`): the PCF read once, under the
+   arbiter below. A failed read does not stop the sleep; the counted seconds
+   then stand. The board sleeps only with the clock quiet: no slew, no reload,
+   no PCF write pending or running, no acquisition (`rtc_sleep_ok`).
+2. **Under the lock, at the wake** (`rtc_account_sleepI`, `rtc_wake_beginI`):
+   both software clocks (ours and the LLD's calendar) take the counted
+   seconds before any second is served. The SOF reference is broken outright
+   and re-qualifies, the trim window restarts (the slow asleep seconds are not
+   the awake ILRC's), and the 60 s discipline is suspended.
+3. **The coarse read**, once `sleep.c`'s input gate lets go (the waking key
+   counted, or 50 ms): the PCF again, and the slept seconds are its
+   difference, checked against the counted (between half and twice; one
+   outside is a bad read, and the counted stand). The clocks take the
+   difference; the calendar is set to the PCF's whole seconds; the old host
+   sync's flag is cleared. **Unless a host sync came since the wake**: every
+   host set bumps `host_sync_gen`, the recovery notes it at the wake, and a
+   newer host time always wins. Sets the firmware makes itself carry
+   `RTC_SETF_INTERNAL` (0x80) and never count as the host's; the host's flags
+   are masked to keep it out.
+4. **The phase**: the boot acquisition, every field reset, runs again to find
+   the PCF's second edge, now split into **one transaction a pass** (its
+   states `WAIT_SPLASH`, `COARSE`, `FULL`, `CONFIRM`, `DONE`, `ABORTED`) and
+   keeping the bracketed second it measured from, so a pass that comes late
+   cannot set the clock a second wrong. A full read is given 900 ms
+   (`ACQ_FULL_MAX_MS`). The dev hook op 14 sub 6 holds the next full read 1 s
+   past its bracket's edge, once: it must reacquire.
+
+**The arbiter.** From the wake until the acquisition ends, every PCF
+transaction (the coarse read, the acquisition's, the write machine's) goes
+through `rtc_fast_task`'s slot: **at most one a pass, only with the display
+bus idle and under 10 ms into the pass** (`sleep_pass_us`), with a **5 ms**
+I²C timeout instead of 20. A pass that used the bus defers its display work
+to the next (`display_defer_pass`), so the pass stays short and the waking
+burst of keys is scanned on time. The legacy whole-second SET (0x01), which
+does its I²C synchronously, is refused until the wake's acquisition ends
+(the host retries); `RTC_SET_TIME_MS` is not.
+
+**What the sleep must not move** (validation 4): the awake period `P_nom` and
+the persistence candidate (`HC_RTC`). Neither learns from asleep seconds.
+The calendar can move at the wake, and `clock_gen` counts each change so the
+display knows when the face it painted is current
+([display.md](display.md), "At a deep sleep and its wake").
+
 ## Persistence, and what a reflash costs
 
 **Correcting and saving are separate** (Phase 1b's C2, firmware flash 2,

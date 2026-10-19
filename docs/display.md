@@ -426,9 +426,44 @@ tile ("Not every band is queued", above): a plug-in costs 11-12 ms passes, not
 hand-placed zigzags read as the digit "4". The bolt keeps its runs as data and
 rasterizes them into the tile.
 
-**A time-remaining readout: still not shown.** The level is a fraction of
-runtime at the load the curve was measured at (full white); hours would need
-the current load's draw, and lights-off draw is unmeasured.
+**Time left, under 10 hours (the deep-sleep build).** On battery, with the
+level known and an hour or more of average draw behind it, the row adds the
+hours of use left once there are fewer than 10: `18% 6h`, `99% <1h`, at most
+7 cells, rounded down. "Hours of use" is the awake average's: asleep the board
+draws 13.35 mW, an eighth (Minimal) to a twentieth (JD's lights) of its awake
+draw, so the sleeps stretch the calendar time and not the number (what it is and how it is counted: [battery.md](battery.md),
+"The gauge across a deep sleep"). Above 10 hours the row stays as it was: a
+long number there says nothing worth the cells. The tenths view never adds
+hours. `Fn`+`D`'s camera page shows time left at any length (below).
+
+## At a deep sleep and its wake
+
+The deep sleep is the ladder's last stage (`sleep.c`;
+[hardware.md](hardware.md), "Deep sleep"). What the panel does around it:
+
+- **The screen goes off when the board sleeps.** Its dim level is the
+  backlight's software PWM, which needs the 20 kHz tick the sleep stops; the
+  ladder's screen-off time equals its sleep time (Normal 7 min, Saver 3).
+- **Host content expires at the wake**: the host text slot and the playback
+  position, which ran on while the board slept and would show stale, until
+  a host sends them again.
+- **The backlight is held dark at the wake** until the clock band and the
+  battery row have repainted from the corrected clock and level, or 500 ms
+  after the gauge's step if they cannot (`display_wake_corrected`,
+  `display_wake_repainted`, `display_wake_release`). Without the hold the
+  first frame lit would show the time the board went to sleep with. The
+  clock counts as painted by **generation**, not by a flag: the RTC's
+  `clock_gen` moves on every calendar change, and the band's last paint
+  records the one it drew (`clock_gen_painted`). With the clock off, the
+  playback position up, `Fn`+`D`'s page open or the panel paused, the clock
+  is not waited for.
+- **While the wake's I²C reads run**, a pass that made a PCF transaction
+  defers the blit pump and housekeeping to the next (`display_defer_pass`):
+  the two together would exceed the pass budget.
+- **After two hours or more asleep**, if time left is under 10 hours, the
+  status band says `6h use left` (or `<1h use left`) once, through the same
+  gate as other owed notices: a free band and a lit screen, except in
+  Minimal, whose screen lights for the message.
 
 ## Param overlay (readout of what you just changed)
 

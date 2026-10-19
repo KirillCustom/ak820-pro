@@ -443,6 +443,87 @@ The full verification record is `history/hardening/HARDWARE-CHECKLIST.md` (all
 items green, 2026-09-01); run-when-needed items live in
 `plans/BACKLOG.md`.
 
+## Deep sleep (the deep-sleep build)
+
+The idle ladder's last stage, in every build (`SN32F2XX_DEEP_SLEEP` in
+`config.h`; `sleep.c`). The design, five codex rounds and every disposition:
+[`plans/DEEP-SLEEP-BUILD-PLAN.md`](../plans/DEEP-SLEEP-BUILD-PLAN.md); the
+MCU's side: [sn32f299.md](sn32f299.md), section 4.
+
+**When.** On battery only, after the mode's idle time: **Normal 7 min, Saver
+3, Minimal 30 s, Full never** (at low battery too). Below 15% Normal sleeps at
+Saver's 3 min. `power_sleep_wanted()` asks; `sleep_task()`, at the very end of
+each main-loop pass, sleeps at the first pass where every precondition holds.
+The ones that failed the last time a sleep was wanted are on `HC_POWER` page
+1's last field (`ak820battery.py sleep`):
+
+| blocker | holds the sleep while |
+|---|---|
+| `key`, `knob` | a key is down; the knob is between detents (its pins disagree with the decoder's state) |
+| `usb` | a host's frames came in the last 100 ms: a live bus never sleeps |
+| `charge` | `CHRG` is low (charging) |
+| `tx`, `display`, `flash` | a radio frame, an LCD transfer, or an internal-flash write is under way or owed |
+| `rtc` | the PCF is busy: a sync, the acquisition, a recovery |
+| `lit`, `rgb`, `pairing` | the backlight is on, any LED is lit, the radio is pairing |
+| `pins`, `wdt`, `recovery` | a wake pin is on a port the sleep cannot wake from (a different board's pin map); the watchdog is not running; a wake's recovery is open |
+
+**Asleep.** The SN32's Deep-sleep with the PLL off, the system timer (CT16B5)
+stopped under the lock and restarted at the wake: **QMK's timer and
+ChibiOS's time stand still asleep**, so every clock is handed the slept time
+explicitly. It wakes on:
+- **a key**: the matrix columns on P0 and P2, falling edges;
+- **the knob**: P1.2 and P0.10, both edges;
+- **a charger**: `CHRG` (P1.16) falling;
+- **the backstop**: 24 h of counted seconds (`DS_BACKSTOP_S`), so a board
+  nobody touches still wakes daily; every count is 32-bit.
+A wake that is neither an edge on a wake pin nor a counted second is a stray; 1,000 of them wake it too. The
+watchdog is fed each counted second (it does not count in Deep-sleep:
+measured 19:16 10-18, 30 s unfed with no reset).
+
+**Measured** (10-18/19, the experiment's build): **3.24 mA at 4.12 V asleep
+(13.35 mW), against ~27 mA awake and dark**; 247 of 247 cycles slept and woke
+on a key, and the waking key was never lost. ⚠️ **Asleep, the RTC's counted
+second runs ~13% slow** (3,139 counted for 3,600; the ILRC unloaded), so the
+slept time comes from the PCF, and the counted seconds only when the PCF
+cannot be read.
+
+**The wake's recovery** (`recovery_task`), each step closing on its own; the
+page's `open` bits show which are still running:
+1. **input**: the waking key counted (or the knob's detent), or 50 ms; only
+   then may the PCF be read, so the key's scan is never delayed by I²C;
+2. **gauge**: the PCF's coarse read gives the slept seconds; the clocks, the
+   battery count and the log take them, then the clock and battery row repaint;
+3. **clock**: the acquisition re-finds the PCF's second edge, one I²C
+   transaction a pass ([clock.md](clock.md), "Across a deep sleep");
+4. **radio**: the battery poll waits for the waking key's report to leave,
+   then its reply or 2 s;
+5. **supply**: 1.5 s of samples (on USB power the ladder is off and it stays
+   awake);
+6. **USB**: if no host frame comes within 3 s, one D+ re-attach (off 100 ms,
+   under the lock; never `restart_usb_driver()`, whose 50 ms wait loses a tap);
+7. **display**: the backlight held dark until the repaint, or 500 ms
+   ([display.md](display.md), "At a deep sleep and its wake").
+**The whole recovery is bounded at 10 s**: a step still open then is ended
+(the counted seconds stand for the slept time, the screen and the poll are
+released, D+ is back on) and the page's `bound` bit says so. No sleep and no
+deferred flash write while it runs.
+
+**Reading it:** `hostagent/ak820battery.py sleep [--json]`: sleeps since boot
+(the last one's sequence number), seconds asleep in all, the last sleep's PCF
+and counted seconds, what woke it, the acquisition's step, PLL lock loops,
+strays, the recovery's open steps and validity bits, and the blockers.
+
+**On the bench (dev builds, `HC_DEVHOOK` op 14):** sub 4 arms a sleep
+whatever the ladder says (a delay, a cap in counted seconds, the watchdog
+unfed, a preset of the count) and returns the record (version 2, 27 bytes,
+`sleep.h`); sub 5 sets the ladder's sleep time (at least 30 s, not persisted)
+so a soak runs the production path; sub 6 delays the acquisition's next full
+read once, to prove it reacquires. `scripts/deep_sleep.py` (one sleep:
+`--no-press`, `--no-feed`, `--preset`) and `scripts/deep_cycles.py` (the soak)
+drive them ([test-bench.md](test-bench.md)). `build.sh` fails a daily or fpb
+build that links any of these handlers, and any build that lacks the sleep's
+production path.
+
 ## The hang, historically (fixed; recipes kept)
 
 The "board dead until power cycle" class. Two distinct mechanisms were found;

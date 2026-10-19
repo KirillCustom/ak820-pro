@@ -184,8 +184,9 @@ uhubctl -l 0-1.4 -p 2 -a on  -e
   out of the daemon's reach, and every later script would have refused to
   start ("relay 2 is off"). After killing one, check `usb_relay.py status`
   and `uhubctl -l 0-1.4 -p 2`, then put back what the `finally` would have:
-  data on, the arm cancelled (op 14 sub 4, arg 2), the stage released,
-  relay 2 on.
+  data on, the arm cancelled (op 14 sub 4, arg 2), the bench sleep time
+  cleared (op 14 sub 5, 0 ms), the mode put back (op 14 sub 1; the run
+  prints the one it found), the stage released, relay 2 on.
 
 ## Confirm every cut from the USB side
 
@@ -531,8 +532,21 @@ the session left unlocked for a window (JD's call).
 - `scripts/keydrop_test.py --n N --dwell MS --gap MS`: sent against
   registered against received, and latency from the relay command to the
   Mac's key-down (paired in order, only when every press arrived).
-- ⚠️ `key_presses` counts every key: **hands off the keyboard** while either
-  runs. With `--trial-csv` they wait for the gap after a running trial's
+- `scripts/deep_sleep.py`: one deep sleep, watched on the logger: woken by
+  the rig (default), by its cap (`--no-press`), unfed (`--no-feed`), or the
+  32-bit widths with the count preset near 65,535 (`--preset 65500
+  --no-press`).
+- `scripts/deep_cycles.py --n 100`: the soak, by default **through the
+  ladder's own path**: Minimal mode and a 30 s bench sleep time (op 14 sub
+  5), no stage forced; the mode found is put back. Each cycle passes only
+  on exactly one press, a fresh sleep sequence number, no reset, no new pass
+  of 25 ms or more, no new transport error, the PCF's slept seconds within
+  2 s of the logger's fall and rise edges, and the Mac's key-down within 1 s.
+  It keeps the daemon's first clock offset after each wake. `--arm` uses the
+  experiment's op 14 sub 4 instead; `--awake` is the awake control;
+  `--tap-ms 25` the input gate's short taps.
+- ⚠️ `key_presses` counts every key: **hands off the keyboard** while any of
+  these runs. With `--trial-csv` they wait for the gap after a running trial's
   read. A test during a drain shifts its load slightly and shows in
   `guard-activity.csv`: note when and how many in the drain's README.
 
