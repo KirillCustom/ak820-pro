@@ -134,3 +134,34 @@ second, not confirmed. Lights out lights the screen 4 s for a band message
 - **The 2.4G link's ACK timeouts so far:** 109 in 5,009 frames (0.022 a
   frame), typing included, against BT's 0.042 on record. Not yet a controlled
   burst.
+
+## 3. P0 frames through the receiver, from Windows over 2.4G (10-19)
+
+`scripts/ledchannel_test.py frames` with its Windows sender (the keyboard-class
+IOCTL, P0 only, the user's real locks as the baseline, the warm-up on Num):
+six frames a run, 20-37-byte texts, 178 writes for the longest, each checked
+byte for byte against what `lockchan.c` committed. Results in
+`history/ledchannel-2026-10-19-gremlin*/`.
+
+| write spacing | committed exactly | anchor to commit | UART overruns |
+|---|---|---|---|
+| 3 ms | 0/6 (gap aborts) | - | +1 |
+| 5 ms | 0/6 (gap aborts) | - | +0 |
+| 6 ms | 0/6 | - | +0 |
+| **7 ms** | **6/6** | 1141-1655 ms | +0 |
+| 8 ms (twice) | 6/6, 6/6 | 1217-1768 ms | +1, +2 |
+| 10 ms | 6/6 | 1515-2194 ms | +0 |
+| 12 ms | 6/6 | 1821-2616 ms | +1 |
+
+- **A cliff between 6 and 7 ms:** closer than that the dongle merges changes,
+  a merged change is a lost digit, and the frame dies on the 500 ms gap.
+  (Scroll alone alternating survived 3 ms in section 2: one bit flipping
+  cannot show a merge as anything but a missing pair.) **A sender should use
+  10 ms** for margin: a 30-character title in ~2 s, against P0's 4.4-5.6 s
+  over BLE on the Mac and P3's 1.5-2.2 s there.
+- No pass >= 25 ms in any run.
+- ⚠️ **UART overruns: +0 to +2 a run** (~1 minute each), well above the
+  link's ~1-2 an hour. Each change arrives three times, so a frame is ~530
+  module frames in ~2 s; the overruns did not cost a frame here (the
+  repeats cover a lost copy), but they are the link's known weakness and a
+  long run should count them.

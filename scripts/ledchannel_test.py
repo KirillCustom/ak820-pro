@@ -35,14 +35,93 @@ write). Caps (0x02) shows CAPS on the LCD while it is set. The board's stall
 and link-error counters are read before and after each test (ak820health.py),
 since a missing frame can also be a UART overrun or a checksum reject. Writes a
 JSON per test to DIR (default history/ledchannel-<date>/).
+
+On Windows (the 2.4G dongle, gremlin 10-19): `frames` only, P0 only, sent
+with IOCTL_KEYBOARD_SET_INDICATORS (win_send), the writes AK820_WIN_GAP_MS
+apart (default 8). Measured: 6/6 exact at 7, 8, 10 and 12 ms, 0/6 at 3, 5 and
+6 ms (the dongle merges changes closer than ~7 ms).
 """
 import json, os, random, subprocess, sys, time
 
-ROOT = "/Users/jdlien/code/ak820-pro"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.expanduser("~/Applications/AK820 LED Probe.app")
 LOG = os.path.expanduser("~/Library/Logs/ak820pro/ledprobe.log")
-PY = os.path.join(ROOT, "venv/bin/python")
+PY = sys.executable          # the venv this runs in; devhook.py and ak820health.py need only `hid`
 RING = 52
+
+# ⚠️ Windows (plans/LOCK-LED-CHANNEL-PLAN.md, "Windows, measured"): the sender
+# is IOCTL_KEYBOARD_SET_INDICATORS on the 2.4G dongle's keyboard-class
+# interface, which carries Num and Scroll only, so P0 only; a value with any
+# other bit than the user's Caps is refused. Writes issued back to back merge
+# there, so `seq` 0 means WIN_MIN_GAP_MS apart, not "as fast as the call".
+# Run `frames` only (the other tests write bits 3-7).
+WIN = sys.platform == "win32"
+WIN_MIN_GAP_MS = int(os.environ.get("AK820_WIN_GAP_MS", "8"))
+WIN_DONGLE = "vid_0c45&pid_fdfd&mi_00"
+
+
+def win_user_leds():
+    """The user's real locks as HID LED bits (Num 0x01, Caps 0x02, Scroll 0x04)."""
+    import ctypes
+    on = lambda vk: ctypes.windll.user32.GetKeyState(vk) & 1
+    return on(0x90) | (on(0x14) << 1) | (on(0x91) << 2)
+
+
+def win_send(gap_ms, vals):
+    """Write each LED byte through the dongle's keyboard class; return each
+    write's start time. The interface comes from the Configuration Manager's
+    list, never from HID enumeration (CLAUDE.md)."""
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+                                wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    k32.DeviceIoControl.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                                    ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+                                    ctypes.c_void_p]
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("a", wintypes.DWORD), ("b", wintypes.WORD), ("c", wintypes.WORD),
+                    ("d", ctypes.c_ubyte * 8)]
+
+    class KIP(ctypes.Structure):   # KEYBOARD_INDICATOR_PARAMETERS
+        _fields_ = [("UnitId", wintypes.USHORT), ("LedFlags", wintypes.USHORT)]
+
+    kbd = GUID(0x884B96C3, 0x56EF, 0x11D1, (ctypes.c_ubyte * 8)(0xBC, 0x8C, 0, 0xA0, 0xC9, 0x14, 0x05, 0xDD))
+    cm, n = ctypes.windll.cfgmgr32, wintypes.ULONG()
+    cm.CM_Get_Device_Interface_List_SizeW(ctypes.byref(n), ctypes.byref(kbd), None, 0)
+    buf = ctypes.create_unicode_buffer(n.value)
+    cm.CM_Get_Device_Interface_ListW(ctypes.byref(kbd), None, buf, n, 0)
+    paths = [p for p in buf[:n.value].split("\0")
+             if p and len(p.split("#")) == 4 and p.lower().split("#")[1] == WIN_DONGLE]
+    if len(paths) != 1:
+        sys.exit(f"the dongle's keyboard-class interface: found {paths}")
+    caps = win_user_leds() & 0x02
+    if any(v & ~0x07 or (v & 0x02) != caps for v in vals):
+        sys.exit("Windows carries Num and Scroll only, with the user's own Caps: P0 frames only")
+    # HID LED bits -> LedFlags: Num 0x01 -> 2, Caps 0x02 -> 4, Scroll 0x04 -> 1
+    flags = lambda v: ((v & 0x01) << 1) | ((v & 0x02) << 1) | ((v & 0x04) >> 2)
+    h = k32.CreateFileW(paths[0], 0, 3, None, 3, 0, None)   # access 0: read is refused
+    if h in (None, wintypes.HANDLE(-1).value):
+        sys.exit(f"open {paths[0]}: error {ctypes.get_last_error()}")
+    got, times, gap = wintypes.DWORD(), [], max(gap_ms or 0, WIN_MIN_GAP_MS) / 1000
+    try:
+        # The unit id from IOCTL_KEYBOARD_QUERY_INDICATORS; its LedFlags are
+        # stale (0 with Num on, measured 10-19), so the flags never come from it.
+        q = KIP()
+        if not k32.DeviceIoControl(h, 0x000B0040, None, 0, ctypes.byref(q), 4, ctypes.byref(got), None):
+            sys.exit(f"IOCTL_KEYBOARD_QUERY_INDICATORS: error {ctypes.get_last_error()}")
+        for i, v in enumerate(vals):
+            if i:
+                time.sleep(gap)
+            times.append(time.time())
+            p = KIP(q.UnitId, flags(v))
+            if not k32.DeviceIoControl(h, 0x000B0008, ctypes.byref(p), 4, None, 0, ctypes.byref(got), None):
+                sys.exit(f"IOCTL_KEYBOARD_SET_INDICATORS 0x{v:02x}: error {ctypes.get_last_error()}")
+    finally:
+        k32.CloseHandle(h)
+    return times
 
 
 def devhook(*args):
@@ -67,6 +146,8 @@ def health():
 def send(gap_ms, vals):
     """Run the probe (seq, or aseq when gap_ms is None); return each write's
     start time for seq or completion time for aseq, in epoch seconds."""
+    if WIN:
+        return win_send(gap_ms, vals)
     start = os.path.getsize(LOG) if os.path.exists(LOG) else 0
     mode = ["aseq"] if gap_ms is None else ["seq", str(gap_ms)]
     subprocess.run(["open", "-n", "-W", "-a", APP, "--args", *mode,
@@ -170,7 +251,12 @@ def frames_test(out):
     words = "the a of and to in love night light song blue heart home road dream fire rain".split()
     results, health_log, stalled = [], [], False
     last_write = time.time()   # unknown before the run: wait the full time once
-    for prof, name in ((P3, "P3"), (P1, "P1"), (P2, "P2"), (P0, "P0")):
+    # Windows: P0 only, on the user's real locks, and the warm-up on Num, since
+    # bit 3 cannot be written there (win_send).
+    user = win_user_leds() if WIN else 0x00
+    warm = [user ^ 0x01, user] if WIN else [0x08, 0x00]
+    profiles = ((P0, "P0"),) if WIN else ((P3, "P3"), (P1, "P1"), (P2, "P2"), (P0, "P0"))
+    for prof, name in profiles:
         before = health()
         frames("reset")
         ok = 0
@@ -178,13 +264,13 @@ def frames_test(out):
             text = " ".join(rng.choice(words).title() for _ in range(12))[:rng.randint(20, 37)].encode()
             seq = (prof * 16 + i) & 0xFF
             typ = 1 + i % 3
-            w = encode(text, type=typ, seq=seq, profile=prof, user=0)
+            w = encode(text, type=typ, seq=seq, profile=prof, user=user)
             n0 = frames("json")["frames"]
             # More than the 500 ms gap since this Mac's last LED write, so a
             # receiver a lost frame left mid-section has let go (codex, flash
             # 2i: the first frame of a run had no such wait);
             time.sleep(max(0.0, 0.7 - (time.time() - last_write)))
-            send(0, [0x08, 0x00])   # then the warm-up, so the board has the baseline,
+            send(0, warm)           # then the warm-up, so the board has the baseline,
             time.sleep(0.3)         # then the quiet (the probe exits once its last write completes)
             t0 = time.time()
             send(0, w)
