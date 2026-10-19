@@ -22,7 +22,7 @@ counts every key. The relay is loud. The stage and relay 2 are restored in a
 `finally`. Needs a dev build with op 14 and HC_POWER, and relay 2 on at the
 start.
 """
-import argparse, json, os, sys, time
+import argparse, json, os, subprocess, sys, time
 
 import hid
 
@@ -43,9 +43,32 @@ def relay1(dev, on):
 
 
 def relay2(state):
-    rc, out = cm.run([cm.PY, cm.RELAY, state, "2"])
-    if rc:
-        raise SystemExit(f"relay {state} 2 failed: {out.strip()}")
+    """Bounded: a hung relay call must not hold a cleanup (codex)."""
+    try:
+        rc = subprocess.run([cm.PY, cm.RELAY, state, "2"], capture_output=True, text=True, cwd=cm.ROOT, timeout=20)
+    except subprocess.TimeoutExpired:
+        raise SystemExit(f"relay {state} 2 timed out")
+    if rc.returncode:
+        raise SystemExit(f"relay {state} 2 failed: {(rc.stdout + rc.stderr).strip()}")
+
+
+def link():
+    """The radio link's loss counters (HC_LINK): timeouts, give-ups, queue full, UART errors."""
+    h = cm.ak820text.open_device()
+    try:
+        return health.read_link(h)
+    finally:
+        h.close()
+
+
+def attempt(what, fn, *args):
+    """One cleanup step, independent of the others; says how it went."""
+    try:
+        fn(*args)
+        return True
+    except BaseException as e:   # SystemExit included: the next step still runs
+        print(f"⚠️ cleanup: {what} failed: {e}", flush=True)
+        return False
 
 
 def on_battery():
@@ -142,11 +165,9 @@ def main():
                 cm.say(f"one press after {idle} s idle: presses {d['presses']}, edges {d['edges']}, "
                        f"stalls {d['stalls']}  {'ok' if good else 'FAIL'}")
         finally:
-            relay1(dev, False)
-            try:
-                stage(None)
-            finally:
-                relay2("on")
+            attempt("relay 1 open", relay1, dev, False)
+            attempt("stage released", stage, None)
+            if attempt("relay 2 on", relay2, "on"):
                 cm.say("restored: stage released, relay 2 on")
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "sleep-baseline.json"), "w") as f:

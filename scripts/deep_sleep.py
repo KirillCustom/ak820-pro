@@ -2,21 +2,28 @@
 """The deep-sleep experiment on the bench (plans/SLEEP-PLAN.md): does a key
 wake it, what does it draw asleep, and is the waking key itself lost.
 
-    venv/bin/python scripts/deep_sleep.py [--press-at 40] [--no-press] [--no-feed] [--cap 120] [--out DIR]
+    venv/bin/python scripts/deep_sleep.py [--wait 20] [--no-press] [--no-feed] [--cap 120] [--out DIR]
 
-In order: relay 2 off (the pack); the stage forced to SCREEN_OFF; arm (op
-14 sub 4: a 15 s delay, the cap); USB data off (`uhubctl`, so USB is not
-configured, one of the sleep's preconditions); watch the logger for the
-current to fall (asleep); at --press-at s after the arm the wake rig presses
-F19 once (unless --no-press: the cap wakes it); then data back on, wait for
-the board, and read the record: why it woke, which column pins, seconds
-asleep, stray wakes, the PLL's lock loops, and whether the waking key
-registered. --no-feed leaves the watchdog unfed while asleep: a reset at
-~12 s says it counts in Deep-sleep (the record is then gone; the boot shows
-it).
+In order: relay 2 off (the pack); the stage forced to SCREEN_OFF and light
+sleep off; arm (op 14 sub 4: a 15 s delay, the cap); USB data off
+(`uhubctl`, so USB is not configured, one of the sleep's preconditions);
+watch the logger for the current to fall (asleep: entry confirmed, or the
+run stops there); --wait s after that the wake rig presses F19 once (unless
+--no-press: the cap wakes it); then data back on, wait for the board, and
+read the record: why it woke, which column pins, seconds asleep, stray
+wakes, the PLL's lock loops, whether the waking key registered, and the USB
+transceiver after the wake.
 
-Needs JD at hand: if it never wakes, the slider brings it back. Restored in
-a `finally`: relay 1 open, data on, the stage released, relay 2 on.
+--no-feed leaves the watchdog unfed while asleep: a reset ~12 s in means it
+counts in Deep-sleep. The record is then gone with the RAM; the retained
+watchdog record (`ak820 health --json`) should name site 27, deep sleep.
+
+Pass: entry seen in the logger; the record says it slept and why (a key on a
+press run, the cap on a --no-press run, a reset in the deep-sleep site on a
+--no-feed run); on a press run the waking key registered. Needs JD at hand:
+if it never wakes, the slider brings it back. Restored in a `finally`, each
+step on its own: relay 1 open, data on, the arm cancelled, the stage
+released, relay 2 on.
 """
 import argparse, json, os, subprocess, sys, time
 
@@ -29,86 +36,138 @@ import sleep_baseline as sb  # noqa: E402
 cm = sb.cm
 HUB, PORT = "0-1.4", "2"   # docs/test-bench.md: the relay cable's port
 REASONS = {0: "none", 1: "key", 2: "cap", 3: "strays", 4: "blocked"}
+AK820 = os.path.expanduser("~/Library/Application Support/ak820pro/bin/ak820")
+DELAY_S = 15
 
 
 def uhub(state):
-    rc = subprocess.run(["perl", "-e", "alarm 15; exec @ARGV", "uhubctl", "-l", HUB, "-p", PORT, "-a", state, "-e"],
-                        capture_output=True, text=True)
+    try:
+        rc = subprocess.run(["uhubctl", "-l", HUB, "-p", PORT, "-a", state, "-e"],
+                            capture_output=True, text=True, timeout=15)
+    except subprocess.TimeoutExpired:
+        raise SystemExit(f"uhubctl {state} timed out")
     if rc.returncode:
         raise SystemExit(f"uhubctl {state} failed: {rc.stdout}{rc.stderr}")
 
 
 def on_bus():
-    out = subprocess.run(["ioreg", "-p", "IOUSB", "-w0"], capture_output=True, text=True).stdout
+    out = subprocess.run(["ioreg", "-p", "IOUSB", "-w0"], capture_output=True, text=True, timeout=10).stdout
     return "AK820 PRO@" in out
 
 
-def deep(h, arm=False, delay=15, cap=120, no_feed=False):
-    r = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 14, 4, 1 if arm else 0, delay,
+def deep(h, arg=0, delay=DELAY_S, cap=120, no_feed=False):
+    """op 14 sub 4: arg 0 reads, 1 arms, 2 cancels; returns the record."""
+    r = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 14, 4, arg, delay,
                     cap & 0xFF, cap >> 8, 1 if no_feed else 0] + [0] * 22)
-    if r[4] != 4:
-        raise SystemExit(f"a reply to another sub-op: {r[:12].hex()}")
+    if len(r) < 29 or r[3] != 14 or r[4] != 4:
+        raise SystemExit(f"a reply to another op: {r[:12].hex()}")
     o = r[5:29]
     return {"state": o[0], "reason": REASONS.get(o[1], o[1]), "blocked": o[2], "slept": bool(o[3]),
             "secs": o[4] | o[5] << 8, "strays": o[6] | o[7] << 8,
             "p0": int.from_bytes(o[8:12], "little"), "p2": int.from_bytes(o[12:16], "little"),
-            "pll_loops": o[16] | o[17] << 8, "key_gain": o[18] | o[19] << 8, "pll_ceiling": bool(o[20])}
+            "pll_loops": o[16] | o[17] << 8, "key_gain": o[18] | o[19] << 8, "pll_ceiling": bool(o[20]),
+            "phy_was_off": bool(o[21]), "usb_restarted": bool(o[22])}
 
 
-def logger_ma(path, t0, t1):
-    rows = cm.log_rows(path, t0, t1) if os.path.exists(path) else []
-    return [(float(r["epoch"]), float(r["current_ma"])) for r in rows]
+def need_bus():
+    if not on_bus():
+        raise SystemExit("not on USB")
+
+
+def with_dev(fn, *args, **kw):
+    h = cm.ak820text.open_device()
+    try:
+        return fn(h, *args, **kw)
+    finally:
+        h.close()
+
+
+def light_off(h):
+    cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 14, 3, 0, 2, 0, 0] + [0] * 23)
+
+
+def tail_ma(path, n=8):
+    """The logger's last n rows (n <= ~35), (epoch, mA), read from the file's end (it is large)."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 4096))
+            lines = f.read().decode(errors="replace").splitlines()[1:]
+    except OSError:
+        return []
+    out = []
+    for ln in lines[-n:]:
+        p = ln.split(",")
+        try:
+            out.append((float(p[1]), float(p[5])))
+        except (IndexError, ValueError):
+            pass
+    return out
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--press-at", type=float, default=40.0, help="s after the arm")
+    ap.add_argument("--wait", type=float, default=20.0, help="s asleep before the press")
     ap.add_argument("--no-press", action="store_true")
     ap.add_argument("--no-feed", action="store_true")
     ap.add_argument("--cap", type=int, default=120)
     ap.add_argument("--log", default=os.path.join(HERE, "..", "history", "power-bench-2026-10-15", "power.csv"))
     ap.add_argument("--out", default=os.path.join(HERE, "..", "history", "deep-sleep-" + time.strftime("%Y%m%d-%H%M")))
     a = ap.parse_args()
+    if not 10 <= a.cap <= 600:
+        sys.exit("--cap: 10-600 s")
+    if not a.no_press and not 5 <= a.wait <= a.cap - 5:
+        sys.exit("--wait: 5 s to the cap less 5")
     if not cm.relay_on():
         sys.exit("relay 2 is off: start from the charging state")
-    h = cm.ak820text.open_device()
-    try:
-        before = deep(h)
-    finally:
-        h.close()
+    if not os.path.exists(a.log):
+        sys.exit("the power logger's CSV is missing: entry cannot be confirmed")
+    res = {"args": vars(a), "before": with_dev(deep)}
     devs = hid.enumerate(sb.VID, sb.PID)
     if len(devs) != 1:
         sys.exit(f"expected one USB relay, found {len(devs)}")
-    res = {"args": vars(a), "before": before}
+    ok = False
     with hid.Device(path=devs[0]["path"]) as dev:
         try:
-            cm.say("relay 2 off; stage forced to SCREEN_OFF")
+            cm.say("relay 2 off; light sleep off; stage forced to SCREEN_OFF")
             sb.relay2("off")
             deadline = time.time() + 30
             while not sb.on_battery():
                 if time.time() > deadline:
                     raise SystemExit("the board never reported the pack")
                 time.sleep(1)
+            with_dev(light_off)
             sb.stage(sb.SCREEN_OFF)
+            time.sleep(8)
+            base = [c for _, c in tail_ma(a.log, 8)]
+            res["awake_ma"] = sum(base) / len(base) if base else None
             kp0 = sb.counts()["presses"]
-            h = cm.ak820text.open_device()
-            try:
-                deep(h, arm=True, delay=15, cap=a.cap, no_feed=a.no_feed)
-            finally:
-                h.close()
+            with_dev(deep, 1, DELAY_S, a.cap, a.no_feed)
             t_arm = time.time()
-            cm.say(f"armed (15 s delay, cap {a.cap} s); data off")
+            cm.say(f"armed ({DELAY_S} s delay, cap {a.cap} s); awake {res['awake_ma']:.2f} mA; data off")
             uhub("off")
-            if a.no_press:
-                time.sleep(15 + a.cap + 10)
+            # Entry: three samples 2 mA under the awake draw, by the delay plus 30 s.
+            t_asleep = None
+            while time.time() < t_arm + DELAY_S + 30:
+                cur = [c for t, c in tail_ma(a.log, 3) if t > t_arm]
+                if len(cur) == 3 and all(c < res["awake_ma"] - 2.0 for c in cur):
+                    t_asleep = time.time()
+                    break
+                time.sleep(1)
+            res["asleep_seen_at"] = t_asleep
+            if t_asleep is None:
+                cm.say("no fall in the current: it did not go to sleep (the record will say why)")
+            elif a.no_press or a.no_feed:
+                cm.say("asleep (the current fell)")
+                time.sleep(a.cap + 10 if a.no_press and not a.no_feed else 25)
             else:
-                time.sleep(max(0.0, t_arm + a.press_at - time.time()))
-                t_press = time.time()
-                cm.say("pressing F19 (the wake rig)")
+                cm.say(f"asleep (the current fell); pressing F19 in {a.wait:.0f} s")
+                time.sleep(a.wait)
+                asleep = [c for t, c in tail_ma(a.log, int(a.wait) - 2) if t > t_asleep]
+                res["asleep_ma"] = sum(asleep) / len(asleep) if asleep else None
+                res["press_at"] = time.time()
                 sb.press(dev, 60, 200)
-                res["press_at"] = t_press
                 time.sleep(5)
-            t_on = time.time()
             cm.say("data on")
             uhub("on")
             deadline = time.time() + 30
@@ -117,39 +176,39 @@ def main():
                     raise SystemExit("the board did not come back on USB in 30 s: check it by hand")
                 time.sleep(0.5)
             time.sleep(3)
-            h = cm.ak820text.open_device()
-            try:
-                rec = deep(h)
-            finally:
-                h.close()
+            rec = with_dev(deep)
             res["record"] = rec
             res["key_presses_gained"] = (sb.counts()["presses"] - kp0) & 0xFFFF
-            cur = logger_ma(a.log, t_arm - 10, t_on)
-            res["logger"] = cur
+            res["logger"] = [(float(r["epoch"]), float(r["current_ma"])) for r in cm.log_rows(a.log, t_arm - 10, time.time())]
             cm.say(f"record: {rec}")
-            asleep = [c for t, c in cur if t > t_arm + 20 and t < (res.get("press_at", t_on) - 1)]
-            if asleep:
-                res["asleep_ma"] = sum(asleep) / len(asleep)
-                cm.say(f"logger asleep: {res['asleep_ma']:.2f} mA mean over {len(asleep)} s "
-                       f"(min {min(asleep):.2f}, max {max(asleep):.2f})")
+            if res.get("asleep_ma") is not None:
+                cm.say(f"asleep: {res['asleep_ma']:.2f} mA (awake {res['awake_ma']:.2f})")
+            if a.no_feed:
+                try:
+                    hj = json.loads(subprocess.run([AK820, "health", "--json"], capture_output=True, text=True,
+                                                   timeout=10).stdout)
+                    res["watchdog_record"] = hj.get("watchdog_record")
+                except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+                    res["watchdog_record"] = f"unread: {e}"
+                wr = res["watchdog_record"] if isinstance(res["watchdog_record"], dict) else {}
+                ok = t_asleep is not None and rec["state"] == 0 and wr.get("site") in (27, "deep_sleep")
+            elif a.no_press:
+                ok = t_asleep is not None and rec["slept"] and rec["reason"] == "cap"
+            else:
+                ok = t_asleep is not None and rec["slept"] and rec["reason"] == "key" and rec["key_gain"] >= 1
         finally:
-            sb.relay1(dev, False)
-            try:
-                uhub("on")
-            except SystemExit as e:
-                print(e)
-            try:
-                if on_bus():
-                    sb.stage(None)
-            finally:
-                sb.relay2("on")
-                cm.say("restored: data on, stage released, relay 2 on")
+            sb.attempt("relay 1 open", sb.relay1, dev, False)
+            sb.attempt("data on", uhub, "on")
+            if sb.attempt("the board on USB", need_bus):
+                sb.attempt("arm cancelled", with_dev, deep, 2)
+                sb.attempt("stage released", sb.stage, None)
+            if sb.attempt("relay 2 on", sb.relay2, "on"):
+                cm.say("restored: data on, the arm cancelled, stage released, relay 2 on")
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "deep-sleep.json"), "w") as f:
         json.dump(res, f, indent=1, default=str)
-    rec = res.get("record", {})
-    print("deep sleep:", rec.get("reason"), "slept" if rec.get("slept") else "did not sleep",
-          f"{rec.get('secs')} s, key gained {rec.get('key_gain')}")
+    print("deep sleep:", "PASS" if ok else "FAIL", json.dumps(res.get("record", {})))
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":
