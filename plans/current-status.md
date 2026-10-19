@@ -73,12 +73,16 @@ out, with a bulb icon in the bolt's slot on battery
 session builds it on its own branch off `bf7d7d0280`, as its own flash
 after this one.
 
+**Flashed 12:57 10-19: the deep-sleep build, `752d4bcda7`** (dev, token
+`0x4aeddcd6`), after codex's implementation review (3 must-fix, 6
+should-fix) and two verifies, every finding taken (the plan's last three
+tables). Keymap and lighting restored and read back; the clock synced to
+-0.4 ms; the sleep page answers; no stall of 25 ms or more. `7df8a08e96`
+(codex's one-line USB fix to the log's night levels) is committed on top,
+not flashed: it rides with the power-mode icons' flash.
+
 **Next, in order:**
-1. **Codex's implementation review** of the build (running 10-19 ~12:20:
-   `review-prompt-deep-sleep-build.txt`, the review into
-   `review-codex-deep-sleep-build-2026-10-19.md`); every finding
-   dispositioned in the plan.
-2. **The flash, on JD's go,** then the board tests (the plan's validation):
+1. **The board tests** (the plan's validation):
    the soak through the ladder (`deep_cycles.py --n 100`), an hour asleep,
    the clock without the daemon, the wake sources (the knob by hand: JD, one
    action at a time), charge and USB, the backstop's widths

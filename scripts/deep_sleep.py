@@ -137,6 +137,9 @@ def light_off(h):
     cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 14, 3, 0, 2, 0, 0] + [0] * 23)
 
 
+_restored = None   # restore()'s result, once it has run
+
+
 def restore(dev, *controls):
     """Put the bench back, power first, each step on its own: relay 1 open,
     relay 2 on (on USB power the ladder never sleeps, and a charge start wakes
@@ -144,7 +147,16 @@ def restore(dev, *controls):
     full pack gives no charge edge), then `controls`, each (what, fn, *args)
     run through the retrying open. Shared by a run's `finally` and its
     deadline guard, which exits without one (codex, deep-sleep build review 8
-    and its verify). True if every step went."""
+    and its verifies): once, under sb.cleanup_lock, so the two never run it
+    together or twice. True if every step went."""
+    global _restored
+    with sb.cleanup_lock:
+        if _restored is None:
+            _restored = _restore(dev, *controls)
+        return _restored
+
+
+def _restore(dev, *controls):
     done = [sb.attempt("relay 1 open", sb.bounded, sb.relay1, dev, False),
             sb.attempt("relay 2 on", sb.relay2, "on"),
             sb.attempt("data on", uhub, "on")]

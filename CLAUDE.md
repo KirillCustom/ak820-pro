@@ -117,9 +117,9 @@ ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 cycles and an hour asleep at 3.17 mA, every waking key kept; ⚠️ **asleep, the
 RTC's second runs ~13% slow** (3139 s counted for 3600), so the build takes
 slept time from the PCF; the radio retries as often awake as after a wake; a
-per-colour RGB model within 0.6%. **The deep-sleep build is done, not
-flashed** (`bf7d7d0280`, local; [docs/hardware.md](docs/hardware.md), "Deep
-sleep"); codex's implementation review is next, then the flash on JD's go.
+per-colour RGB model within 0.6%. **The deep-sleep build is on the board**
+(`752d4bcda7`, since 12:57 10-19, after codex's review and two verifies;
+[docs/hardware.md](docs/hardware.md), "Deep sleep"); the board tests next.
 The mode names are settled (Always on / Balanced / Power saver / Lights
 out, [`plans/POWER-MODE-ICONS-PLAN.md`](plans/POWER-MODE-ICONS-PLAN.md)),
 built separately as the flash after.
@@ -141,11 +141,11 @@ Two workstreams, Phase 2 first:
   no light ([`plans/LOCK-LED-CHANNEL-PLAN.md`](plans/LOCK-LED-CHANNEL-PLAN.md)
   has the resume list; what the module forwards is in
   [docs/wireless.md](docs/wireless.md)).
-- **On the board: Phase 2, Minimal mode and the sleep experiments**, plus
-  the lock-LED channel's Scroll hold: `442c9f49c9` (a `dev` build, token
-  `0xc8227691`, since 10:34 10-19; `53afebd553` before it); the
-  experiments are off unless op 14 sub 3/4 turns them on
-  ([`plans/SLEEP-PLAN.md`](plans/SLEEP-PLAN.md)). **Measured that evening:
+- **On the board: the deep-sleep build**, `752d4bcda7` (a `dev` build,
+  token `0x4aeddcd6`, since 12:57 10-19; `442c9f49c9` before it): the
+  ladder sleeps on battery (Normal 7 min, Saver 3, Minimal 30 s, Full
+  never), and the bench's sleep controls are op 14 subs 4-6
+  ([`plans/DEEP-SLEEP-BUILD-PLAN.md`](plans/DEEP-SLEEP-BUILD-PLAN.md)). **Measured that evening:
   deep sleep draws 3.2 mA against ~27 awake and dark, wakes on a key, and
   the waking key is not lost; light sleep with WFI saves ~4.7 mA.** ⚠️ **Firmware commits from flash 2f on
   (`523744c30f`..) are local on `ak820pro-jdlien`, not pushed**, and

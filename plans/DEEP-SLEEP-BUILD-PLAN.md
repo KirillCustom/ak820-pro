@@ -858,3 +858,16 @@ No new keystroke-loss, stall, reset or daily-build regression found.
 | V2 | should fix (8): the deadline guard turns the data on and exits, skipping the `finally` | **Fixed:** one `restore()` (`deep_sleep.py`), used by both scripts' `finally` and their deadline guards: relay 1, relay 2, data, the board back (a tap if not), then the controls. |
 | V3 | should fix (8): the stage's release opens HID once; the daemon can hold it | **Fixed:** every stage call goes through the retrying open (`with_dev(cm.force_stage, ...)`). |
 | notes | the host's SET_TIME_MS under the arbiter, `PS_RECOVER_VERIFY`, the discipline's skip on a failing PCF, the supply samples' independence, the 29-byte layouts byte for byte | Noted; nothing to do. |
+
+## Codex's second verify (10-19), and the flash
+
+[Verbatim](review-codex-deep-sleep-build-verify2-2026-10-19.md), prompt
+[`review-prompt-deep-sleep-build-verify2.txt`](review-prompt-deep-sleep-build-verify2.txt).
+**No must-fix; nothing blocks flashing `752d4bcda7`.** V1 and V3 verified
+fixed; `frz_nj` the right remainder. **Flashed 12:57 10-19** (dev, token
+`0x4aeddcd6`).
+
+| # | finding (short) | disposition |
+|---|---|---|
+| W1 | should fix: a sleep on USB power (`p_uw` 0) can still debit history from a RELAX remainder left at the floor before a charge raised the level; the ladder never sleeps on USB, the bench arm can | **Fixed, codex's own one-liner** (`7df8a08e96`, `sleep_level_at` returns the entry level for `p_uw` 0); 149 pass. Not flashed: it rides with the next build (the power-mode icons), whose codex review covers it. |
+| W2 | should fix: the guard's restore has no outer deadline, and a fired guard can overlap the run's own cleanup (a tap, the relay handle's close), possibly leaving relay 1 held | **Fixed** (`sleep_baseline.py`, `deep_sleep.py`): one re-entrant `cleanup_lock`, held by the guard across its restore and its exit; `restore()` runs once and later callers get its result; the guard opens relay 1 and turns relay 2 on last; an independent hard exit (300 s) after one more bounded try at both relays. Tested offline with the relays stubbed: the guard alone, the guard firing during the run's restore (one restore, then exit 3), and a stuck restore (exit 4 at the hard deadline). |

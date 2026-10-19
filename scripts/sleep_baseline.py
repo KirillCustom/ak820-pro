@@ -109,25 +109,60 @@ def bounded(fn, *args, timeout=5.0):
     return box.get("ok")
 
 
-def deadline_guard(limit_s, *also):
-    """A last resort for the whole run (codex): if it is still going after
-    limit_s, restore relay 2 (and run `also`, e.g. the data back on) from this
-    timer's thread, bounded, then end the process. A hung HID call anywhere,
-    press loops included, can then strand the board on its pack for at most
-    limit_s. Cancel it on a normal finish."""
-    def fire():
-        print(f"⚠️ the run passed its {limit_s:.0f} s limit: restoring and exiting", flush=True)
-        for fn in also:
-            try:
-                fn()
-            except BaseException as e:
-                print(f"⚠️ emergency step failed: {e}", flush=True)
+# One cleanup at a time (codex, the deep-sleep build's second verify): a run's
+# `finally` and its deadline guard both restore the bench, and must not tap
+# the rig or close the relay's handle under each other. Re-entrant, so the
+# guard can hold it across its own restore and its exit.
+cleanup_lock = threading.RLock()
+
+
+def _relays_safe():
+    """Relay 1 open and relay 2 on through the held handle, each bounded: the
+    last thing before an exit (a tap cut short must not leave F19 held)."""
+    for what, fn in (("relay 1 open", lambda: relay1(_dev, False)), ("relay 2 on", lambda: _relay2_inproc(True))):
+        if _dev is None:
+            break
         try:
-            relay2("on")
-            print("emergency: relay 2 on", flush=True)
+            bounded(fn, timeout=2.0)
+            print(f"emergency: {what}", flush=True)
         except BaseException as e:
-            print(f"⚠️ emergency: relay 2 on failed: {e}", flush=True)
-        os._exit(3)
+            print(f"⚠️ emergency: {what} failed: {e}", flush=True)
+
+
+def deadline_guard(limit_s, *also, hard_s=300.0):
+    """A last resort for the whole run (codex): if it is still going after
+    limit_s, run `also` (the run's restore) from this timer's thread, holding
+    cleanup_lock so the run's own cleanup cannot interleave, then open relay 1,
+    turn relay 2 on, and end the process. A second, independent timer ends it
+    hard_s later whatever `also` is stuck on (an HID open or write has no
+    timeout of its own), after one more bounded try at the relays. A hung call
+    anywhere can then strand the board for at most limit_s + hard_s. Cancel
+    it on a normal finish."""
+    def hard_exit():
+        print(f"⚠️ the emergency restore passed {hard_s:.0f} s: exiting", flush=True)
+        _relays_safe()
+        os._exit(4)
+
+    def fire():
+        h = threading.Timer(hard_s, hard_exit)
+        h.daemon = True
+        h.start()
+        print(f"⚠️ the run passed its {limit_s:.0f} s limit: restoring and exiting", flush=True)
+        with cleanup_lock:
+            for fn in also:
+                try:
+                    fn()
+                except BaseException as e:
+                    print(f"⚠️ emergency step failed: {e}", flush=True)
+            if _dev is not None:
+                _relays_safe()
+            else:
+                try:
+                    relay2("on")
+                    print("emergency: relay 2 on", flush=True)
+                except BaseException as e:
+                    print(f"⚠️ emergency: relay 2 on failed: {e}", flush=True)
+            os._exit(3)
     t = threading.Timer(limit_s, fire)
     t.daemon = True
     t.start()
