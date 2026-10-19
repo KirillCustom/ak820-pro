@@ -821,3 +821,25 @@ swap or the repaint scheduling.
   are serviced while the acquisition runs, and its accelerated painting
   yields on I2C passes under the shared budget.
 - **Actual timing** is for the board validation.
+
+## Codex's implementation review (10-19) and what changed
+
+Of `bf7d7d0280` (firmware `442c9f49c9..bf7d7d0280`, outer repo `a4a810a`):
+[verbatim](review-codex-deep-sleep-build-2026-10-19.md), prompt
+[`review-prompt-deep-sleep-build.txt`](review-prompt-deep-sleep-build.txt).
+**Three must-fix, six should-fix; every one taken.** All four flavours build
+with no warnings after the fixes; the simulator 148 of 148, sanitizers
+included.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | **must fix:** the PCF arbiter ends with the acquisition, not the recovery: the write machine then runs outside the 5 ms timeout, the admission and the display deferral; the legacy SET comes back; STOP recovery does two transactions in a step; the discipline's read bypasses the arbiter, and could snap the clock back to a PCF whose host-sync write is still pending | **Fixed** (`rtc.c`): the arbiter holds while `sleep_recovering()`, the write machine included; STOP recovery split into a write and a check, a pass each (`PS_RECOVER_VERIFY`); the legacy SET refused through the whole recovery; the discipline suspended through it, and in any state skipped while a PCF write is pending or running (the check stays due). |
+| 2 | **must fix:** `display_pass_end()` clears the deferral flag before `sleep_task()`, so the gauge's "no I2C this pass" test always passes | **Fixed:** `rtc.c` counts PCF transactions (`i2c_note`), `sleep_task()` marks the pass's end (`rtc_pass_mark`), and the gauge runs only when the pass made none (`rtc_pass_used_bus`). The acquisition waits for the gauge (`rtc_wake_gauge_taken`), so the pass after the coarse read is always free and the gauge cannot starve. |
+| 3 | **must fix:** the RGB's deferred flush checks DMA and settling, not the recovery | **Fixed:** `rgb_matrix_eeprom_flush_allowed()` also waits for `!sleep_recovering()` (`ak820pro.c`). |
+| 4 | should fix: a short sleep's plausibility window admits -1 or -2 s, cast to u32; dev caps unbounded before the x1000 | **Fixed:** negative slept seconds rejected (the counted stand); the arm's span past its preset at most the backstop's 86,400 s, and the preset bounded so the cap cannot wrap. |
+| 5 | should fix: a cancelled arm's cap, preset and unfed watchdog stay live for the next ladder sleep | **Fixed by isolation:** `deep_sleep()` takes its cap, preset and feed as arguments; the ladder passes the backstop, fed, from 0; only the arm passes its own (`ds_arm_*`, dev only). |
+| 6 | should fix: the log's levels interpolate toward the final, possibly floor-clamped, level, spreading the clamp across the sleep; the sim checks only monotonicity | **Fixed:** each boundary's level is the level before the sleep less the sleep's energy to that boundary from the count's remainder, never below where the debit stopped (`sleep_level_at`). New `s_log_floor` (a night that reaches 1% at ~21 h) checks every entry; the old interpolation, planted, fails it. |
+| 7 | should fix: the supply step counts time, not samples, with no 3 s short outcome; the 500 ms repaint timeout records nothing; neither shows under `BOUND` | **Fixed:** the supply step waits for 15 fresh samples (`battery_supply_samples`), or 3 s; a new byte (page 1's 29th, the record's spare) names every step that ended on its own timeout (input 50 ms, radio 2 s, supply 3 s, display 500 ms) or on the bound. |
+| 8 | should fix: `deep_cycles.py`'s cleanup waits for USB before restoring power, so a run stopped asleep skips every control and leaves Minimal persisted; the log reader retries pending only 2 s | **Fixed:** both bench scripts restore relay 2 first (on USB power the ladder never sleeps; a charge start wakes the board), then data, then a rig tap if the board does not come back (a full pack gives no charge edge), then the controls. `ak820battery.py` retries pending for 12 s. |
+| 9 | should fix: judge a cycle after the recovery closes, and cancel any old arm first; the sim lacks exact report conservation, the log energy's carry, the open period's share and a mixed v7 replay | **Fixed:** `deep_cycles.py` waits for page 1's open steps to clear (12 s) and gates on it, and cancels an arm at the start. The sim's log checks are exact (every report in exactly one entry, the energy to its carry, the open period's 600 s); new `s_replay_mixed` (600 s awake, 300 asleep, per entry). Planted, each is caught: a dropped carry, live reports in the frozen period, a mixed entry played wholly awake. |
+| note | the locked sequence sound; page 1, record v2 and v7 decodes match; the RGB sums main-thread-owned; daily/fpb gain the sleep with no new dev exposure; `build.sh` proves linkage, not control flow | Noted. The instrumented build's PCF test ops (`WDT_TEST_HOOKS`) do synchronous I2C from raw HID and are not arbitrated: they mutate the clock on purpose and are never in a released or dev build. |

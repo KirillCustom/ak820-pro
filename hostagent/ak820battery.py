@@ -125,7 +125,8 @@ def sleep_page(h):
                     "valid": names(r[5], SLEEP_V), "flags": r[5], "open": names(r[6], SLEEP_RC),
                     "sleeps": u32(r, 7), "slept_total_s": u32(r, 11), "pcf_s": u32(r, 15),
                     "counted_s": u32(r, 19), "acq_step_ms": i16(r, 23), "pll_loops": u16(r, 25),
-                    "strays": u16(r, 27), "blocked": names(u16(r, 29), SLEEP_DSB)}
+                    "strays": u16(r, 27), "blocked": names(u16(r, 29), SLEEP_DSB),
+                    "timed_out": names(r[31], SLEEP_RC)}
     return None
 
 
@@ -145,7 +146,7 @@ def sleep_status(h, as_json=False):
         print(f"last sleep   woke on {p['wake']}; {pcf}, {p['counted_s']} s counted; "
               f"acquisition step {p['acq_step_ms']} ms; PLL {p['pll_loops']} loops; {p['strays']} strays")
         print(f"recovery     {'open: ' + ' '.join(p['open']) if p['open'] else 'done'}; "
-              f"valid: {' '.join(p['valid']) or '-'}")
+              f"valid: {' '.join(p['valid']) or '-'}; timed out: {' '.join(p['timed_out']) or '-'}")
     print(f"blockers     {' '.join(p['blocked']) or '-'} (when a sleep was last wanted)")
 
 
@@ -292,8 +293,10 @@ def dump_v3(h):
         first = xfer(h, HC_BATTLOG, [0, 0])
         ver, count, _, since, period, written, _ = parse_reply(first)
         # 0xFF: woken from a deep sleep whose entries are not yet laid in (a
-        # few passes); its age would misdate the older entries. Ask again.
-        for _ in range(20):
+        # few passes, normally); its age would misdate the older entries. Ask
+        # again, for 12 s: the recovery's bound is 10 (codex, deep-sleep build
+        # review 8).
+        for _ in range(120):
             if ver != LOG_PENDING:
                 break
             time.sleep(0.1)

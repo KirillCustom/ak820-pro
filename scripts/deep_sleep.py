@@ -30,8 +30,8 @@ Pass: entry seen in the logger; the record says it slept and why (a key on a
 press run, the cap on a --no-press run, a reset in the deep-sleep site on a
 --no-feed run); on a press run the waking key registered. Needs JD at hand:
 if it never wakes, the slider brings it back. Restored in a `finally`, each
-step on its own: relay 1 open, data on, the arm cancelled, the stage
-released, relay 2 on.
+step on its own: relay 1 open, relay 2 on, data on, the board back on USB (a
+rig tap if not), the arm cancelled, the stage released.
 """
 import argparse, json, os, subprocess, sys, time
 
@@ -46,6 +46,8 @@ HUB, PORT = "0-1.4", "2"   # docs/test-bench.md: the relay cable's port
 REASONS = {0: "none", 1: "key", 2: "cap", 3: "strays", 4: "blocked", 5: "knob", 6: "charge"}   # SLEEP_WAKE_*; 2 is the cap or the backstop
 # The record's flags (SLEEP_V_* in sleep.h)
 V_PCF, V_ACQ_DONE, V_USB_SOF, V_REATTACH, V_USB_20S, V_PLL_CEIL, V_SLEPT, V_BOUND = (1 << i for i in range(8))
+# The recovery's steps (SLEEP_RC_*): the record's last byte names those that timed out
+RC_STEPS = ["input", "clock", "gauge", "radio", "supply", "usb", "display"]
 AK820 = os.path.expanduser("~/Library/Application Support/ak820pro/bin/ak820")
 DELAY_S = 15
 
@@ -85,7 +87,8 @@ def deep(h, arg=0, delay=DELAY_S, cap=120, no_feed=False, preset=0):
             "slept": bool(f & V_SLEPT), "pcf": bool(f & V_PCF), "usb_back_20s": bool(f & V_USB_20S),
             "pll_ceiling": bool(f & V_PLL_CEIL), "bound": bool(f & V_BOUND), "reattach": bool(f & V_REATTACH),
             "secs": u32(6), "strays": u16(10), "p0": u16(12), "p2": u16(14), "p1": u32(16),
-            "pll_loops": u16(20), "key_gain": u16(22), "seq": u16(24)}
+            "pll_loops": u16(20), "key_gain": u16(22), "seq": u16(24),
+            "timed_out": [nm for i, nm in enumerate(RC_STEPS) if o[26] & (1 << i)]}
 
 
 def bench_sleep(h, ms):
@@ -309,17 +312,24 @@ def main():
                 ok = (t_asleep is not None and rec["slept"] and rec["reason"] == "key" and rec["key_gain"] >= 1
                       and res["link"]["giveups"] == 0)
         finally:
+            # Power first, so a board stopped asleep wakes (a charge start, or
+            # a rig tap for a full pack) and the controls still get put back
+            # (codex, deep-sleep build review 8).
             done = [sb.attempt("relay 1 open", sb.bounded, sb.relay1, dev, False),
+                    sb.attempt("relay 2 on", sb.relay2, "on"),
                     sb.attempt("data on", uhub, "on")]
-            if sb.attempt("the board on USB", need_bus, 30):
+            back = sb.attempt("the board on USB", need_bus, 30)
+            if not back:
+                sb.attempt("a wake tap", sb.bounded, sb.press, dev, 40, 200)
+                back = sb.attempt("the board on USB after the tap", need_bus, 30)
+            if back:
                 done += [sb.attempt("arm cancelled", with_dev, deep, 2),
                          sb.attempt("stage released", sb.stage, None)]
             else:
                 done.append(False)
-            done.append(sb.attempt("relay 2 on", sb.relay2, "on"))
             guard.cancel()
             if all(done):
-                cm.say("restored: relay 1 open, data on, the arm cancelled, stage released, relay 2 on")
+                cm.say("restored: relay 1 open, relay 2 on, data on, the arm cancelled, stage released")
             else:
                 ok = False
                 cm.say("⚠️ cleanup incomplete: see above")

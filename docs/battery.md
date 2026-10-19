@@ -928,9 +928,11 @@ cadence, the newest entry's end and the reply's age all hold across sleeps and
 the host's dating (newest − k × period) stays right. The sleep is laid onto
 the periods it spans: none crossed, and the frozen and live periods merge; else
 the first to close keeps its frozen contents plus its share of the sleep, each
-later one holds only the sleep's share (no `5C`, a dark load), with the level
-stepped down linearly across the sleep, and the period open now keeps the
-intake since the wake. No period closes between the wake and the accounting,
+later one holds only the sleep's share (no `5C`, a dark load), and the period
+open now keeps the intake since the wake. Each entry's level is the level
+before the sleep less the sleep's energy up to that entry's end, as the count
+debits it, stopping where the debit stopped (the floor, the cut): a night
+that reached 1% early shows it early, not a line to 1% across the night. No period closes between the wake and the accounting,
 and until then `HC_BATTLOG`'s version byte is **0xFF** (`BATTERY_LOG_PENDING`):
 its age would date the old entries hours too recently, so
 `ak820battery.py log` retries.
@@ -944,12 +946,16 @@ Against the map every step is within 0.6%, purple within 0.2%. The log's
 single `led_pm` cannot recover the split, but its energy field carries the
 model's total.
 
-**Measured on the host** (`scripts/battery_sim`, **146 cases**, sanitizers
-included): 15 sleep scenarios (`sleeps.c`): the energy, time left as hours of
+**Measured on the host** (`scripts/battery_sim`, **148 cases**, sanitizers
+included): 17 sleep scenarios (`sleeps.c`): the energy, time left as hours of
 use, the floor and the cut, an unknown level, a stale band hold, remainders,
 the relaxation, the log within / across / far beyond a period, pending,
-the boundary between the wake and the accounting, USB, and a v7 replay with
-sleeps; six planted bugs, each caught. With the per-colour model the two
+the boundary between the wake and the accounting, USB, a v7 replay with
+sleeps, a sleep reaching the floor early, and a replayed entry partly asleep.
+The log checks are exact: every `5C` report in exactly one entry, the energy
+to its carry, the open period's share of the sleep. Ten planted bugs, each
+caught (among them the old line-to-the-final-level, a dropped carry, live
+reports in the frozen period, a mixed entry played as wholly awake). With the per-colour model the two
 drains' replays (R3 and 2e) are worst **+1.9 / +2.1 points** (were +1.1 /
 +1.2 on the single-channel model): the logs record only the total drive,
 which the replay splits evenly over the three colours. Still inside 3. **Not yet measured: the

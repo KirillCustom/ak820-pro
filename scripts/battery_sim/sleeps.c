@@ -136,6 +136,23 @@ static uint32_t log_since(void) {
     return (uint32_t)out[5] | (uint32_t)out[6] << 8 | (uint32_t)out[7] << 16 | (uint32_t)out[8] << 24;
 }
 
+/* Tick until the log holds `n` entries (at most `max_s`): a report delivered
+ * on the closing tick lands in the period it closes (sim.c's tick delivers
+ * before battery_task), so right after it the closed entries hold every
+ * report so far (codex, deep-sleep build review 9: conservation, exactly). */
+static bool run_until_entries(unsigned n, uint32_t max_s) {
+    for (uint32_t i = 0; i < max_s * 10u; i++) {
+        if (log_count() >= n) return true;
+        tick();
+    }
+    return log_count() >= n;
+}
+static unsigned log_reports(unsigned from, unsigned to) {
+    unsigned sum = 0;
+    for (unsigned k = from; k < to; k++) sum += log_entry(k).c5_n;
+    return sum;
+}
+
 /* The log starts at the first tick: now_ms 100, so its periods end at
  * 900,100 + k x 900,000 in log time. */
 #define P0_END 900100u
@@ -147,13 +164,13 @@ static void s_log_within(void) {
     run_s(200);               /* 230,000 */
     sleep_for(300000u, 200);  /* 5 min asleep, 0.2 s of recovery: log time 530,200 */
     CHECK(log_count() == 0, "no entry yet: %u", log_count());
-    run_s(370);               /* log time 900,200 */
-    CHECK(log_count() == 1, "one entry at the period's end: %u", log_count());
+    CHECK(run_until_entries(1, 380), "one entry at the period's end: %u", log_count());
     lent_t e = log_entry(0);
     CHECK(e.slept == 300, "300 s slept in it: %u", e.slept);
-    /* 600 s awake at SIM_MW (~50 mWh) + 300 s asleep (~1.1 mWh) */
-    CHECK(e.e_x10 >= 500 && e.e_x10 <= 525, "its energy, the sleep's included: %u x 0.1 mWh", e.e_x10);
-    CHECK(e.c5_n >= 230, "and every report: %u", e.c5_n);
+    /* 600 s awake at SIM_MW + 300 s asleep, to a tenth of a mWh and its carry */
+    double want = (SIM_MW * 600.0 + SLEEP_MW * 300.0) / 3600.0 * 10.0;
+    CHECK(fabs(e.e_x10 - want) <= 1.5, "its energy, the sleep's included: %u x 0.1 mWh (want %.1f)", e.e_x10, want);
+    CHECK(e.c5_n == reports, "and every report, exactly: %u of %u", e.c5_n, reports);
 }
 
 /* A night across many periods, starting mid-period. */
@@ -161,12 +178,14 @@ static void s_log_across(void) {
     c_start(96);                     /* 30,000 */
     run_s(570);                      /* 600,000 */
     uint32_t e0 = battery_energy_used_mwh_x10();
+    unsigned r_sleep = reports;
     sleep_for(16u * 3600000u, 300);  /* asleep 600,000 .. 58,200,000; accounted at 58,200,300 */
+    unsigned r_live = reports - r_sleep;   /* the recovery's 0.3 s */
     /* Boundaries through now: 900,100 + k x 900,000 <= 58,200,300: k = 0..63, 64 entries */
     CHECK(log_count() == 64, "64 periods closed: %u", log_count());
     lent_t first = log_entry(0);
     CHECK(first.slept == 300, "the first keeps its frozen contents and 300 s slept: %u", first.slept);
-    CHECK(first.c5_n >= 230, "its reports from before the sleep: %u", first.c5_n);
+    CHECK(first.c5_n == r_sleep, "its reports from before the sleep, exactly: %u of %u", first.c5_n, r_sleep);
     unsigned slept = 0, e_sum = 0, bad = 0;
     for (unsigned k = 0; k < 64; k++) {
         lent_t e = log_entry(k);
@@ -180,12 +199,79 @@ static void s_log_across(void) {
     CHECK(slept == 57000, "57,000 s slept in the closed entries: %u", slept);
     /* the closed entries' energy: 600 s awake before (in the first) + 57,000 s asleep */
     double want = (SIM_MW * 600.0 + SLEEP_MW * 57000.0) / 3600.0 * 10.0;
-    CHECK(fabs(e_sum - want) <= 64.0 + 3.0, "their energy %u x 0.1 mWh (want %.0f)", e_sum, want);
+    /* Within 2: the count's first second (energy_tick's start) and the open
+     * carry. Without the carry 64 entries would lose up to 64. */
+    CHECK(fabs(e_sum - want) <= 2.0, "their energy %u x 0.1 mWh (want %.1f): the carry kept", e_sum, want);
     CHECK(battery_energy_used_mwh_x10() - e0 >= (unsigned)(SLEEP_MW * 16 * 10 - 2), "e_used the whole night");
     /* Dating: the newest entry ended at 57,600,100 in log time; now is 58,200,300. */
     CHECK(log_since() == 58200300u - 57600100u, "the newest entry's age in log time: %u", log_since());
     run_s(10);
     CHECK(log_count() == 64, "no extra entry after the wake: %u", log_count());
+    /* The open period (57,600,100 .. 58,500,100): the sleep's last 600 s,
+     * then the awake rest; its reports are the live ones and after. */
+    CHECK(run_until_entries(65, 300), "the open period closes: %u", log_count());
+    lent_t open = log_entry(64);
+    CHECK(open.slept == 600, "the sleep's last 600 s in the open period: %u", open.slept);
+    double want_open = (SLEEP_MW * 600.0 + SIM_MW * 300.0) / 3600.0 * 10.0;
+    CHECK(fabs(open.e_x10 - want_open) <= 1.5, "its energy %u x 0.1 mWh (want %.1f)", open.e_x10, want_open);
+    CHECK(open.c5_n == reports - r_sleep && r_live <= open.c5_n, "its reports, the live ones included: %u of %u",
+          open.c5_n, reports - r_sleep);
+    CHECK(log_reports(0, 65) == reports, "every report in exactly one entry: %u of %u", log_reports(0, 65), reports);
+}
+
+/* A sleep that reaches the floor early: each closed entry's level is the
+ * level before the sleep less the sleep's energy up to its end, stopping at
+ * the floor -- not a line to the floor across the whole sleep (codex,
+ * deep-sleep build review 6). ~28 pm at 13.35 mW reaches 1% in ~21 h. */
+static void s_log_floor(void) {
+    c_start(40);                     /* 30,000; ~28 pm */
+    uint16_t l0 = battery_level_permille();
+    sleep_for(3u * 24u * 3600000u, 300);   /* asleep from log time ~30,000 for 72 h */
+    unsigned n = log_count(), bad = 0, at_floor = 0;
+    double pm_j = 15579.0 * 3.6 / 1000.0;   /* J per pm: E_CAP_MWH's thousandth */
+    for (unsigned k = 0; k < n; k++) {
+        double t_s  = ((double)P0_END + k * 900000.0 - 30000.0) / 1000.0;
+        double want = l0 - SLEEP_MW * t_s / 1000.0 / pm_j;
+        if (want < 10.0) want = 10.0;
+        int    got  = (int)log_entry(k).level * 5;   /* the log's 0.5% units */
+        /* The remainder before the sleep is under a pm; the log keeps 5 pm steps. */
+        if (got > want + 1.0 || got < want - 6.0) bad++;
+        if (got == 10) at_floor++;
+    }
+    CHECK(n == 288, "72 h of entries: %u", n);
+    CHECK(bad == 0, "every entry's level on the sleep's own debit: %u off (from %u pm)", bad, l0);
+    CHECK(at_floor >= 288 - 100, "at the floor from ~21 h on: %u entries", at_floor);
+}
+
+/* A v7 entry partly asleep (codex, deep-sleep build review 9): 600 s awake
+ * then 300 s asleep. The awake part matures the average 10 minutes, and the
+ * entry costs the awake draw for 600 s plus the sleep's for 300. */
+static void s_replay_mixed(void) {
+    char path[] = "/tmp/battery_sim_v7m_XXXXXX";
+    int fd = mkstemp(path);
+    FILE *f = fd >= 0 ? fdopen(fd, "w") : NULL;
+    if (!f) { CHECK(0, "cannot write a temp CSV"); return; }
+    fprintf(f, "time,slept_s,e_mwh,c5_mean,c5_n,c5_min,c5_max,pack_mv,level,led_pm,bkl,charging,external,flags_any\n");
+    for (int k = 0; k < 12; k++) {
+        int slept = k >= 4 ? 300 : 0, mins = k * 15;
+        fprintf(f, "2026-10-20 %02d:%02d,%d,0.0,96.00,%d,96,96,,,1000,10,0,0,on_batt\n", mins / 60, mins % 60, slept,
+                slept ? 240 : 360);
+    }
+    fclose(f);
+    if (!rp_load(path)) { remove(path); return; }
+    remove(path);
+    vdd_mv = 3900; chrg_low = false; c5 = 0xFF;
+    run_s(2);
+    for (int i = 0; i < 4; i++) rp_play(i);   /* awake: the draw at these settings */
+    uint32_t p_awake = battery_power_uw();
+    uint16_t m0 = battery_avg_minutes();
+    uint32_t e0 = battery_energy_used_mwh_x10();
+    for (int i = 4; i < 12; i++) rp_play(i);
+    CHECK(battery_avg_minutes() - m0 == 80, "8 mixed entries matured 80 minutes: %u", battery_avg_minutes() - m0);
+    double want = ((double)p_awake * 600.0 + BATTERY_P_SLEEP_UW * 300.0) * 8.0 / 360000.0;   /* uJ to 0.1 mWh */
+    double got  = battery_energy_used_mwh_x10() - e0;
+    CHECK(fabs(got - want) <= 3.0, "their energy %.0f x 0.1 mWh (want %.1f: %u uW awake for 600 s, asleep 300)",
+          got, want, p_awake);
 }
 
 /* A sleep longer than the log: its last 720 entries, all slept. */
@@ -205,6 +291,7 @@ static void s_log_pending(void) {
     run_s(860);                      /* 890,000 */
     battery_sleep_enter();
     battery_sleep_wake();
+    unsigned r_wake = reports;
     uint8_t out[29];
     battery_log_read(0, out);
     CHECK(out[0] == BATTERY_LOG_PENDING, "pending after the wake: %u", out[0]);
@@ -216,11 +303,11 @@ static void s_log_pending(void) {
     CHECK(log_count() == 1, "one entry once accounted: %u", log_count());
     lent_t e = log_entry(0);
     CHECK(e.slept == 5, "5 s slept in it: %u", e.slept);
-    unsigned before = e.c5_n;
-    run_s(900);
+    CHECK(e.c5_n == r_wake, "the frozen period holds exactly the reports before the wake: %u of %u", e.c5_n, r_wake);
+    CHECK(run_until_entries(2, 920), "the next period closes: %u", log_count());
     lent_t e2 = log_entry(1);
-    CHECK(e2.c5_n >= 360 && before >= 350, "the 20 s of live reports in the next period, not the frozen one: %u, %u",
-          before, e2.c5_n);
+    CHECK(e2.c5_n == reports - r_wake && reports - r_wake > 300,
+          "the 20 s of live reports in the next period, with the rest: %u of %u", e2.c5_n, reports - r_wake);
 }
 
 /* Codex's case (deep-sleep verify 3): the period ends at 900 s; the sleep runs

@@ -183,10 +183,12 @@ uhubctl -l 0-1.4 -p 2 -a on  -e
   off from 20:57 until 22:43: the board ran on the pack, awake (27.5 mA),
   out of the daemon's reach, and every later script would have refused to
   start ("relay 2 is off"). After killing one, check `usb_relay.py status`
-  and `uhubctl -l 0-1.4 -p 2`, then put back what the `finally` would have:
-  data on, the arm cancelled (op 14 sub 4, arg 2), the bench sleep time
-  cleared (op 14 sub 5, 0 ms), the mode put back (op 14 sub 1; the run
-  prints the one it found), the stage released, relay 2 on.
+  and `uhubctl -l 0-1.4 -p 2`, then put back what the `finally` would have,
+  power first: relay 2 on (a board stopped asleep wakes when charging
+  starts; with a full pack, tap the rig), data on, the arm cancelled (op 14
+  sub 4, arg 2), the bench sleep time cleared (op 14 sub 5, 0 ms), the mode
+  put back (op 14 sub 1; the run prints the one it found), the stage
+  released.
 
 ## Confirm every cut from the USB side
 
@@ -541,8 +543,9 @@ the session left unlocked for a window (JD's call).
   5), no stage forced; the mode found is put back. Each cycle passes only
   on exactly one press, a fresh sleep sequence number, no reset, no new pass
   of 25 ms or more, no new transport error, the PCF's slept seconds within
-  2 s of the logger's fall and rise edges, and the Mac's key-down within 1 s.
-  It keeps the daemon's first clock offset after each wake. `--arm` uses the
+  2 s of the logger's fall and rise edges, and the Mac's key-down within 1 s,
+  all judged once the wake's recovery has closed. It keeps the recovery's
+  timed-out steps and the daemon's first clock offset after each wake. `--arm` uses the
   experiment's op 14 sub 4 instead; `--awake` is the awake control;
   `--tap-ms 25` the input gate's short taps.
 - ⚠️ `key_presses` counts every key: **hands off the keyboard** while any of

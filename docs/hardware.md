@@ -492,26 +492,35 @@ page's `open` bits show which are still running:
 1. **input**: the waking key counted (or the knob's detent), or 50 ms; only
    then may the PCF be read, so the key's scan is never delayed by I²C;
 2. **gauge**: the PCF's coarse read gives the slept seconds; the clocks, the
-   battery count and the log take them, then the clock and battery row repaint;
+   battery count and the log take them, in a pass with no PCF transaction
+   (the acquisition waits for it), then the clock and battery row repaint;
 3. **clock**: the acquisition re-finds the PCF's second edge, one I²C
    transaction a pass ([clock.md](clock.md), "Across a deep sleep");
 4. **radio**: the battery poll waits for the waking key's report to leave,
    then its reply or 2 s;
-5. **supply**: 1.5 s of samples (on USB power the ladder is off and it stays
-   awake);
+5. **supply**: 1.5 s of fresh samples, or 3 s whatever they were (on USB
+   power the ladder is off and it stays awake);
 6. **USB**: if no host frame comes within 3 s, one D+ re-attach (off 100 ms,
    under the lock; never `restart_usb_driver()`, whose 50 ms wait loses a tap);
 7. **display**: the backlight held dark until the repaint, or 500 ms
    ([display.md](display.md), "At a deep sleep and its wake").
 **The whole recovery is bounded at 10 s**: a step still open then is ended
 (the counted seconds stand for the slept time, the screen and the poll are
-released, D+ is back on) and the page's `bound` bit says so. No sleep and no
-deferred flash write while it runs.
+released, D+ is back on) and the page's `bound` bit says so. Every step
+that ended on its own timeout (the input not counted in 50 ms, no battery
+report in 2 s, too few supply samples by 3 s, the repaint not done in
+500 ms) or on the bound is named on the page's last byte, so a recovery that
+"finished" by giving up is told from one that did its job. While it runs: no
+sleep, no deferred flash write (the board config's or the RGB's), no legacy
+clock SET, and every PCF transaction under the wake's arbiter
+([clock.md](clock.md), "Across a deep sleep").
 
 **Reading it:** `hostagent/ak820battery.py sleep [--json]`: sleeps since boot
 (the last one's sequence number), seconds asleep in all, the last sleep's PCF
 and counted seconds, what woke it, the acquisition's step, PLL lock loops,
-strays, the recovery's open steps and validity bits, and the blockers.
+strays, the recovery's open steps and validity bits, the blockers, and the
+steps that timed out. `HC_POWER` page 1 is 29 bytes (the plan's 26, plus the
+blockers' u16 and the timed-out byte).
 
 **On the bench (dev builds, `HC_DEVHOOK` op 14):** sub 4 arms a sleep
 whatever the ladder says (a delay, a cap in counted seconds, the watchdog

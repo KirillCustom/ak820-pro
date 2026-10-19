@@ -36,17 +36,21 @@ A sleeping cycle passes only if:
   - no new transport errors (HC_LINK: giveups, queue_full, replaced, UART);
   - the PCF's slept seconds (HC_POWER page 1) within 2 s of the logger's
     fall and rise edges (each the midpoint of its ~1 s sample gap);
-  - the Mac's key-down within 1 s (unless --board-only).
-Kept, not gated: the counted seconds, PLL loops, ACK timeouts, and the
-daemon's first clock offset after the wake (its "before" in the agent's
-log; validation 1's clock check, today -1.5 to +2.1 s, the target ~50 ms).
+  - the Mac's key-down within 1 s (unless --board-only);
+  - and it is judged after the wake's recovery has closed (every step ended).
+Kept, not gated: the counted seconds, PLL loops, ACK timeouts, the recovery's
+steps that ended on a timeout (page 1's last byte), and the daemon's first
+clock offset after the wake (its "before" in the agent's log; validation 1's
+clock check, today -1.5 to +2.1 s, the target ~50 ms).
 
 Needs the Mac UNLOCKED (the listener sees nothing at the lock screen;
 checked at the start and per cycle) and the F19 listener running; the
 displays are held awake. ⚠️ Hands off the keyboard. Restored in a
 `finally`, each step on its own, under a whole-run deadline: relay 1 open,
-data on, the arm cancelled, the bench sleep time cleared, the mode put back,
-the stage released, relay 2 on.
+relay 2 on (on USB power the ladder never sleeps, and a charge start wakes a
+sleeping board), data on, the board back on USB (a rig tap if it does not
+come: a full pack gives no charge edge), then the arm cancelled, the bench
+sleep time cleared, the mode put back, the stage released.
 """
 import argparse, json, os, random, re, subprocess, sys, time
 
@@ -73,6 +77,19 @@ def snap(h):
     st = sb.health.read_stalls(h)
     return {"link": sb.health.read_link(h), "presses": st["key_presses"], "ge25": st["count_ge_25ms"],
             "uptime_ms": sb.health.read_isr(h)["uptime_ms"], "page": ba.sleep_page(h)}
+
+
+def recovered(limit_s=12.0):
+    """The sleep page once the wake's recovery has closed (every step ended;
+    its bound is 10 s), or the last page read if it never did: a cycle is
+    judged on the board after the recovery, not in it (codex, deep-sleep build
+    review 9)."""
+    deadline = time.time() + limit_s
+    while True:
+        pg = ds.with_dev(ba.sleep_page)
+        if pg is None or not pg["open"] or time.time() > deadline:
+            return pg
+        time.sleep(0.5)
 
 
 def wait_current(log, pred, after, limit_s):
@@ -141,12 +158,13 @@ def main():
     if ds.with_dev(ba.sleep_page) is None:
         sys.exit("no deep-sleep page (HC_POWER page 1): flash the deep-sleep build")
     mode0, _ = ds.with_dev(ds.power_op)
+    ds.with_dev(ds.deep, 2)   # an arm left from another run would sleep on its own terms, not the ladder's
     caf = subprocess.Popen(["caffeinate", "-i"] if a.board_only else ["caffeinate", "-d"])   # the displays may sleep board-only
     devs = hid.enumerate(sb.VID, sb.PID)
     if len(devs) != 1:
         sys.exit(f"expected one USB relay, found {len(devs)}")
     cycles, ok, stopped = [], True, None
-    guard = sb.deadline_guard(a.n * (a.sleep_s + 130) + 300, lambda: ds.uhub("on"))
+    guard = sb.deadline_guard(a.n * (a.sleep_s + 145) + 300, lambda: ds.uhub("on"))
     with hid.Device(path=devs[0]["path"]) as dev:
         sb.hold_relay(dev)
         try:
@@ -206,6 +224,9 @@ def main():
                 ds.uhub("on")
                 c["t_data_on"] = time.time()
                 ds.need_bus(30)
+                if not a.awake:
+                    pg_end = recovered()
+                    c["recovered"] = pg_end is not None and not pg_end["open"]
                 s1 = ds.with_dev(snap)
                 w1 = time.time()
                 c["key_gain"] = (s1["presses"] - s0["presses"]) & 0xFFFF
@@ -228,11 +249,15 @@ def main():
                     c["asleep_s"] = round(ed[1] - ed[0], 1) if ed else None
                     c["pcf_ok"] = ("pcf" in pg["valid"] and c["asleep_s"] is not None
                                    and abs(pg["pcf_s"] - c["asleep_s"]) <= 2.0)
+                    c["timed_out"] = pg["timed_out"]
                     good = (c["asleep"] and c["awake_seen"] and rec["slept"] and rec["reason"] == "key"
                             and rec["p2"] & RIG_P2 and rec["strays"] == 0 and c["key_gain"] == 1 and c["fresh"]
-                            and c["no_reset"] and c["new_ge25"] == 0 and link_ok and c["pcf_ok"] and mac_ok)
+                            and c["no_reset"] and c["new_ge25"] == 0 and link_ok and c["pcf_ok"] and mac_ok
+                            and c["recovered"])
                     head = (f"asleep {c['asleep_s']} s (PCF {pg['pcf_s']}, counted {pg['counted_s']}), "
-                            f"woke {rec['reason']}, p2 {rec['p2']:#x}, seq {pg['sleeps']}")
+                            f"woke {rec['reason']}, p2 {rec['p2']:#x}, seq {pg['sleeps']}"
+                            + (f", timed out {' '.join(pg['timed_out'])}" if pg["timed_out"] else "")
+                            + ("" if c["recovered"] else ", RECOVERY OPEN"))
                 c["ok"] = bool(good)
                 ok &= c["ok"]
                 cycles.append(c)
@@ -247,21 +272,29 @@ def main():
             stopped = f"{type(e).__name__}: {e}"
             cm.say(f"stopped: {stopped}")
         finally:
+            # Power first: stopped while the board slept, data alone cannot
+            # wake it, and the controls below would be skipped (codex,
+            # deep-sleep build review 8). On USB power the ladder never sleeps;
+            # a charge start wakes it, and a rig tap covers a full pack.
             done = [sb.attempt("relay 1 open", sb.bounded, sb.relay1, dev, False),
+                    sb.attempt("relay 2 on", sb.relay2, "on"),
                     sb.attempt("data on", ds.uhub, "on")]
-            if sb.attempt("the board on USB", ds.need_bus, 30):
+            back = sb.attempt("the board on USB", ds.need_bus, 30)
+            if not back:
+                sb.attempt("a wake tap", sb.bounded, sb.press, dev, 40, 200)
+                back = sb.attempt("the board on USB after the tap", ds.need_bus, 30)
+            if back:
                 done += [sb.attempt("arm cancelled", ds.with_dev, ds.deep, 2),
                          sb.attempt("bench sleep time cleared", ds.with_dev, ds.bench_sleep, 0),
                          sb.attempt(f"mode {mode0} put back", ds.with_dev, ds.power_op, 1, mode0),
                          sb.attempt("stage released", sb.stage, None)]
             else:
                 done.append(False)
-            done.append(sb.attempt("relay 2 on", sb.relay2, "on"))
             guard.cancel()
             caf.terminate()
             if all(done):
-                cm.say("restored: relay 1 open, data on, the arm cancelled, the bench sleep time cleared, "
-                       "the mode put back, stage released, relay 2 on")
+                cm.say("restored: relay 1 open, relay 2 on, data on, the arm cancelled, the bench sleep time "
+                       "cleared, the mode put back, stage released")
             else:
                 ok = False
                 cm.say("⚠️ cleanup incomplete: see above")
@@ -271,7 +304,9 @@ def main():
     summary = {"cycles": len(cycles), "passed": sum(1 for c in cycles if c.get("ok")), "stopped": stopped,
                "path": "ladder" if ladder else "arm" if a.arm else "awake",
                "mac_latency_ms": {"median": lat[len(lat) // 2], "max": lat[-1]} if lat else None,
-               "clock_before_abs_ms": {"median": offs[len(offs) // 2], "max": offs[-1]} if offs else None}
+               "clock_before_abs_ms": {"median": offs[len(offs) // 2], "max": offs[-1]} if offs else None,
+               "timed_out": {st: sum(1 for c in cycles if st in c.get("timed_out", []))
+                             for st in ds.RC_STEPS if any(st in c.get("timed_out", []) for c in cycles)}}
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "deep-cycles.json"), "w") as f:
         json.dump({"summary": summary, "args": vars(a), "cycles": cycles, "at": time.strftime("%Y-%m-%d %H:%M:%S")},

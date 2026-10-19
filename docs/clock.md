@@ -129,15 +129,23 @@ section 4; the code: `rtc.c`, "Deep sleep's recovery".
    (`ACQ_FULL_MAX_MS`). The dev hook op 14 sub 6 holds the next full read 1 s
    past its bracket's edge, once: it must reacquire.
 
-**The arbiter.** From the wake until the acquisition ends, every PCF
-transaction (the coarse read, the acquisition's, the write machine's) goes
+**The arbiter.** From the wake until **the whole recovery** ends
+(`sleep_recovering()`, not only the clock's part), every PCF transaction
+(the coarse read, the acquisition's, a host sync's write machine) goes
 through `rtc_fast_task`'s slot: **at most one a pass, only with the display
 bus idle and under 10 ms into the pass** (`sleep_pass_us`), with a **5 ms**
-I²C timeout instead of 20. A pass that used the bus defers its display work
+I²C timeout instead of 20. The write machine's STOP recovery takes its write
+and its check a pass each. A pass that used the bus defers its display work
 to the next (`display_defer_pass`), so the pass stays short and the waking
-burst of keys is scanned on time. The legacy whole-second SET (0x01), which
-does its I²C synchronously, is refused until the wake's acquisition ends
-(the host retries); `RTC_SET_TIME_MS` is not.
+burst of keys is scanned on time. The acquisition starts only once the gauge
+has the slept seconds (`rtc_wake_gauge_taken`), and the gauge runs only in a
+pass with no PCF transaction (`rtc_pass_used_bus`, counted from the last
+pass's end). The legacy whole-second SET (0x01), which does its I²C
+synchronously, is refused through the recovery (the host retries);
+`RTC_SET_TIME_MS` is not. The 60 s discipline is suspended through it, and
+**never snaps the clock to the PCF while a write to the PCF is pending or
+running** (in any state, not only after a sleep): until it lands, the PCF
+holds the time from before a host's sync.
 
 **What the sleep must not move** (validation 4): the awake period `P_nom` and
 the persistence candidate (`HC_RTC`). Neither learns from asleep seconds.
