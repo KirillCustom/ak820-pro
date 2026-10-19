@@ -1,0 +1,10 @@
+2026-10-19 16:29:26 mode 1: tapped and data off; waiting for the sleep (want 420 s)
+2026-10-19 16:31:15 restored
+Traceback (most recent call last):
+  File "/Users/jdlien/code/ak820-pro/scripts/ladder_sleep.py", line 202, in <module>
+    main()
+    ~~~~^^
+  File "/Users/jdlien/code/ak820-pro/scripts/ladder_sleep.py", line 115, in main
+    time.sleep(1)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
