@@ -15,8 +15,9 @@ wakes, the PLL's lock loops, whether the waking key registered, and the USB
 transceiver after the wake.
 
 --no-feed leaves the watchdog unfed while asleep: a reset ~12 s in means it
-counts in Deep-sleep. The record is then gone with the RAM; the retained
-watchdog record (`ak820 health --json`) should name site 27, deep sleep.
+counts in Deep-sleep (the record is then gone with the RAM; the retained
+watchdog record, `ak820 health --json`, names site 27); the cap reached
+unfed means it does not. Measured 19:16 10-18: it does not.
 
 Pass: entry seen in the logger; the record says it slept and why (a key on a
 press run, the cap on a --no-press run, a reset in the deep-sleep site on a
@@ -199,7 +200,13 @@ def main():
                 except (OSError, ValueError, subprocess.TimeoutExpired) as e:
                     res["watchdog_record"] = f"unread: {e}"
                 wr = res["watchdog_record"] if isinstance(res["watchdog_record"], dict) else {}
-                ok = t_asleep is not None and rec["state"] == 0 and wr.get("valid") and wr.get("site_id") == 27
+                # Either answer settles it: a reset recorded in site 27 (the
+                # watchdog counts asleep), or the cap reached unfed (it does
+                # not: 19:16 10-18, 30 s unfed, no reset).
+                reset_asleep = rec["state"] == 0 and wr.get("valid") and wr.get("site_id") == 27
+                slept_through = rec["slept"] and rec["reason"] == "cap"
+                res["watchdog_counts_asleep"] = True if reset_asleep else (False if slept_through else None)
+                ok = t_asleep is not None and (reset_asleep or slept_through)
             elif a.no_press:
                 ok = t_asleep is not None and rec["slept"] and rec["reason"] == "cap"
             else:
