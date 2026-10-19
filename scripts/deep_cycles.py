@@ -35,6 +35,11 @@ DELAY_S, CAP_S = 6, 60
 RIG_P2 = 1 << 8   # the wake rig's column, P2.8 (matrix (0,13))
 
 
+def link():
+    """The radio link's counters (HC_LINK), through the retrying open."""
+    return ds.with_dev(lambda h: sb.health.read_link(h))
+
+
 def wait_current(log, pred, after, limit_s):
     """The first time three logger samples taken after `after` satisfy pred."""
     deadline = time.time() + limit_s
@@ -49,6 +54,8 @@ def wait_current(log, pred, after, limit_s):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=50)
+    ap.add_argument("--board-only", action="store_true",
+                    help="no Mac-side timing (runs with the Mac locked): pass on the board's record alone")
     ap.add_argument("--log", default=os.path.join(HERE, "..", "history", "power-bench-2026-10-15", "power.csv"))
     ap.add_argument("--out", default=os.path.join(HERE, "..", "history", "deep-cycles-" + time.strftime("%Y%m%d-%H%M")))
     a = ap.parse_args()
@@ -56,10 +63,11 @@ def main():
         sys.exit("--n: 1-500")
     if not cm.relay_on():
         sys.exit("relay 2 is off: start from the charging state")
-    if kd.mac_locked():
-        sys.exit("the Mac is locked: the F19 listener would see nothing")
-    if subprocess.run(["pgrep", "-x", "ak820-f19-listener"], capture_output=True).returncode:
-        sys.exit("the F19 listener is not running")
+    if not a.board_only:
+        if kd.mac_locked():
+            sys.exit("the Mac is locked: the F19 listener would see nothing (or --board-only)")
+        if subprocess.run(["pgrep", "-x", "ak820-f19-listener"], capture_output=True).returncode:
+            sys.exit("the F19 listener is not running")
     if not os.path.exists(a.log):
         sys.exit("the power logger's CSV is missing")
     caf = subprocess.Popen(["caffeinate", "-d"])
@@ -83,12 +91,13 @@ def main():
             time.sleep(5)
             for i in range(a.n):
                 c = {"i": i + 1}
-                if kd.mac_locked():
+                if not a.board_only and kd.mac_locked():
                     cm.say("the Mac locked: stopping (the listener cannot see past the lock screen)")
                     c["stopped"] = "mac locked"
                     cycles.append(c)
                     ok = False
                     break
+                l0 = link()
                 ds.with_dev(ds.deep, 1, DELAY_S, CAP_S, False)
                 t_arm = time.time()
                 ds.uhub("off")
@@ -110,15 +119,19 @@ def main():
                 ds.need_bus(30)
                 rec = ds.with_dev(ds.deep)
                 c["record"] = rec
+                l1 = link()
+                c["link"] = {k: l1[k] - l0[k] for k in ("sent", "timeouts", "giveups", "replaced", "queue_full",
+                                                        "uart_overrun", "uart_framing", "uart_parity")}
+                mac_ok = a.board_only or (c["mac_latency_ms"] is not None and c["mac_latency_ms"] < 1000)
                 good = (c["asleep"] and rec["slept"] and rec["reason"] == "key" and rec["p2"] & RIG_P2
-                        and rec["key_gain"] >= 1 and rec["strays"] == 0
-                        and c["mac_latency_ms"] is not None and c["mac_latency_ms"] < 1000)
+                        and rec["key_gain"] >= 1 and rec["strays"] == 0 and c["link"]["giveups"] == 0 and mac_ok)
                 c["ok"] = bool(good)
                 ok &= c["ok"]
                 cycles.append(c)
                 cm.say(f"cycle {i + 1:3d}: asleep {c['asleep']}, {rec['secs']:2d} s, woke {rec['reason']}, "
                        f"p2 {rec['p2']:#x}, key {rec['key_gain']}, Mac "
                        + (f"{c['mac_latency_ms']:.0f} ms" if c["mac_latency_ms"] is not None else "nothing")
+                       + f", link sent {c['link']['sent']} timeouts {c['link']['timeouts']} giveups {c['link']['giveups']}"
                        + f"  {'ok' if c['ok'] else 'FAIL'}")
         finally:
             done = [sb.attempt("relay 1 open", sb.bounded, sb.relay1, dev, False),
