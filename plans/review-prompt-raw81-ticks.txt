@@ -1,0 +1,15 @@
+You are reviewing a small firmware delta before it is flashed (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2). Read only files inside the repository you were started in (the ak820-pro checkout); do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
+
+Context: plans/RAWHID-24G-PLAN.md ("The drain bound"); your reviews of ea73efb2's lineage (plans/review-codex-raw81-drain-2026-10-19.md and its verify). Measured on gremlin's board with ea73efb2 flashed: 0 of 10 echoes; every collection hit its 40 ms lifetime and was quarantined, while the RX tap showed all 34 bytes of each 81 read. The cause found: stage 1 stamps rx_last_byte_at = timer_read() for every byte, and ea73efb2's budget check calls timer_elapsed() every iteration; QMK's timer_read32() (platforms/chibios/timer.c) converts with TIME_I2MS, which on this M0 compiles to __aeabi_lmul + __aeabi_uldivmod (seen in the disassembly), ~250 us a byte at the row ISR's load. That is also what made 7387d189's drain take 8-9 ms in one pass.
+
+The delta, on branch gremlin/raw81:
+  git -C qmk_firmware-ak820pro diff ea73efb2 79245590
+File: qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c. The per-byte stamp and the per-iteration budget check use chVTGetSystemTimeX() / chTimeDiffX() against TIME_MS2I() constants; the once-per-collection lifetime keeps timer_read(). The daily build is unchanged.
+
+Check, citing file:line:
+1. The tick arithmetic: systime_t's width on this port (CH_CFG_ST_RESOLUTION, CH_CFG_ST_FREQUENCY, the SN32 ST LLD), chTimeDiffX's wrap behaviour, that TIME_MS2I(2) and TIME_MS2I(5) fold to constants and are nonzero and correct at the real frequency, and the claim that a stale stamp (older than one wrap) can only under-measure silence.
+2. That chVTGetSystemTimeX() is safe and cheap from the main loop on this port (tickless? what does it read?), and that nothing else per byte in the collector or the window still calls timer_read()/timer_elapsed().
+3. Whether the silence rule, quarantine exit and boundary logic are otherwise unchanged in meaning.
+4. Anything else that blocks flashing this dev build for the echo measurements.
+
+Rank findings must-fix / should-fix / note; be brief; say plainly whether anything blocks the flash.
