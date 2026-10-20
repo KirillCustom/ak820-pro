@@ -9,7 +9,9 @@ sleep off; arm (op 14 sub 4: a 15 s delay, the cap); USB data off
 (`uhubctl`, so USB is not configured, one of the sleep's preconditions);
 watch the logger for the current to fall (asleep: entry confirmed, or the
 run stops there); --wait s after that the wake rig presses F19 once (unless
---no-press: the cap wakes it); then data back on, wait for the board, and
+--no-press: the cap wakes it); --hold-after s later (5 by default; longer
+to watch the daemon's --radio pick the board back up, its status file's
+radio fields logged while asleep and after the press) data back on, wait for the board, and
 read the record: why it woke, which column pins, seconds asleep, stray
 wakes, the PLL's lock loops, whether the waking key registered, and the USB
 transceiver after the wake.
@@ -49,7 +51,27 @@ V_PCF, V_ACQ_DONE, V_USB_SOF, V_REATTACH, V_USB_20S, V_PLL_CEIL, V_SLEPT, V_BOUN
 # The recovery's steps (SLEEP_RC_*): the record's last byte names those that timed out
 RC_STEPS = ["input", "clock", "gauge", "radio", "supply", "usb", "display"]
 AK820 = os.path.expanduser("~/Library/Application Support/ak820pro/bin/ak820")
+STATUS = os.path.expanduser("~/Library/Application Support/ak820pro/ak820-agent.status")
 DELAY_S = 15
+
+
+def watch_radio(secs, log):
+    """Wait secs, noting each change in the daemon's radio fields (its --radio
+    runs on its own media tick, so this only reads the status file)."""
+    end, last = time.time() + secs, None
+    while True:
+        try:
+            with open(STATUS) as f:
+                kv = dict(ln.rstrip("\n").split("=", 1) for ln in f if "=" in ln)
+        except OSError:
+            kv = {}
+        cur = {k: kv.get(k) for k in ("transport", "radio", "radio_pushes", "radio_silent")}
+        if cur != last:
+            log.append({"t": round(time.time(), 2), **cur})
+            last = cur
+        if time.time() >= end:
+            return
+        time.sleep(min(0.5, max(0.0, end - time.time())))
 
 
 def uhub(state):
@@ -264,6 +286,8 @@ def main():
     ap.add_argument("--no-feed", action="store_true")
     ap.add_argument("--cap", type=int, default=120)
     ap.add_argument("--preset", type=int, default=0, help="counted seconds to start from (the widths' test)")
+    ap.add_argument("--hold-after", type=float, default=5.0,
+                    help="s the data stays off after the press (the daemon's radio picking the board back up)")
     ap.add_argument("--log", default=os.path.join(HERE, "..", "history", "power-bench-2026-10-15", "power.csv"))
     ap.add_argument("--out", default=os.path.join(HERE, "..", "history", "deep-sleep-" + time.strftime("%Y%m%d-%H%M")))
     a = ap.parse_args()
@@ -327,12 +351,14 @@ def main():
                 time.sleep(a.cap + 10 if a.no_press and not a.no_feed else 25)
             else:
                 cm.say(f"asleep (the current fell); pressing F19 in {a.wait:.0f} s")
-                time.sleep(a.wait)
+                res["radio_asleep"] = []
+                watch_radio(a.wait, res["radio_asleep"])
                 asleep = [c for t, c in tail_ma(a.log, int(a.wait) - 2) if t > t_asleep]
                 res["asleep_ma"] = sum(asleep) / len(asleep) if asleep else None
                 res["press_at"] = time.time()
                 sb.press(dev, 40, 200)   # a realistic tap, not a long hold (codex)
-                time.sleep(5)
+                res["radio_after_press"] = []
+                watch_radio(a.hold_after, res["radio_after_press"])
             cm.say("data on")
             uhub("on")
             need_bus(30)
