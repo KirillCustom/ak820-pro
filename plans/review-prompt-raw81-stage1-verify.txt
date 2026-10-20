@@ -1,0 +1,9 @@
+You are verifying fixes to a firmware delta you reviewed, before it is flashed (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2). Read only files inside the repository you were started in (the ak820-pro checkout); do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
+
+Your review of stage 1 (raw HID over the 2.4G dongle, the echo) is plans/review-codex-raw81-stage1-2026-10-19.md: one must-fix and three should-fixes, against commit 5dbca738. The fixes are one commit on top, on branch gremlin/raw81:
+  git -C qmk_firmware-ak820pro diff 5dbca738 7387d189
+File: qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c. The plan is plans/RAWHID-24G-PLAN.md. The daily build is again unchanged (no new symbols; the same text/data/bss as de5450e487's daily).
+
+For each of your four findings, say whether the fix closes it, citing file:line, and look for anything the fixes broke: the LOCKCHAN_LINK_LOST macro now also calls r81_link_lost() at every one of its sites (check each site is safe with a do/while statement and with a quarantine started there); the window cleared at a collection's start and at a quarantine's end; r81_tainted's lifetime (set on any UART error, cleared only by silence or a reset). Your note on the unbounded sdWrite and your measurement-limit notes stand as accepted limits of a dev experiment.
+
+Rank anything new must-fix / should-fix / note; be brief. Say plainly whether anything blocks flashing this dev build for the stage-1 echo measurements.
