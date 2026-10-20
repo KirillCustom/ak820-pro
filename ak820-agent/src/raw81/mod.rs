@@ -71,6 +71,46 @@ pub fn envelope(session: u8, seq: u16, inner: &[u8]) -> Result<[u8; PAYLOAD], En
     Ok(out)
 }
 
+/// Bytes an older board's 3-byte window could act on: a frame type
+/// (`5A`/`5B`/`5C`) or the start of the `61 0D 0A` ACK. A frame without
+/// them can match nothing in any alignment (`plans/RAWHID-24G-DAEMON-PLAN.md`,
+/// R2-1).
+pub const WINDOW_BYTES: [u8; 4] = [0x5A, 0x5B, 0x5C, 0x61];
+
+/// The probe's inner command: the health read (`HC_GET`), on every stage-2
+/// board's allow-list.
+pub const PROBE_INNER: [u8; 3] = [0x07, 0x13, 0x01];
+
+/// The sum the module puts after an `81` frame's 32 bytes.
+pub fn wire_sum(payload: &[u8; PAYLOAD]) -> u8 {
+    payload.iter().fold(0x81u8, |s, &b| s.wrapping_add(b))
+}
+
+/// Is this session id usable for a probe (and so for the radio at all)?
+pub fn probe_safe_session(session: u8) -> bool {
+    session != 0 && session != 0x81 && !WINDOW_BYTES.contains(&session)
+}
+
+/// The probe for `session`, at the first seq from `from` (counting up, at most
+/// `tries` of them) whose whole wire frame -- the `81`, the 32 bytes, and the
+/// module's sum -- holds no [`WINDOW_BYTES`]. Returns the seq used and the
+/// payload, or `None` if the session itself is unusable or no seq in range
+/// qualifies (vanishingly rare: each candidate fails with p ~ 1 - (252/256)^7).
+pub fn probe(session: u8, from: u16, tries: u16) -> Option<(u16, [u8; PAYLOAD])> {
+    if !probe_safe_session(session) {
+        return None;
+    }
+    let mut seq = from;
+    for _ in 0..tries {
+        let p = envelope(session, seq, &PROBE_INNER).ok()?;
+        if !p.iter().chain(std::iter::once(&wire_sum(&p))).any(|b| WINDOW_BYTES.contains(b)) {
+            return Some((seq, p));
+        }
+        seq = seq.wrapping_add(1);
+    }
+    None
+}
+
 /// A well-formed receipt's fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Receipt {
@@ -384,6 +424,65 @@ mod tests {
         x.feed(&unh);
         x.feed(&receipt(5, 7, ST_OK, Some(&unh), 0));
         assert!(matches!(x.outcome(), Some(Outcome::Ok(r)) if r[0] == 0xFF));
+    }
+
+    /// The window parser's rules (ch582f_ajazz.c, every build): an ACK is
+    /// `61 0D 0A`; a frame is `5A|5B|5C <d> <type + d>`. A model of it, run
+    /// over the probe's whole wire frame from a cleared window.
+    fn window_matches(bytes: &[u8]) -> usize {
+        let (mut b2, mut b1, mut b0) = (0u8, 0u8, 0u8);
+        let mut n = 0;
+        for &c in bytes {
+            b2 = b1;
+            b1 = b0;
+            b0 = c;
+            let ack = (b2, b1, b0) == (0x61, 0x0D, 0x0A);
+            let frame = matches!(b2, 0x5A | 0x5B | 0x5C) && b0 == b2.wrapping_add(b1);
+            if ack || frame {
+                n += 1;
+                b2 = 0;
+                b1 = 0;
+                b0 = 0;
+            }
+        }
+        n
+    }
+
+    #[test]
+    fn every_probe_is_inert_to_an_older_board() {
+        let mut built = 0;
+        for session in 1..=255u8 {
+            for from in [0u16, 1, 0x1234, 0x7FFF, 0xFFF0] {
+                let Some((seq, p)) = probe(session, from, 64) else {
+                    assert!(!probe_safe_session(session), "session {session} from {from}");
+                    continue;
+                };
+                let mut wire = vec![0x81];
+                wire.extend_from_slice(&p);
+                wire.push(wire_sum(&p));
+                assert!(!wire.iter().any(|b| WINDOW_BYTES.contains(b)), "{session} {seq}");
+                assert_eq!(window_matches(&wire), 0, "{session} {seq}");
+                // And a stage-2 board reads it as a fresh health read.
+                assert_eq!(&p[HEAD..HEAD + 3], &PROBE_INNER);
+                assert_eq!(crc16(&p[HEAD..], crc16(&p[..4], 0xFFFF)), u16::from_be_bytes([p[4], p[5]]));
+                built += 1;
+            }
+        }
+        assert!(built > 1000, "{built}");
+    }
+
+    #[test]
+    fn unusable_probe_sessions() {
+        for s in [0u8, 0x5A, 0x5B, 0x5C, 0x61, 0x81] {
+            assert!(probe(s, 0, 1000).is_none(), "{s:#x}");
+        }
+    }
+
+    #[test]
+    fn the_model_does_match_what_it_should() {
+        assert_eq!(window_matches(&[0x5C, 0x25, 0x81]), 1);
+        assert_eq!(window_matches(&[0x61, 0x0D, 0x0A]), 1);
+        assert_eq!(window_matches(&[0x5A, 0x01, 0x5B, 0x00, 0x5B]), 1);
     }
 
     #[test]
