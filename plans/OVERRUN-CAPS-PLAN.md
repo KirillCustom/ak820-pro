@@ -1,8 +1,9 @@
 # The link's UART overruns and the Caps repaint: a plan to review
 
-Status: **revision 2 (10-19), after codex's plan review**
-([`review-codex-overrun-caps-plan-2026-10-19.md`](review-codex-overrun-caps-plan-2026-10-19.md);
-every finding's disposition is at the end). Nothing is built.
+Status: **revision 3 (10-19), after codex's plan review and its verify**
+([`review-codex-overrun-caps-plan-2026-10-19.md`](review-codex-overrun-caps-plan-2026-10-19.md),
+[`review-codex-overrun-caps-plan-verify-2026-10-19.md`](review-codex-overrun-caps-plan-verify-2026-10-19.md);
+both reviews' dispositions are at the end). Nothing is built.
 
 Two independent items for one `dev` flash, both to land before R5 (a 4-5
 day drain wants a build that stays put: a flash resets the gauge's state).
@@ -22,12 +23,15 @@ overruns on the radio link".
   No framing or parity errors in any of them. It counts **polls that saw the
   flag**, not lost bytes (below).
 - **A loss under load with no known PCF cause.** The 300-echo run
-  (`history/raw81-echo-20261019-mac/`) lost one byte in ~6 s of back-to-back
-  traffic, 22-28 s after a reset. Revision 1 put that loss on the boot
-  acquisition; codex showed it runs earlier (the seed in init, the
-  acquisition after the splash with a 1.5 s deadline). So nothing known
-  touched the PCF then, unless the 60 s reference check ran before SOF
-  qualified. **Unexplained, and a hint that the PCF is not the only cause.**
+  (`history/raw81-echo-20261019-mac/`) had one tainted echo (an overrun
+  under its collection) in ~6 s of back-to-back traffic, 22-28 s after a
+  reset.
+  - **What it was not:** revision 1 put it on the boot acquisition, but
+    codex showed that runs earlier (the seed in init, the acquisition after
+    the splash with a 1.5 s deadline). Nor can the 60 s reference check
+    explain it: its counter starts at zero at boot (`rtc.c:451, 1854`).
+  - **Unexplained,** a host sync included as a possibility, and a hint that
+    the PCF is not the only cause.
 - **The longest PCF call since the 10-19 flash: 101 ILRC cycles, ~3.1 ms**
   (`i2c_max_cycles`).
   - **What it includes:** wall time around the API call, interrupts outside
@@ -113,47 +117,106 @@ already part full. That is possible at a wake or a reconnect, and unshown.
 
 ### Step 1: measure (in the `dev` build, under `AK820_DEV_HOOKS`)
 
-1. **What causes each overrun, recorded at the moment it happens.**
-   - **Two counters in the serial LLD's dev hook** (chibios-contrib), one
-     for hardware `LS.OE` and one for an input queue that refused a byte.
-     Today the two share one flag.
+1. **The context of each overrun, recorded at the moment it is seen.**
+   - **Two counters in the serial LLD's dev hook** (chibios-contrib):
+     - **OE observations:** counted from the already-read `ls` at the site
+       that reports OE;
+     - **refused bytes:** counted on the failed `iqPutI()` branch
+       (`hal_serial_lld.c:249, 293`).
+
+     There are no extra LS or RB reads, and every existing flag and its
+     consumers stay as they are. Today both share one flag.
+   - **Its known gaps:** the BI branch passes only BI, and the drain's
+     re-reads of LS don't all pass through `set_error()`, so these counters
+     inherit that coverage.
    - **What was running, read by the UART ISR when it sees OE.** Main-loop
      code sets bits in a global activity mask around each candidate:
      - a PCF transaction, with its kind and lock mode;
-     - a flash program or erase;
+     - a flash program;
+     - a flash erase;
      - a sleep entry or exit.
+   - **What the mask is:** the context in which an overrun was observed,
+     **not an exclusive cause** (codex's verify, finding 5).
+     - **A PCF transaction:** an already-pending UART interrupt runs at
+       hal_i2c's unlock, inside the call, so the bit is still set. In byte
+       mode it runs in the gaps, also with the bit set. A USB or SysTick
+       delay in such a gap is indistinguishable from the PCF's own mask.
+     - **A flash program:** each busy window restores PRIMASK before the
+       program call returns, so the bit is set when the ISR runs.
+     - **A flash erase:** nothing is masked. The fetch stalls until the
+       erase ends, and the bit stays set through the delayed service.
+   - **Each ring entry** carries the context mask with the masked span and
+     the longest USB and SysTick handlers since the last entry. So "several
+     contributors" and "unknown" stay readable.
+   - **Sleep is accounted apart.** The deep sleep disables RX and discards
+     the FIFO, its status and the queue before it unlocks (`sleep.c:335,
+     468`), so an ISR afterward cannot see what was lost.
+     - **What is recorded:** the count of RX-disabled intervals and their
+       total length.
+     - **What is not claimed:** an OE seen after RX comes back describes
+       the wake, not the sleep.
+   - **A 32-entry ring with a sequence number,** so overwrites are counted.
+     The per-context counts are kept apart from the ring and survive its
+     overwrites.
+   - **Nothing new consumes `SD_OVERRUN_ERROR`,** so the raw81 collector's
+     taint logic and `uart_err_poll()` are untouched.
+2. **How long interrupts are masked, timed by the free-running CT16B5.**
+   - **The timer:** 187,500 Hz, 16 bits, ~5.33 µs a tick, wrapping at
+     349.5 ms (`chconf.h:24`, `hal_st_lld.h:147`). It counts while masked.
+     Spans are unsigned modular differences.
+   - **Where the stamps go:**
+     - each masked span is stamped before its unlock;
+     - its length is published before the UART ISR can read it;
+     - the spans covered: the first START chunk, each byte, the final STOP,
+       and every error exit.
 
-     The ISR first runs as the mask lifts, while the bit is still set. So
-     the entry names the cause directly, not by correlation across a poll.
-   - **A 32-entry ring** of (uptime, cause mask, PCF kind, the masked span),
-     plus a count for each cause and for none.
-   - **Nothing new consumes `SD_OVERRUN_ERROR`.** The ring reads the ISR's
-     own state, so the raw81 collector's taint logic and `uart_err_poll()`
-     are untouched.
-2. **How long interrupts are masked, timed by the free-running CT16B5**
-   (`hal_st_lld.h:147`; it counts while masked):
-   - for each PCF kind: count, failures, the longest masked span, the
-     longest whole call, and how many masked spans passed 1.0 and 1.4 ms;
-   - in byte mode, each chunk, timed by a dev hook in the LLD;
-   - the longest USB ISR and the longest SysTick handler, from dev hooks at
-     their entry and exit. If either stays under ~1 ms, it is excluded.
+     The whole-call time is measured separately.
+   - **What is kept, for each PCF kind:** count, failures, the longest
+     masked span, the longest whole call, and how many masked spans passed
+     1.0 and 1.4 ms.
+   - **USB and SysTick:** the longest handler of each, from dev hooks at
+     their entry and exit (`hal_usb_lld.c:423`, `hal_st_lld.c:120`).
+     - **How:** the hooks read the counter directly; `timer_read32()`
+       takes a lock.
+   - **What a low maximum does not show:** a handler's longest run under
+     1 ms excludes nothing. Consecutive delays and a part-full FIFO
+     matter, and entry stamps miss the time spent waiting to enter.
+   - **The limits:**
+     - **Deep sleep:** CT16B5 stops in deep sleep, so it cannot time the
+       sleep's PRIMASK-held span or all of the clock's restoration.
+     - **Long runs:** a modular span cannot bound a handler that runs past
+       one wrap, or never returns.
 3. **A burst of PCF reads, on demand** (an HC_DEVHOOK op): N 7-byte reads
-   into a scratch buffer, one per pass.
+   into a scratch buffer, one per pass at most.
    - **The spacing** is random, 40-80 ms, so it cannot phase-lock to the
      echo or the loop.
-   - **The admission** is the recovery's: queue empty, DMA idle, the pass
-     under 10 ms (`rtc.c:1620, 1806-1814`), with the pass's display work
-     deferred.
+   - **The admission** is the recovery's: queue empty (both queues, part 2),
+     DMA idle, the pass under 10 ms (`rtc.c:1620, 1806-1814`), with the
+     pass's display work deferred.
+   - **The timeout:** each read sets the short timeout explicitly, the one
+     chosen in step 2 (5 or 10 ms). `pcf_read_raw()` would otherwise use
+     20 ms (`rtc.c:32`).
+   - **The budget:** the pass's measured total includes the stop/start
+     recovery (step 2).
    - **It yields to:**
      - `pcf_pending`;
      - a non-idle `ps_state`;
      - an acquisition, its pending start included;
      - the whole sleep recovery.
-   - **One transaction a pass at most:** no `rtc_task()` reference check in
-     the same pass.
-   - **What it reports:** reads done and the exposure time. A successful
-     read resets `pcf_avail_fail`, an observer effect, so the report says
-     so.
+   - **One PCF transaction a pass, across the whole pass,** using the
+     existing `pcf_xfers`/`pcf_xfers_mark` accounting:
+     - the burst skips a pass whose earlier handlers already used the bus;
+     - the `rtc_task()` reference check is suppressed after a burst read;
+     - while a burst runs, the deep sleep is blocked as one of
+       `ds_blocked`'s reasons. `rtc_sleep_prepare()`'s pass-end read
+       (`sleep.c:823`) has no "bus already used" test.
+   - **What it reports:**
+     - reads done;
+     - the exposure time;
+     - the intervals with no echo in flight.
+
+     A successful read resets `pcf_avail_fail`, an observer effect, so the
+     report says so.
 4. **The lock's span, at run time:** per transaction (as today) or per
    byte (step 2).
    - **This build boots per transaction** (codex), and the hook switches it.
@@ -170,9 +233,18 @@ its burst completes, plus margin.
 | (c) | per byte | 1000 reads | whether the fix prevents them |
 | (d) | per byte | none | the fix's own control |
 
-- **What is compared:** the hardware-OE deltas and the ring's causes. Echo
-  losses alone are not enough, since the collector's 15 ms lifetime loses
-  echoes without any overrun.
+- **What is compared:** the OE-observation deltas and the ring's contexts.
+  Echo losses alone are not enough, since the collector's 15 ms lifetime
+  loses echoes without any overrun.
+- **The exposure, recorded per arm,** since the script has one request in
+  flight and waits up to 250 ms on a loss, leaving PCF reads with no load
+  behind them:
+  - requests sent;
+  - the gaps with nothing in flight;
+  - reads completed;
+  - the arm's duration.
+- **Each arm twice,** in the order a b c d d c b a, so drift and the
+  exposure's differences show.
 - **The same conditions in every arm.**
   - **The daemon:** the same policy in every arm. The cable's raw-HID handle
     is released after each hook command, so the daemon's syncs proceed.
@@ -180,8 +252,14 @@ its burst completes, plus margin.
   PCF reads can cause losses under an injected load, and whether byte
   preemption prevents them. It does not show what causes the historical
   rate.
-- **The historical rate:** the night's base rate after the A/B, read from
-  the ring and the counts, is what answers that.
+- **The historical rate:** two measurements.
+  - **The first night, in transaction mode** (as the board boots): the
+    ring's contexts for the old rate, as evidence, not proof of cause.
+  - **Then the boot default changes to byte mode,** by a second small flash
+    once the A/B and the night pass. A reset would otherwise put the
+    runtime switch back.
+  - **R5's days in byte mode** give the rate after the change, and the
+    contexts of whatever remains.
 
 ### Step 2: the fix: release the lock between bytes
 
@@ -191,7 +269,8 @@ its burst completes, plus margin.
 
 ```c
 #if SW_I2C_BYTE_PREEMPT
-  osalSysUnlock();   /* let pending interrupts run: UART2's FIFO lasts ~1.4 ms */
+  osalSysUnlock();   /* let pending interrupts run: UART2's FIFO lasts
+                      * ~1.4 ms if it is 16 bytes (its depth is unstated) */
   osalSysLock();
 #endif
 ```
@@ -200,9 +279,24 @@ its burst completes, plus margin.
 it is gated at run time.
 
 **With two repairs, in every build:**
-- **After a `MSG_TIMEOUT`,** rtc.c does an `i2cStop()` and an `i2cStart()`
-  before the next transaction, so the driver leaves `I2C_LOCKED`.
-- **`i2c_write_restart()` returns `i2c_write_start()`'s error.**
+- **After a failed transaction,** rtc.c does an `i2cStop()` and an
+  `i2cStart(&I2CD1, &i2ccfg)` before the next one, so the driver leaves
+  `I2C_LOCKED`.
+  - **Which failures:** `CHECK_ERROR` turns every negative error into
+    `MSG_TIMEOUT` (fallback LLD `:40`), so a NACK or a lost arbitration gets
+    the recovery too, not only a deadline.
+  - **The config:** the persistent `&i2ccfg`, since `i2cStop()` clears
+    `i2cp->config`.
+  - **What it doesn't do:** count as a success or retry at once. The
+    failure's result and the existing retry and back-off state stand.
+  - **What it does to the pins** (codex's verify): the stop changes none;
+    the start sets SDA and SCL high as push-pull outputs.
+  - **What it is:** a driver-state repair, not a bus clear. It sends no
+    clocks to free a stuck line and does not verify a STOP.
+  - **Why it is safe:** both calls take their own locks, and every call
+    site is main-loop code after hal_i2c has unlocked.
+- **`i2c_write_restart()` returns `i2c_write_start()`'s error,** so a failed
+  repeated START no longer falls through to another byte.
 
 **Why it is safe** (codex confirmed on the normal path):
 - **A slave waits at a byte boundary.** START, every data bit and every
@@ -259,7 +353,7 @@ it is gated at run time.
     - whether the bracket succeeds, and how wide it is;
     - the daemon's residuals.
 
-**Expected:**
+**Expected, on a working bus:**
 - **Each mask lasts about a byte.** Step 1 measures it.
 - **The row ISR is never held for ~3 ms.**
 
@@ -294,29 +388,55 @@ the mark does not isolate the share that CAPS took.
      wait ~44 pump turns, and the padlock would lead it by hundreds of ms.
    - **What stays synchronous:** the padlock (`fill_rect`s) and the clears
      (≤ 40x23 px).
-2. **A queue full is visible, never silent.** A glyph that doesn't fit is
-   counted and leaves its `shown_*` false, so it paints again.
-   - **The text queue gets its 64 → 74 too** (codex's count: one batch of
-     19 + 21 text, 24 clock, 10 lock), with the same rule.
-3. **The band is forgotten only where it is really blank.** `locks_forget()`
-   goes with `shadow_invalidate()` on the discard and full-clear paths.
+2. **A label is queued whole or not at all.**
+   - **The rule:** before queuing a label, `draw_locks_diff()` checks the
+     lock queue has room for every glyph.
+     - **No room:** nothing is queued, the previous `shown_*` stands, and a
+       dirty flag forces a reconcile on the next tick, even if the wanted
+       state has meanwhile gone off.
+   - **Why:** a partial queue (C and A in, P and S refused) with `shown_caps`
+     left false would strand C and A if Caps then went off. False to false
+     skips the clear (codex's verify, finding 2).
+   - **The capacity:** ten entries hold one complete batch for the band
+     (4 + 3 + 3). Housekeeping waits for both queues, so a second batch
+     never builds up behind a first.
+   - **The text queue stays at 64** (the separate lock queue needs no room
+     there).
+   - **The text gets a real retry:**
+     - `queue_line()` commits its shadow only after every glyph is in;
+     - `draw_text_slot()` clears `text_dirty` only after a successful
+       queue (`display.c:2914, 2960`);
+     - an overflow is counted.
+3. **The band is forgotten only where it is really blank.**
+   - **Where:** `locks_forget()` is called beside `shadow_invalidate()` at
+     the discard and full-clear sites.
+   - **Not inside `shadow_invalidate()` itself:** forced text rendering
+     calls it after other parts of the dashboard may already have painted
+     (`display.c:2976`).
    - **Never on a reset after the queue completes** (codex's must-fix 1): a
      `gq_reset()` after the last glyph would otherwise forget a CAPS on the
      screen, and a Caps-off would then skip its clear.
-4. **The Fn+D restore alternates in the pump** (codex's must-fix 2). Today,
-   while `debug_exit_step` is set, the pump runs a stage and returns without
-   pumping (`display.c:1355, 2809`).
-   - **The new order:** stage 1 still discards before its clear. After it,
-     each pass either runs one restore stage or submits one queued glyph,
-     lock queue first.
-   - **Stage 5 advances only when both queues are empty.**
-   - **`pass_deferred` stays above both.**
-5. **Ordering in normal use holds as today.**
-   - **Housekeeping waits for the queues:** it returns while either one is
-     pending (`display.c:3182`), so a Caps-off clear cannot run before a
-     queued CAPS has painted.
-   - **The bus serializes the rest:** a synchronous clear waits for the
-     DMA in flight.
+4. **The Fn+D restore lets queued glyphs go first** (codex's must-fix 2 and
+   verify finding 1). Today, while `debug_exit_step` is set, the pump runs a
+   stage and returns without pumping (`display.c:1355, 2809`). The new
+   order, each pass:
+   - **`pass_deferred` stays above everything.**
+   - **Stage 1 discards both queues** before its clear.
+   - **After stage 1, a pending glyph wins:** if either queue holds one, the
+     pump submits one, lock queue first, and returns.
+   - **A restore stage runs only with both queues empty,** so a later stage
+     never clears a label whose glyphs are still queued.
+5. **Every place that asks "is the display idle" counts both queues:**
+   - housekeeping's pending gate (`display.c:3182`);
+   - `display_bus_idle()` (`display.c:2748`), which the PCF's and the deep
+     sleep's admissions use;
+   - `display_queue_discard()` (`display.c:2845`);
+   - the wake repaint's admission and completion (`display.c:3111`,
+     `sleep.c:245`).
+
+   **So ordering holds in normal use.** A Caps-off clear waits for a queued
+   CAPS to paint, and the clear itself waits for the DMA in flight
+   (`lcd_bus.c:207`).
    - **No other band touches it:** the lock band (y 82-104) overlaps no
      text or clock band (codex checked).
 
@@ -325,8 +445,9 @@ the mark does not isolate the share that CAPS took.
   later, ahead of any queued text.
 - **The tick's pass:** the label's ~10 ms leaves it.
 
-**Not claimed:** the animation's resume still does a synchronous
-full-screen clear, so this is not a guarantee for every display path.
+**Not claimed: a 25 ms guarantee for every pass.**
+- **The animation's resume** still does a synchronous full-screen clear.
+- **The normal PCF paths** keep their 20 ms timeout on a failing bus.
 
 **Test, with a track playing** (`docs/display.md`):
 - `scripts/fnb_caps_test.py`'s control, ~600 toggles;
@@ -337,12 +458,19 @@ full-screen clear, so this is not a guarantee for every display path.
 - a sleep's recovery;
 - an animation's resume.
 
-Pass: the pixels right after each, no pass of 25 ms or more, and
-`blit_gap_max_ms` well under 22.
+To pass:
+- the right pixels after each;
+- no pass of 25 ms or more;
+- `blit_gap_max_ms` well under 22.
+
+Alongside, for the whole build: the link's retries, give-ups and replaced
+reports, and every waking key delivered.
 
 ## Build, review and order
 
-1. **Codex's verify** of this revision.
+1. **Codex's verify** of revision 2 is done (dispositions below); revision 3
+   goes into the build without another plan round. The remaining risk is in
+   the code, and codex reviews the diff.
 2. **One `dev` build,** in three groups:
    - **Diagnostics, dev only, under `AK820_DEV_HOOKS`:** the measurement,
      the burst, the ring and the switch.
@@ -355,8 +483,9 @@ Pass: the pixels right after each, no pass of 25 ms or more, and
      diagnostic symbol is present, and that the byte preemption is compiled
      in.
 3. **Codex on the diff**, then the flash with JD's go.
-4. **The A/B** (no hands), then the night's attribution.
-5. **R5 starts on this build,** unless the A/B sends step 2 back.
+4. **The A/B** (no hands), then the night in transaction mode.
+5. **A second small flash: byte mode as the boot default,** if the A/B and
+   the night pass. R5 starts on it, unless the A/B sends step 2 back.
 
 ## Codex's plan review (10-19): dispositions
 
@@ -382,3 +511,22 @@ Pass: the pixels right after each, no pass of 25 ms or more, and
 | 18 | note: `GQ_MAX` 64 → 74; overflow must be visible | **Taken.** Caps item 2. |
 | 19 | note: per byte as the default only after the conditions; boot per transaction and switch by hook | **Taken.** Step 1 item 4. |
 | 20 | note: diagnostics under `AK820_DEV_HOOKS`; extend `build.sh`'s checks | **Taken.** Build step 2. |
+
+## Codex's verify (10-19): dispositions
+
+Its verdicts on the table above: 1, 7, 9, 10, 14, 15, 17, 19 and 20
+closed; the rest partial or mostly closed, for the reasons below.
+
+| # | finding | disposition |
+|---|---|---|
+| V1 | must: stage-and-glyph alternation can still clear a label whose glyphs are queued | **Taken.** Caps item 4: stage 1 discards both queues; after it, a pending glyph wins, and a stage runs only with both queues empty. |
+| V2 | must: leaving `shown_*` false after a partial enqueue strands glyphs; text has no retry | **Taken.** Caps item 2: a label goes in whole or not at all, with a dirty flag forcing a reconcile; `queue_line()`'s shadow and `text_dirty` commit only after a full insert. |
+| V3 | must: `display_bus_idle()`, `display_queue_discard()` and the wake repaint must count both queues; `locks_forget()` beside, not inside, `shadow_invalidate()` | **Taken.** Caps items 3 and 5. |
+| V4 | must: the burst must select the short timeout and keep one transaction across the whole pass, `rtc_sleep_prepare()`'s read included | **Taken.** Step 1 item 3: an explicit timeout, `pcf_xfers_mark` across the pass, the reference check suppressed, and the deep sleep blocked while a burst runs. |
+| V5 | must: the activity mask is context, not an exclusive cause; sleep is separate; a sub-1 ms maximum excludes nothing | **Taken.** Step 1 item 1: each case's timing stated; ring entries carry the USB and SysTick maxima; sleep's RX-disabled intervals counted apart; the exclusion rule removed. |
+| V6 | should: CT16B5's boundaries, wrap, and sleep limits | **Taken.** Step 1 item 2. |
+| V7 | should: exposure after a loss's 250 ms wait; the night after arm (d) measures the new rate, not the old | **Taken.** Exposure recorded per arm, each arm twice; the night runs in transaction mode, then byte mode becomes the boot default and R5 measures the rate after. |
+| V8 | note: the stop/start repair is safe; use `&i2ccfg`; it repairs the state, not the bus; keep the failure's result | **Taken.** Step 2's repairs, as stated. |
+| V9 | note: separate OE and refused-byte counts are feasible at the existing sites | **Taken.** Step 1 item 1; called OE observations, with the LLD's coverage gaps stated. |
+| V10 | small: 64 + 10, not 74; the FIFO comment; the healthy-bus qualifier; one tainted echo, not one byte; the 60 s check cannot explain 22-28 s | **Taken.** All five. |
+| V11 | closing: no universal 25 ms guarantee; validate retries, give-ups, replacement and the waking key | **Taken.** Part 2's "Not claimed" and its test. |
