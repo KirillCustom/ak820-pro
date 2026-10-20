@@ -558,7 +558,7 @@ and the Fn+D deviation correct.
 
 | # | finding | disposition |
 |---|---|---|
-| 1 | must: the burst's last read drops `burst_active()`, so the reference check or the pre-sleep read could follow it in the same pass | **Taken** (`a6d0bbb` below): both skip a pass with `rtc_pass_used_bus()`, in every build (the check stays due; the sleep waits a pass). |
+| 1 | must: the burst's last read drops `burst_active()`, so the reference check or the pre-sleep read could follow it in the same pass | **Taken** (`c9d1b8b4e7`): both skip a pass with `rtc_pass_used_bus()`, in every build (the check stays due; the sleep waits a pass). |
 | 2 | must: `build.sh` is zsh, so the scalar symbol list iterated once | **Taken:** an array, `"${od_syms[@]}"`. |
 | 3 | must: `mac_raw81_echo.py` lacked Gremlin's new op 17 fields (a `KeyError` before its JSON); the runner ignored a failed child | **Taken:** the Mac decoder carries `last_collect_ms`, `last_passes`, `max_passes`; a failed run or a missing report ends the arm. |
 | 4 | must: the A/B ran a request count, not time; stopped an unfinished burst; started the burst before the load; idle time estimated; no cleanup | **Taken:** echo runs back to back by elapsed time until `--secs` and one whole run after the burst is seen done; the burst starts 3 s into the load; idle intervals recorded (between runs and each loss's wait); every arm stops any burst first; a `finally` stops the burst and restores per-transaction. |
