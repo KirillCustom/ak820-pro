@@ -123,6 +123,22 @@ pub struct Payload {
     pub bytes: Vec<u8>,
 }
 
+/// A payload built only once the preamble's third write (the frame's anchor)
+/// has completed, from that completion instant: the wireless clock's type 4
+/// (the plan's "The wireless clock", C3). The preamble does not depend on the
+/// payload, so it goes first; `build` returning `None` abandons the frame
+/// through the ordinary restore.
+pub struct Late<'a> {
+    pub kind: u8,
+    pub seq: u8,
+    pub build: Box<dyn FnOnce(Instant) -> Option<Vec<u8>> + 'a>,
+}
+
+enum Source<'a> {
+    Now(Payload),
+    Late(Late<'a>),
+}
+
 fn warm_bit(p: Profile) -> u8 {
     if p == Profile::P0 { 0x01 } else { 0x08 }
 }
@@ -231,6 +247,27 @@ pub fn run<L: LockLights, T: Time, C: Control>(
     line: &mut Line,
     pick: impl FnOnce() -> Option<Payload>,
 ) -> Outcome {
+    run_source(lights, time, control, line, || pick().map(Source::Now))
+}
+
+/// As [`run`], with a payload built after the anchor ([`Late`]).
+pub fn run_late<'a, L: LockLights, T: Time, C: Control>(
+    lights: &mut L,
+    time: &T,
+    control: &C,
+    line: &mut Line,
+    pick: impl FnOnce() -> Option<Late<'a>>,
+) -> Outcome {
+    run_source(lights, time, control, line, || pick().map(Source::Late))
+}
+
+fn run_source<'a, L: LockLights, T: Time, C: Control>(
+    lights: &mut L,
+    time: &T,
+    control: &C,
+    line: &mut Line,
+    pick: impl FnOnce() -> Option<Source<'a>>,
+) -> Outcome {
     let mut r = Run { lights, time, control, line, stopping: false };
     if r.lights.user().is_none() {
         return Outcome::Unknown;
@@ -285,9 +322,9 @@ pub fn restore_only<L: LockLights, T: Time, C: Control>(
     }
 }
 
-fn frame<L: LockLights, T: Time, C: Control>(
+fn frame<'a, L: LockLights, T: Time, C: Control>(
     r: &mut Run<L, T, C>,
-    pick: impl FnOnce() -> Option<Payload>,
+    pick: impl FnOnce() -> Option<Source<'a>>,
 ) -> Result<bool, Why> {
     r.recovery_wait()?;
     if r.line.restore_pending {
@@ -309,20 +346,49 @@ fn frame<L: LockLights, T: Time, C: Control>(
     r.wait(quiet_from + QUIET)?;
 
     // Now, and not before, what to send (R4-5): frozen for this attempt.
-    let Some(pay) = pick() else { return Ok(false) };
+    let Some(src) = pick() else { return Ok(false) };
     r.checked(u)?;
-    let writes = encode(&pay.bytes, pay.kind, pay.seq, p, u).map_err(|e| Why::Write(format!("{e:?}")))?;
+    let enc = |bytes: &[u8], kind, seq| encode(bytes, kind, seq, p, u).map_err(|e| Why::Write(format!("{e:?}")));
+    let limit = |i: usize| match i {
+        0 => None, // after the quiet, which is longer by design
+        1 | 2 => Some(PREAMBLE_GAP),
+        _ => Some(data_gap),
+    };
     let start = r.time.now();
-    for (i, &v) in writes.iter().enumerate() {
+    let send = |r: &mut Run<L, T, C>, i: usize, v: u8| -> Result<(), Why> {
         if r.time.now() - start > FRAME_LIMIT {
             return Err(Why::Deadline);
         }
-        let limit = match i {
-            0 => None, // after the quiet, which is longer by design
-            1 | 2 => Some(PREAMBLE_GAP),
-            _ => Some(data_gap),
-        };
-        r.write(v, limit, Some(u))?;
+        r.write(v, limit(i), Some(u))
+    };
+    match src {
+        Source::Now(pay) => {
+            for (i, &v) in enc(&pay.bytes, pay.kind, pay.seq)?.iter().enumerate() {
+                send(r, i, v)?;
+            }
+        }
+        Source::Late(late) => {
+            // The preamble is the profile's three transitions from the
+            // user's state, whatever the payload: any payload's first three.
+            let pre: Vec<u8> = enc(&[], late.kind, late.seq)?[..3].to_vec();
+            for (i, &v) in pre.iter().enumerate() {
+                send(r, i, v)?;
+            }
+            // The anchor's completion, as written: the payload's time.
+            let anchor = r.line.last_completion.expect("the preamble was written");
+            let Some(bytes) = (late.build)(anchor) else {
+                return Err(Why::Abort(Abort::Superseded));
+            };
+            let writes = enc(&bytes, late.kind, late.seq)?;
+            if writes[..3] != pre[..] {
+                return Err(Why::Write("the late payload's preamble differs".into()));
+            }
+            // No deadline restarts: the header's first write is held to the
+            // data gap from the anchor's completion (clock review, 10).
+            for (i, &v) in writes.iter().enumerate().skip(3) {
+                send(r, i, v)?;
+            }
+        }
     }
     // The whole frame's limit, on completion too (implementation review, 12).
     if r.time.now() - start > FRAME_LIMIT {
@@ -631,6 +697,60 @@ mod tests {
         let last_of_frame = w.iter().filter(|x| x.0 <= changed_at).last().unwrap().0;
         assert!(after[0].0 - last_of_frame >= RECOVERY);
         assert_eq!(w.last().unwrap().1, 0x06);
+    }
+
+    #[test]
+    fn a_late_payload_is_built_from_the_anchors_completion_and_sent_whole() {
+        let t = FakeTime(Cell::new(Instant::now()));
+        let mut k = Fake::new(&t);
+        let seen = Cell::new(None);
+        let out = run_late(&mut k, &t, &go(), &mut Line::default(), || {
+            Some(Late {
+                kind: 4,
+                seq: 3,
+                build: Box::new(|at| {
+                    seen.set(Some(at));
+                    Some(vec![26, 10, 20, 2, 12, 0, 0, 0, 0, 0, 0xFF, 0x7F])
+                }),
+            })
+        });
+        assert_eq!(out, Outcome::Sent);
+        let expect = encode(&[26, 10, 20, 2, 12, 0, 0, 0, 0, 0, 0xFF, 0x7F], 4, 3, Profile::P0, 0x02).unwrap();
+        let vals: Vec<u8> = k.writes.iter().map(|w| w.1).collect();
+        assert_eq!(vals[2..], expect[..], "the whole frame, preamble first");
+        // Built at the third preamble write's completion (writes 2, 3, 4).
+        assert_eq!(seen.get(), Some(k.writes[4].0));
+    }
+
+    #[test]
+    fn a_late_builder_that_declines_abandons_and_restores() {
+        let t = FakeTime(Cell::new(Instant::now()));
+        let mut k = Fake::new(&t);
+        let mut line = Line::default();
+        let out = run_late(&mut k, &t, &go(), &mut line, || Some(Late { kind: 4, seq: 0, build: Box::new(|_| None) }));
+        assert_eq!(out, Outcome::Abandoned(Why::Abort(Abort::Superseded)));
+        // Warm-up 2, preamble 3, then the restore.
+        assert_eq!(k.writes.len(), 6);
+        assert_eq!(k.writes[5].1, 0x02);
+        assert!(!line.restore_pending);
+    }
+
+    #[test]
+    fn a_slow_late_build_misses_the_header_deadline() {
+        let t = FakeTime(Cell::new(Instant::now()));
+        let mut k = Fake::new(&t);
+        let out = run_late(&mut k, &t, &go(), &mut Line::default(), || {
+            Some(Late {
+                kind: 4,
+                seq: 0,
+                build: Box::new(|at| {
+                    // The builder takes 400 ms: past the 300 ms data gap.
+                    t.0.set(at + Duration::from_millis(400));
+                    Some(vec![26, 10, 20, 2, 12, 0, 0, 0, 0, 0, 0xFF, 0x7F])
+                }),
+            })
+        });
+        assert_eq!(out, Outcome::Abandoned(Why::Deadline));
     }
 
     #[test]
