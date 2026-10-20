@@ -33,10 +33,17 @@ uint32_t last_input_activity_elapsed(void);
 bool gpio_read_pin(int pin);
 
 bool rgb_matrix_is_enabled(void);
-/* QMK's colour types (quantum/color.h), for power.c's dim hook. */
+/* QMK's colour types (quantum/color.h), for power.c's dim hook. The colour
+ * build (SIM_REAL_COLOUR) links QMK's own color.c, so it takes QMK's own
+ * declarations too: one type on both sides of the call (run.sh puts
+ * quantum/ last on its include path). */
+#ifdef SIM_REAL_COLOUR
+#include "color.h"
+#else
 typedef struct { uint8_t r, g, b; } rgb_t;
 typedef struct { uint8_t h, s, v; } hsv_t;
 rgb_t hsv_to_rgb(hsv_t hsv);
+#endif
 uint8_t rgb_matrix_get_mode(void);
 void    rgb_matrix_mode_noeeprom(uint8_t mode);
 void    rgb_matrix_reinit_effect(void);

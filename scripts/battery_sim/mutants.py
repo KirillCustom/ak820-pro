@@ -148,6 +148,11 @@ POWER_MUTANTS = [
     ("DRIFT's value knob not capped", "rgb_matrix_kb.inc",
      [("    if (v > power_val_cap()) v = power_val_cap();\n", "")],
      [("colour", "k_drift")]),
+    ("DRIFT's palette cache blind to a hue change", "rgb_matrix_kb.inc",
+     [("    if (!drift_pal_valid || drift_pal_h != rgb_matrix_config.hsv.h\n"
+       "                         || drift_pal_s != rgb_matrix_config.hsv.s) {",
+       "    if (!drift_pal_valid || drift_pal_s != rgb_matrix_config.hsv.s) {")],
+     [("colour", "k_drift_usb")]),
 ]
 
 
@@ -181,7 +186,7 @@ def build(src, mutations, sanitize=False, target="battery.c", flavour="sim", qro
     if flavour == "dev":
         extra = ["-DAK820_DEV_HOOKS"]
     elif flavour == "colour":
-        extra = ["-DSIM_REAL_COLOUR", "-Wno-unused-function"]
+        extra = ["-DSIM_REAL_COLOUR", "-Wno-unused-function", "-idirafter", os.path.join(qroot, "quantum")]
         for f in ("color", "led_tables"):
             o = os.path.join(d, f + ".o")
             c = subprocess.run(["cc", "-std=c11", "-O1", "-DUSE_CIE1931_CURVE", "-I" + os.path.join(qroot, "quantum"),

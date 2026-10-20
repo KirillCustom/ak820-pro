@@ -191,6 +191,46 @@ def power_state(h):
     return {"mode": r[4], "stage": r[5], "val_cap": r[6], "forced": r[7], "on_battery": bool(r[8])}
 
 
+def open_board(wait_s=30.0):
+    """The board's raw HID, retried: on macOS it opens exclusively, and the
+    daemon reopens it at moments of its own (deep_sleep.open_dev's reason)."""
+    deadline = time.time() + wait_s
+    while True:
+        try:
+            return ak820text.open_device()
+        except SystemExit:
+            if time.time() > deadline:
+                raise
+            time.sleep(0.5)
+
+
+def with_board(fn, *args):
+    h = open_board()
+    try:
+        return fn(h, *args)
+    finally:
+        h.close()
+
+
+def attempt(what, fn, *args):
+    """One cleanup step, independent of the others; says how it went."""
+    try:
+        fn(*args)
+        return True
+    except BaseException as e:   # SystemExit included: the next step still runs
+        say(f"⚠️ cleanup: {what} failed: {e}")
+        return False
+
+
+def expected_cap(mode, stage):
+    """The value ceiling op 14 must read for a held stage in a mode, above 15%."""
+    if stage == 1:
+        return 64
+    if stage == 0:
+        return 128 if mode == POWER_SAVER else 255
+    return 255
+
+
 def set_lcd(h, want, jd):
     if want is None:
         lcd(h, 4, jd["level"])
@@ -274,13 +314,16 @@ def main():
     if time.time() - float(last["epoch"]) > 5:
         sys.exit(f"{log} is not being recorded (last row {last['time']})")
 
-    h = ak820text.open_device()
+    h = open_board()
     try:
         jd_rgb, jd_lcd = read_rgb(h), lcd(h, 6)
         jd_mode = power_mode(h)
+        jd_forced = power_state(h)["forced"] if jd_mode is not None else None
     finally:
         h.close()
-    say(f"start: lighting {jd_rgb}, screen {jd_lcd}, power mode {jd_mode}")
+    say(f"start: lighting {jd_rgb}, screen {jd_lcd}, power mode {jd_mode}, stage held {jd_forced}")
+    if a.set == "stages" and jd_mode is None:
+        sys.exit("--set stages needs a dev build's op 14 (the held stage and its ceiling)")
     if a.dry_run:
         return
     os.makedirs(out, exist_ok=True)
@@ -289,15 +332,12 @@ def main():
 
     was_on = relay_on()
     steps = []
+    restored = True
     try:
         if jd_mode is not None:
             # The ladder would dim an idle board's lights mid-hold: Full Power
             # for the map, JD's mode back in the finally.
-            h = ak820text.open_device()
-            try:
-                say(f"power mode Full for the map: {power_mode(h, POWER_FULL)}")
-            finally:
-                h.close()
+            say(f"power mode Full for the map: {with_board(power_mode, POWER_FULL)}")
         if was_on:
             run([PY, RELAY, "off", "2"])
             for _ in range(9):
@@ -307,17 +347,40 @@ def main():
             else:
                 raise SystemExit("relay 2 off, but the board does not read battery")
         say("on battery")
-        lv = level_pm()
-        if jd_mode is not None and lv is not None and lv <= LOW_CAP_PM:
-            raise SystemExit(f"the level is {lv / 10:.1f}%: at 15% or below the low cap holds every "
-                             "state under Power saver's ceiling; charge first")
+
+        def eligible():
+            """Above the low cap, or the run stops: there its ceiling holds
+            every state's lighting under Power saver's 128, a held stage or
+            not. The stage map needs the level known; the other maps take an
+            unknown one (an unknown level is never low)."""
+            if jd_mode is None:
+                return
+            lv = level_pm()
+            if lv is None and a.set == "stages":
+                raise SystemExit("the level is unknown: the stage map needs a known level above 15%")
+            if lv is not None and lv <= LOW_CAP_PM:
+                raise SystemExit(f"the level is {lv / 10:.1f}%: at 15% or below the low cap holds every "
+                                 "state under Power saver's ceiling; charge first")
+
+        def check_state(name, mode, stage):
+            """Op 14 after a tick: the load this hold is meant to measure."""
+            time.sleep(0.3)
+            st = with_board(power_state)
+            want = {"mode": mode, "stage": stage, "forced": stage, "val_cap": expected_cap(mode, stage),
+                    "on_battery": True}
+            if any(st[k] != v for k, v in want.items()):
+                raise SystemExit(f"{name}: op 14 reads {st}, want {want}")
+            return st
+
+        eligible()
         states = SETS[a.set]
         plan = states + states[::-1]
         for i, state in enumerate(plan):
             name, rgb, screen = state[:3]
             stage = state[3] if len(state) > 3 else None
             mode = state[4] if len(state) > 4 else POWER_FULL
-            h = ak820text.open_device()
+            held = 0 if stage is None else stage
+            h = open_board()
             try:
                 set_rgb(h, dict(jd_rgb) if rgb is None else rgb)
                 st = set_lcd(h, screen, jd_lcd)
@@ -325,49 +388,57 @@ def main():
                     # Every state's stage held, in its mode: the one it names,
                     # or active, so the ladder does not move a load mid-hold.
                     # Holding the stage keeps the low cap's stages out, but not
-                    # its ceiling (Saver's 128 while typing), hence the refusal
-                    # at 15% above.
+                    # its ceiling (Saver's 128 while typing), hence eligible().
                     power_mode(h, mode)
-                    force_stage(h, 0 if stage is None else stage)
+                    force_stage(h, held)
             finally:
                 h.close()
+            ps = check_state(name, mode, held) if jd_mode is not None else None
             t0 = time.time()
             time.sleep(min(a.settle, a.hold))
             drive = led_drive()
-            say(f"[{i + 1}/{len(plan)}] {name}: screen {st}, led drive {drive}")
+            say(f"[{i + 1}/{len(plan)}] {name}: screen {st}, led drive {drive}"
+                + (f", mode {ps['mode']} stage {ps['stage']} ceiling {ps['val_cap']}" if ps else ""))
             time.sleep(max(0, a.hold - a.settle - 3))
-            h = ak820text.open_device()
+            h = open_board()
             try:
                 model = model_mw(h)   # the last full second's model, inside the hold
                 st = lcd(h, 6)        # the screen as the stage left it, settled (codex)
             finally:
                 h.close()
+            if jd_mode is not None:
+                check_state(name + ", at the hold's end", mode, held)
+                eligible()
             time.sleep(min(3, a.hold))
             t1 = time.time()
             steps.append({"i": i + 1, "name": name, "t0": t0, "t1": t1,
                           "lcd_effective": st["effective"], "lcd_on": st["on"], "led_pm": drive,
-                          "model_mw": model})
+                          "model_mw": model, "mode": ps["mode"] if ps else "", "stage": ps["stage"] if ps else "",
+                          "val_cap": ps["val_cap"] if ps else ""})
             with open(os.path.join(out, "steps.csv"), "w", newline="") as f:
                 w = csv.DictWriter(f, fieldnames=list(steps[0]))
                 w.writeheader()
                 w.writerows(steps)
     finally:
+        # Each step on its own, so one failure cannot skip the rest.
+        done = [attempt("the lighting", with_board, set_rgb, dict(jd_rgb)),
+                attempt("the screen", with_board, set_lcd, None, jd_lcd)]
+        if jd_mode is not None:
+            done += [attempt("the stage", with_board, force_stage, None if jd_forced == 0xFF else jd_forced),
+                     attempt("the mode", with_board, power_mode, jd_mode)]
+        if was_on:
+            done.append(attempt("relay 2 on", lambda: run([PY, RELAY, "on", "2"])))
+        restored = all(done)
         try:
-            h = ak820text.open_device()
-            try:
-                set_rgb(h, dict(jd_rgb))
-                set_lcd(h, None, jd_lcd)
-                if jd_mode is not None:
-                    force_stage(h, None)
-                    power_mode(h, jd_mode)
-                back = (read_rgb(h), lcd(h, 6), power_mode(h))
-            finally:
-                h.close()
-            say(f"restored: lighting {back[0]}, screen {back[1]}, power mode {back[2]}")
-        finally:
-            if was_on:
-                run([PY, RELAY, "on", "2"])
-                say(f"relay 2 on; supply {supply()}")
+            back = (with_board(read_rgb), with_board(lcd, 6),
+                    with_board(power_state) if jd_mode is not None else None)
+            say(f"restored: lighting {back[0]}, screen {back[1]}, power {back[2]}"
+                + ("" if restored else "  ⚠️ NOT every step"))
+        except BaseException as e:
+            restored = False
+            say(f"⚠️ the restore could not be read back: {e}")
+        if was_on:
+            say(f"relay 2 on; supply {supply()}")
 
     time.sleep(3)   # the last hold's rows
     by = {}
@@ -394,6 +465,8 @@ def main():
     print(text)
     with open(os.path.join(out, "summary.txt"), "w") as f:
         f.write(text + "\n")
+    if not restored:
+        sys.exit("the map ran, but the board was not restored in full (above)")
 
 
 if __name__ == "__main__":

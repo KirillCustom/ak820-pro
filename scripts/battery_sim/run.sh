@@ -93,9 +93,17 @@ if grep -q '^#define POWER_HAS_MODES' "$build/power.h"; then
         dev=0
         for s in $phase2; do "$build/sim_dev" "$s" > /dev/null || { echo "FAIL $s in the dev-hooks build"; dev=1; }; done
         [ $dev = 0 ] && echo "ok   every power scenario in the dev-hooks build" || fail=1
-        for s in l_forced_ceiling l_set_mode l_under_dim c_lights_off_held; do
+        devonly="l_forced_ceiling l_set_mode l_under_dim l_low_minimal_held c_lights_off_held"
+        for s in $devonly; do
             "$build/sim_dev" "$s" || fail=1
         done
+        # ... and under the sanitizers, as the plain build's are above.
+        cc -std=c11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -Wall -Wextra \
+           -Wno-unused-parameter -DAK820_DEV_HOOKS -I"$build" -o "$build/sim_dev_san" "$here/sim.c" \
+           "$build/battery.c" "$build/power.c" -lm
+        san=0
+        for s in $devonly; do "$build/sim_dev_san" "$s" > /dev/null 2>&1 || { echo "FAIL $s under the sanitizers"; san=1; }; done
+        [ $san = 0 ] && echo "ok   the dev-hooks scenarios under ASan and UBSan" || fail=1
     fi
 
     # The colour path (colour.c): QMK's own conversion and CIE table in place
@@ -105,12 +113,27 @@ if grep -q '^#define POWER_HAS_MODES' "$build/power.h"; then
             cc -std=c11 -O1 -Wall -DUSE_CIE1931_CURVE -I"$qroot/quantum" -I"$qroot/platforms" \
                -c -o "$build/$f.o" "$qroot/quantum/$f.c"
         done
-        cc -std=c11 -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -DSIM_REAL_COLOUR -I"$build" \
-           -o "$build/sim_colour" "$here/sim.c" "$build/battery.c" "$build/power.c" \
-           "$build/color.o" "$build/led_tables.o" -lm
-        for s in k_hook k_drift k_rainfall; do
+        colour() {   # colour <out> <dir holding rgb_matrix_kb.inc>
+            cc -std=c11 -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -DSIM_REAL_COLOUR \
+               -I"$2" -I"$build" -idirafter "$qroot/quantum" -o "$1" "$here/sim.c" "$build/battery.c" \
+               "$build/power.c" "$build/color.o" "$build/led_tables.o" -lm
+        }
+        colour "$build/sim_colour" "$build"
+        for s in k_hook k_drift k_drift_usb k_rainfall; do
             "$build/sim_colour" "$s" || fail=1
         done
+        # k_drift_usb's hash is DRIFT's before the revision (8b06e4dcc4): that
+        # DRIFT, built here beside today's power.c, must give it too, or the
+        # constant is not what it claims to be.
+        base="$build/drift-8b06e4dcc4"
+        mkdir -p "$base"
+        if git -C "$qroot" show 8b06e4dcc4:keyboards/a_jazz/ak820pro/rgb_matrix_kb.inc > "$base/rgb_matrix_kb.inc" 2>/dev/null; then
+            colour "$base/sim_colour" "$base"
+            "$base/sim_colour" k_drift_usb > "$base/out.txt" || { cat "$base/out.txt"; echo "FAIL 8b06e4dcc4's DRIFT does not give k_drift_usb's hash"; fail=1; }
+            grep -q '^ok' "$base/out.txt" && echo "ok   k_drift_usb's hash is 8b06e4dcc4's DRIFT's"
+        else
+            echo "FAIL 8b06e4dcc4 not in $qroot: k_drift_usb's hash unchecked"; fail=1
+        fi
     fi
 fi
 
