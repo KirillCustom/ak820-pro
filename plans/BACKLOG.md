@@ -1124,7 +1124,19 @@ stacking, so a fraction of a millisecond a pass decides how many cross
 
 Stage 2's 1000-stream RTT median read 25.1-25.6 ms on `ce70c8da41` at ~1 h
 up, and 27.0-27.5 ms on `b2a07e0d37` within 10 min of a boot (twice, the
-daemon swapped between). The fix cannot add time, so uptime is the
-suspect. Gremlin's 0ae4 → ce70 (25.0 → 26.9) may be the same effect.
-`ge10-b2a0-1h-*.json` tests it at ~1 h; see that folder's README.
+daemon swapped between). The fix cannot add time, so uptime was the
+first suspect. **But Gremlin's board separates by build, not uptime**
+(01:21 10-20, `history/raw81-v2-gremlin-b2a07e0d.json`):
+
+| build | median RTT | ge10 per 1000 |
+|---|---|---|
+| 0ae4 | 25.0 ms | +11 |
+| ce70 | 26.9 ms, flat at 27 min up | +35 to +39 |
+| b2a0 | 25.9 ms | +17 to +24 |
+
+So the fix took back about half there. The ~1 ms and ~+10 left against
+0ae4 are likely the always-on dev UART hooks (dev builds only: a daily
+build is the test). This Mac's board runs the other way (ce70 25.1-25.6 at
+1 h right after the A/B; b2a0 27.0-27.5 fresh). `ge10-b2a0-1h-*.json`, at
+~1 h up, tests whether that is uptime here; see that folder's README.
 
