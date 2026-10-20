@@ -144,9 +144,15 @@ def usb_open():
 
 
 def usb_xfer(h, payload, match=3):
+    # Windows delivers every input report to every open handle (CLAUDE.md):
+    # a handle left unread during a long radio run fills with the daemon's
+    # traffic, so drain it first, then read until the answer or 2 s.
+    while h.read(32, 0):
+        pass
     h.write(bytes([0]) + bytes(payload) + bytes(32 - len(payload)))
-    for _ in range(10):
-        r = h.read(32, 500)
+    end = time.time() + 2.0
+    while time.time() < end:
+        r = h.read(32, 200)
         if r and bytes(r[1:match]) == bytes(payload[1:match]):
             return bytes(r)
     raise RuntimeError(f"no USB reply to {bytes(payload).hex()}")

@@ -213,3 +213,15 @@ So **host-to-board raw HID over 2.4G exists**, with the full 32-byte report.
 Unknown: the reverse (a board-to-module frame the dongle returns on `MI_03`'s
 input report: look in the stock firmware first), the latency and loss of `81`,
 and whether BLE has an equivalent.
+
+## 6. Raw HID over 2.4G, stage 2: two-way, dispatched, passing (10-19, ~22:30)
+
+The board now answers allow-listed raw-HID requests over the dongle (text,
+health reads) with the same reply it gives on USB plus a CRC-checked receipt.
+On gremlin, from Windows: every text write read back from the board's stored
+state, every health read matching USB, every NAK provoked, and 999 of 1000 in
+a back-to-back stream (the one loss the UART-overrun taint the board counted),
+RTT median 26 ms, no pass >= 25 ms, no keyboard frame lost. Design, five plan
+revisions through codex, the implementation review and the numbers:
+`plans/RAWHID-24G-PLAN.md`, from "Stage 2: dispatch, as designed".
+Follow-up: ~1 in 4 transactions costs a 10 ms pass (latency, not loss).

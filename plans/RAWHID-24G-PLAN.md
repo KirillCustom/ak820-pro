@@ -673,3 +673,45 @@ and goes to implementation; the next review is of the code.
   deferral, the reserved identity across a later frame): those are the
   implementation review's and the board's, and the acceptance runs read the
   new counters (deferral overruns, drops, short writes) for them.
+
+## Stage 2 built, reviewed and passing on gremlin (10-19, ~22:30)
+
+`gremlin/raw81` at `6f5292e1` (on the Mac session's `c9d1b8b4`), dev build
+token `0xd35bc7bf`, flashed hands-free. [Implementation
+review](review-codex-raw81-stage2-impl-2026-10-19.md) and
+[verify](review-codex-raw81-stage2-impl-verify-2026-10-19.md), verbatim:
+nothing blocked the flash; the firmware should-fixes (the window's forced
+close counted; dispatch after the pump) are in `6f5292e1`, the acceptance
+script's must-fixes (page 0's version byte; a stale test on an admitted seq;
+session state written atomically and failing closed) and should-fixes
+(rotation, the deadline before feeding, every HC_LINK page) in the outer
+repo. The dev build's daily twin is identical in text/data/bss to the base's.
+
+**`scripts/win_raw81_s2.py all` and `stream 1000`, Windows over the dongle
+(`history/raw81-stage2-20261019-gremlin/`): every check passes.**
+- Text: set line 0 and 1, the legacy set, clear and playback over the radio,
+  each read back from the board's stored state over USB (op 18). 21-37 ms to
+  the receipt.
+- Health: HC_GET, CONN, GET2, GET3, GET4 and every HC_LINK page (0, 0x21-0x2A)
+  over the radio, each the same shape as the USB answer. 22-42 ms.
+- NAKs: HC_RESET and the bootloader jump refused (2), a repeated admitted seq
+  stale (3), a corrupted envelope (1), another session inside 1 s busy (4),
+  and the live session served after each.
+- Stream, 1000 health reads back to back: **999 ok, 1 lost**, and the one
+  loss is the one UART-overrun taint the board counted (losses must be
+  explained by the board's counters, and were). RTT median 26.0 ms, p95
+  28.0, max 35.0 (tripwire 250). Board: dispatched +999, 91 frames +1998, no
+  drop, no deferral overrun, no short write, no ACK in any window. Link: no
+  give-up, replacement or queue-full. **No pass >= 25 ms.**
+
+**The cost to chase (a stage-2 follow-up):** ~1 pass >= 10 ms per 4
+transactions (251 in 1000, 41 in 200). The per-task accounting puts ~6 ms of
+each in `ch582_task` on top of the main loop's ~4: the slow-call ring shows
+all 34 bytes of a request drained in one call with ~3.4 ms of RX work, and
+~1.8 ms in the pump section (which now includes the dispatch). That is ~100 us
+of wall time a byte on a CPU the row ISR leaves 27% of. Candidates, in the
+order they would be tried: one bulk `chnReadTimeout` for the drain instead of
+34 single-byte reads each taking the lock; a table CRC-16; no `timer_read32()`
+on the request path (the commit's session idle and the admission, each a
+software 64-bit divide). No keystroke is at risk (no pass reached 25 ms); it
+is latency.
