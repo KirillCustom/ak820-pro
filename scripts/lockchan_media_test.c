@@ -1,6 +1,6 @@
 /* Host test of the lock-LED handler's validator (lockchan_media.c), every row
- * of plans/LOCK-LED-CHANNEL-PLAN.md's R2-9 table, and the playback bytes
- * (10-20, "Play times") with lockchan_media_position. Build and run:
+ * of plans/LOCK-LED-CHANNEL-PLAN.md's R2-9 table, and type 3, the transport
+ * (10-20, "Play times"), with lockchan_media_position. Build and run:
  *
  *   gcc -std=c11 -Wall -Wextra -I qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro \
  *       scripts/lockchan_media_test.c \
@@ -98,47 +98,43 @@ int main(void) {
         if (rejects(frame(1, full, 42)) == ok) { printf("FAIL: byte 0x%02x last of 42\n", c); fails++; }
     }
 
-    /* Playback: icon bit 7 and 5 trailing bytes [state][pos][dur], big endian. */
+    /* Type 3, transport: exactly [icon][state][pos][dur], big endian. */
     {
-        uint8_t p[] = {0x81, 3, 'A', 'r', 't', 'T', 'i', 't', 'l', 'e', 1, 0x01, 0x2C, 0x0E, 0x10};
-        CHECK(lockchan_media_parse(&(lockchan_frame_t){0}, &m) == false);
-        lockchan_frame_t g = frame(1, p, sizeof p);
+        uint8_t p[] = {1, 1, 0x01, 0x2C, 0x0E, 0x10};
+        lockchan_frame_t g = frame(3, p, sizeof p);
         CHECK(lockchan_media_parse(&g, &m));
-        CHECK(m.icon == 1 && m.playback && m.state == 1 && m.pos == 300 && m.dur == 3600);
-        CHECK(m.n0 == 3 && m.n1 == 5 && memcmp(m.l1, "Title", 5) == 0);
+        CHECK(m.type == 3 && m.icon == 1 && m.state == 1 && m.pos == 300 && m.dur == 3600);
         /* Paused is a valid state: the board then shows the clock. */
-        p[10] = 0;
-        g = frame(1, p, sizeof p);
-        CHECK(lockchan_media_parse(&g, &m) && m.playback && m.state == 0);
-        /* Any other state rejects. */
-        p[10] = 2;
-        CHECK(rejects(frame(1, p, sizeof p)));
-        /* The tail is not text: any bytes there are fine. */
-        uint8_t q[] = {0x80, 0, 1, 0xFF, 0x00, 0xFF, 0x00};
-        g = frame(1, q, sizeof q);
-        CHECK(lockchan_media_parse(&g, &m) && m.n0 == 0 && m.n1 == 0 && m.pos == 0xFF00 && m.dur == 0xFF00);
-        /* Bit 7 without room for the tail. */
-        CHECK(rejects(frame(1, q, 6)));
-        CHECK(rejects(frame(1, q, 2)));
-        /* Bit 7 with another icon bit. */
-        q[0] = 0x84;
-        CHECK(rejects(frame(1, q, sizeof q)));
-        /* Without bit 7, no playback, as before. */
-        g = now_playing(2, "a", "b");
-        CHECK(lockchan_media_parse(&g, &m) && !m.playback && m.pos == 0);
+        p[1] = 0;
+        g = frame(3, p, sizeof p);
+        CHECK(lockchan_media_parse(&g, &m) && m.state == 0);
+        /* Any other state, any icon past 3. */
+        p[1] = 2;
+        CHECK(rejects(frame(3, p, sizeof p)));
+        p[1] = 1;
+        for (unsigned icon = 4; icon < 256; icon++) {
+            p[0] = (uint8_t)icon;
+            if (!rejects(frame(3, p, sizeof p))) { printf("FAIL: type 3 icon %u accepted\n", icon); fails++; }
+        }
+        p[0] = 0;
+        /* Exactly 6 bytes. */
+        for (uint8_t len = 0; len <= LOCKCHAN_MAX_PAYLOAD; len++) {
+            uint8_t q[LOCKCHAN_MAX_PAYLOAD];
+            memset(q, 0, sizeof q);
+            if (len == 6) continue;
+            if (!rejects(frame(3, q, len))) { printf("FAIL: type 3 of %u bytes accepted\n", len); fails++; }
+        }
+        /* The position and duration are not text: any bytes. */
+        uint8_t q[] = {3, 1, 0xFF, 0x00, 0x00, 0xFF};
+        g = frame(3, q, sizeof q);
+        CHECK(lockchan_media_parse(&g, &m) && m.icon == 3 && m.pos == 0xFF00 && m.dur == 0x00FF);
     }
-    /* The limits with playback: 19 + 21 + 5 = 47 bytes, and 48 rejects. */
+    /* Type 1 stays frozen: icon bit 7 still rejects, at any length. */
     {
-        uint8_t p[48];
+        uint8_t p[47];
         memset(p, 'a', sizeof p);
-        p[0] = 0x83; p[1] = 19;
-        p[42] = 1; p[43] = 0; p[44] = 9; p[45] = 0; p[46] = 99;
-        lockchan_frame_t g = frame(1, p, 47);
-        CHECK(lockchan_media_parse(&g, &m) && m.n0 == 19 && m.n1 == 21 && m.pos == 9 && m.dur == 99);
-        p[47] = 'a';
-        CHECK(rejects(frame(1, p, 48)));
-        /* A line too long once the tail is counted: line 1 at 22. */
-        p[1] = 18;
+        p[0] = 0x81; p[1] = 19;
+        CHECK(rejects(frame(1, p, 42)));
         CHECK(rejects(frame(1, p, 47)));
     }
     /* The position at the commit: the frame's plus anchor to commit, rounded. */
@@ -167,7 +163,7 @@ int main(void) {
     uint8_t z = 0;
     CHECK(rejects(frame(2, &z, 1)));
 
-    /* Unknown types, 0 and 3-15. */
+    /* Unknown types, 0 and 4-15 (type 3 empty rejects too: it is 6 bytes). */
     for (uint8_t t = 0; t < 16; t++) {
         if (t == 1 || t == 2) continue;
         if (!rejects(frame(t, NULL, 0))) { printf("FAIL: type %u accepted\n", t); fails++; }

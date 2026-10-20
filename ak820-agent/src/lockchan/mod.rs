@@ -212,66 +212,86 @@ pub fn content(snapshot: &crate::smtc::Snapshot) -> (u8, Vec<u8>) {
     (TYPE_NOW_PLAYING, p)
 }
 
-/// The playback readout a type 1 frame can carry (icon bit 7, 10-20, "Play
-/// times"; the board's `lockchan_media.h`). Only while playing: paused or
-/// stopped, the board shows the clock, as it does over USB, so no tail goes.
+/// Type 3, the transport (10-20, "Play times"; the board's
+/// `lockchan_media.h`): exactly `[icon][state][pos_hi][pos_lo][dur_hi][dur_lo]`,
+/// the shown slot's icon and the playback readout. A new type rather than a
+/// bit in type 1, which R2-9 froze (codex, the play-times review, P2 1): a
+/// board before it rejects the frame whole and keeps its text. A play/pause or
+/// a seek sends only this, ~6 bytes against the title's ~20-40.
+pub const TYPE_TRANSPORT: u8 = 3;
+/// A position this far from where the last one sent should be by now is a
+/// seek: a change to send, not a tick (the policy's).
+pub const SEEK_SLACK_S: u32 = 3;
+
+/// A readout to show: only while playing with a known duration, the gate raw
+/// HID's `Snapshot::playback` applies (foobar2000 reports pos 0 / dur 0 with
+/// no timeline: codex, the play-times review, P2 3). Paused, stopped or a
+/// stream, the board shows the clock, as it does over USB.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Playback {
     pub pos_s: u32,
     pub dur_s: u32,
 }
 
-pub const PLAYBACK_BIT: u8 = 0x80;
-pub const PLAYBACK_LEN: usize = 5;
-/// A position this far from where the last one sent should be by now is a
-/// seek: a change to send, not a tick (the policy's).
-pub const SEEK_SLACK_S: u32 = 3;
-
 impl Playback {
-    /// The snapshot's readout, if it has one to show: playing, a title.
     pub fn of(snapshot: &crate::smtc::Snapshot) -> Option<Playback> {
-        (snapshot.playing && snapshot.lines().is_some()).then_some(Playback { pos_s: snapshot.pos_s, dur_s: snapshot.dur_s })
+        if snapshot.lines().is_none() {
+            return None;
+        }
+        let (playing, pos_s, dur_s) = snapshot.playback();
+        playing.then_some(Playback { pos_s, dur_s })
     }
 }
 
-/// Type 1's payload with the readout appended, `pos_s` the position as of the
-/// frame's start (the sender's pick: the board adds anchor to commit):
-/// `[state 1][pos_hi][pos_lo][dur_hi][dur_lo]`, bit 7 set on the icon. Both
-/// saturate at 0xFFFF seconds, as raw HID's do. Anything but a type 1 payload
-/// comes back unchanged.
-pub fn with_playback(kind: u8, payload: &[u8], pb: Playback, pos_s: u32) -> Vec<u8> {
-    let mut p = payload.to_vec();
-    if kind != TYPE_NOW_PLAYING || p.len() < 2 {
-        return p;
-    }
+/// Type 3's payload: the icon, the readout's state, and the position as of
+/// the frame's pick (the sender adds the time since it was sampled), clamped
+/// to the duration; both saturate at 0xFFFF seconds, as raw HID's do. With no
+/// readout, state 0 and zeros: the board shows the clock.
+pub fn transport(icon: crate::text::Icon, pb: Option<Playback>, pos_s: u32) -> (u8, Vec<u8>) {
     let sat = |v: u32| v.min(0xFFFF) as u16;
-    let (pos, dur) = (sat(pos_s), sat(pb.dur_s));
-    p[0] |= PLAYBACK_BIT;
-    p.extend([1, (pos >> 8) as u8, pos as u8, (dur >> 8) as u8, dur as u8]);
-    p
+    let (state, pos, dur) = match pb {
+        Some(p) => (1u8, sat(if p.dur_s > 0 { pos_s.min(p.dur_s) } else { pos_s }), sat(p.dur_s)),
+        None => (0, 0, 0),
+    };
+    (TYPE_TRANSPORT, vec![icon.id(), state, (pos >> 8) as u8, pos as u8, (dur >> 8) as u8, dur as u8])
 }
 
-/// What makes two contents the same, for the policy and the slot's epoch
-/// alike: the type, the lines and icon (the payload without its readout),
-/// whether it plays and the duration. Never the position, which moves every
-/// second: a seek is told apart by [`is_seek`].
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Identity {
-    pub kind: u8,
-    pub base: Vec<u8>,
+/// When a title frame must go again: its lines changed. Not its icon, which
+/// type 3 carries, so a play/pause does not resend the title (a board before
+/// type 3 then shows an old icon until the next refresh of type 1). A CLEAR is
+/// its own identity.
+pub fn text_identity(kind: u8, payload: &[u8]) -> (u8, Vec<u8>) {
+    match kind {
+        TYPE_NOW_PLAYING if !payload.is_empty() => (kind, payload[1..].to_vec()),
+        _ => (kind, payload.to_vec()),
+    }
+}
+
+/// When a transport frame must go again: the icon, whether a readout shows,
+/// or its duration changed. Never the position, which moves every second: a
+/// seek is told apart by [`is_seek`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TransportIdentity {
+    pub icon: u8,
     pub playing: bool,
     pub dur_s: u32,
 }
 
-pub fn identity(kind: u8, base: &[u8], pb: Option<Playback>) -> Identity {
-    Identity { kind, base: base.to_vec(), playing: pb.is_some(), dur_s: pb.map_or(0, |p| p.dur_s) }
+pub fn transport_identity(icon: crate::text::Icon, pb: Option<Playback>) -> TransportIdentity {
+    TransportIdentity { icon: icon.id(), playing: pb.is_some(), dur_s: pb.map_or(0, |p| p.dur_s) }
 }
 
-/// Whether `now_pos_s` is a seek from a readout sent at `sent_pos_s`,
-/// `elapsed` ago: further than SEEK_SLACK_S from where it should have got to.
-pub fn is_seek(sent_pos_s: u32, elapsed: std::time::Duration, now_pos_s: u32) -> bool {
-    let expect = sent_pos_s as i64 + elapsed.as_secs() as i64;
-    (now_pos_s as i64 - expect).unsigned_abs() > SEEK_SLACK_S as u64
+/// Whether `now_pos_s` is a seek from a position `sent_pos_s` picked `elapsed`
+/// ago: further than SEEK_SLACK_S from where it should have got to, which
+/// stops at a known duration (codex, P2 4: 299/300 then 300 at the end is not
+/// a seek). `elapsed` runs from the position's sampling, never a frame's
+/// completion.
+pub fn is_seek(sent_pos_s: u32, elapsed: std::time::Duration, now_pos_s: u32, dur_s: u32) -> bool {
+    let mut expect = sent_pos_s as u64 + elapsed.as_secs();
+    if dur_s > 0 {
+        expect = expect.min(dur_s as u64);
+    }
+    (now_pos_s as i64 - expect as i64).unsigned_abs() > SEEK_SLACK_S as u64
 }
 
 #[cfg(test)]
@@ -279,7 +299,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_readout_is_five_bytes_after_the_lines_with_bit_7() {
+    fn the_transport_is_six_bytes_the_icon_state_position_and_duration() {
         use crate::smtc::Snapshot;
         use crate::text::Icon;
         let s = Snapshot {
@@ -290,42 +310,48 @@ mod tests {
             pos_s: 61,
             dur_s: 300,
         };
-        let (kind, base) = content(&s);
-        let pb = Playback::of(&s).expect("playing with a title");
-        let p = with_playback(kind, &base, pb, 63);
-        assert_eq!(p[0], base[0] | PLAYBACK_BIT);
-        assert_eq!(&p[1..base.len()], &base[1..], "the lines untouched");
-        assert_eq!(&p[base.len()..], &[1, 0, 63, 0x01, 0x2C]);
-        assert!(p.len() <= MAX_PAYLOAD, "47 at most");
-        // Saturating, as raw HID's.
-        let p = with_playback(kind, &base, Playback { pos_s: 70_000, dur_s: 99_999 }, 70_000);
-        assert_eq!(&p[base.len()..], &[1, 0xFF, 0xFF, 0xFF, 0xFF]);
-        // Paused or nothing: no readout.
+        let pb = Playback::of(&s).expect("playing, a title and a duration");
+        assert_eq!(transport(Icon::Play, Some(pb), 63), (TYPE_TRANSPORT, vec![Icon::Play.id(), 1, 0, 63, 0x01, 0x2C]));
+        // Clamped to the duration; saturating at 0xFFFF, as raw HID's.
+        assert_eq!(transport(Icon::Play, Some(pb), 305).1[2..4], [0x01, 0x2C]);
+        let long = Playback { pos_s: 70_000, dur_s: 99_999 };
+        assert_eq!(transport(Icon::Play, Some(long), 70_000).1[2..], [0xFF, 0xFF, 0xFF, 0xFF]);
+        // Paused: state 0, the clock.
+        assert_eq!(transport(Icon::Pause, None, 0), (TYPE_TRANSPORT, vec![Icon::Pause.id(), 0, 0, 0, 0, 0]));
+        // The gate: paused, nothing shown, or no known duration (foobar's 0/0).
         assert_eq!(Playback::of(&Snapshot { playing: false, ..s.clone() }), None);
         assert_eq!(Playback::of(&Snapshot { playing: true, ..Snapshot::default() }), None);
-        // A CLEAR is never given one.
-        assert_eq!(with_playback(TYPE_CLEAR, &[], pb, 5), Vec::<u8>::new());
+        assert_eq!(Playback::of(&Snapshot { pos_s: 0, dur_s: 0, ..s.clone() }), None);
     }
 
     #[test]
-    fn the_identity_ignores_the_position_but_not_the_state_or_duration() {
-        let base = [1u8, 1, b'a', b'b'];
-        let a = identity(1, &base, Some(Playback { pos_s: 10, dur_s: 300 }));
-        assert_eq!(a, identity(1, &base, Some(Playback { pos_s: 11, dur_s: 300 })), "a tick is not a change");
-        assert_ne!(a, identity(1, &base, None), "a pause is");
-        assert_ne!(a, identity(1, &base, Some(Playback { pos_s: 10, dur_s: 301 })), "a new duration is");
-        assert_ne!(a, identity(1, &[1, 1, b'a', b'c'], Some(Playback { pos_s: 10, dur_s: 300 })), "new text is");
+    fn identities_split_the_title_from_the_transport() {
+        use crate::text::Icon;
+        // The title's: the lines, not the icon.
+        assert_eq!(text_identity(1, &[1, 1, b'a', b'b']), text_identity(1, &[2, 1, b'a', b'b']), "a pause is not a title change");
+        assert_ne!(text_identity(1, &[1, 1, b'a', b'b']), text_identity(1, &[1, 1, b'a', b'c']));
+        assert_ne!(text_identity(1, &[1, 0]), text_identity(TYPE_CLEAR, &[]));
+        // The transport's: the icon, the readout, the duration; never the position.
+        let p = |pos_s| Some(Playback { pos_s, dur_s: 300 });
+        assert_eq!(transport_identity(Icon::Play, p(10)), transport_identity(Icon::Play, p(11)), "a tick");
+        assert_ne!(transport_identity(Icon::Play, p(10)), transport_identity(Icon::Pause, None), "a pause");
+        assert_ne!(transport_identity(Icon::Play, p(10)), transport_identity(Icon::Play, Some(Playback { pos_s: 10, dur_s: 301 })));
     }
 
     #[test]
-    fn a_seek_is_a_jump_past_the_slack() {
+    fn a_seek_is_a_jump_past_the_slack_and_the_end_is_not_one() {
         use std::time::Duration;
         let s = Duration::from_secs;
-        assert!(!is_seek(10, s(5), 15), "on time");
-        assert!(!is_seek(10, s(5), 18) && !is_seek(10, s(5), 12), "within 3 s");
-        assert!(is_seek(10, s(5), 19), "ahead");
-        assert!(is_seek(10, s(5), 11), "behind");
-        assert!(is_seek(200, s(1), 0), "back to the start");
+        assert!(!is_seek(10, s(5), 15, 300), "on time");
+        assert!(!is_seek(10, s(5), 18, 300) && !is_seek(10, s(5), 12, 300), "within 3 s");
+        assert!(is_seek(10, s(5), 19, 300), "ahead");
+        assert!(is_seek(10, s(5), 11, 300), "behind");
+        assert!(is_seek(200, s(1), 0, 300), "back to the start");
+        // The end of a track: the position stops at the duration (codex, P2 4).
+        assert!(!is_seek(299, s(5), 300, 300));
+        assert!(!is_seek(299, s(60), 300, 300));
+        // No known duration: no clamp.
+        assert!(is_seek(299, s(5), 300, 0));
     }
 
     #[test]
