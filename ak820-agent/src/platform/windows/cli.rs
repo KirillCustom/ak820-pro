@@ -541,12 +541,7 @@ fn install(flags: &[&str]) -> Result<(), String> {
 
     let user = format!("{}\\{}", env_var("USERDOMAIN")?, env_var("USERNAME")?);
     let log = dir.join("ak820-agent.log");
-    let arguments = format!(
-        "--log \"{}\"{}{}",
-        log.display(),
-        if clock { " --clock" } else { "" },
-        if radio { " --radio" } else { "" }
-    );
+    let arguments = task_arguments(&log.display().to_string(), clock, radio);
     let xml = task::task_xml(&task::Definition {
         description: task::AGENT_DESCRIPTION,
         user: &user,
@@ -1082,5 +1077,30 @@ fn report_drained(drained: &[Drained]) {
             Drained::StaleUnreadable(m) => eprintln!("  queued before we asked: {m:?}"),
             Drained::Foreign(m) => eprintln!("  arrived while waiting: {m:?}"),
         }
+    }
+}
+
+/// The daemon's arguments in its task: each install flag persisted, so the
+/// task runs what the install asked for (`task::agent_owns_clock` reads
+/// `--clock` back out of them).
+fn task_arguments(log: &str, clock: bool, radio: bool) -> String {
+    format!(
+        "--log \"{log}\"{}{}",
+        if clock { " --clock" } else { "" },
+        if radio { " --radio" } else { "" }
+    )
+}
+
+#[cfg(test)]
+mod install_tests {
+    use super::task_arguments;
+
+    #[test]
+    fn every_flag_combination_persists() {
+        let log = "L.log";
+        assert_eq!(task_arguments(log, false, false), "--log \"L.log\"");
+        assert_eq!(task_arguments(log, true, false), "--log \"L.log\" --clock");
+        assert_eq!(task_arguments(log, false, true), "--log \"L.log\" --radio");
+        assert_eq!(task_arguments(log, true, true), "--log \"L.log\" --clock --radio");
     }
 }

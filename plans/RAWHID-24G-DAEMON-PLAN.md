@@ -404,3 +404,57 @@ daemon held it; the lock was free once the daemon was killed.
 **Still to do:** codex's review of the daemon; the cable-out test (JD pulls
 the cable with a track playing: the band shows it within a tick, the cable
 back hands over to USB); the Mac's half.
+
+### Codex's implementation review (10-20) and its dispositions
+
+[Review](review-codex-raw81-daemon-impl-2026-10-20.md), verbatim: hold the
+install; the transaction path sound, two ownership defects. Every finding
+fixed:
+
+1. **`Stuck` released the lock with a write possibly still outstanding.**
+   Fixed: the guard moves to `Radio::poisoned`, held until the process
+   exits, and the radio stays `abandoned` (a USB presence does not release
+   it). Test `a_stuck_radio_keeps_the_lock_for_good`; the old code fails it.
+2. **The quiet's clock was read before the open and the lock.** Fixed:
+   `Link::new(clock.now(), ..)` after the lock is held. Test
+   `the_quiet_starts_when_the_lock_is_held_not_before` (a 5 s acquisition);
+   the old code fails it.
+3. **No tests at the ownership and agent boundaries.** The media tick's
+   transport choice is now `agent::media_tick`, over seams, with ten tests:
+   every USB opener result; a failure after a good open; the slow
+   acquisition; USB back in the quiet (the guard's drop observed); USB
+   evidence without a good open; `Stuck`; the refresh after a radio failure;
+   USB then the radio; a stage-1 echo board (probes only, never text);
+   `--radio-only`. Also added: a forced search exhaustion (rotates, nothing
+   sent), a transport failure after the write (drops qualification), every
+   text command and every allow-listed command round-tripped, and the
+   permitted residual from **every** pending window pair (at most one match,
+   only by the leading 0x81, never an ACK: exactly three pairs per frame),
+   and the install's four flag combinations.
+4. **The USB handover could lose the full refresh.** Fixed: `Via` records
+   which transport last delivered the text; entering any other refreshes it.
+5. **USB presence other than a good media open did not stand the radio
+   down.** Fixed: a busy, refused or ambiguous USB open, or any interaction
+   (clock, health) that finds the board present, stands it down; a failed
+   discovery does not.
+6. **A transport failure after the write kept qualification.** Fixed: a
+   write or read failure drops it, so the next tick probes and refreshes.
+7. **The lock's sharing and a second user.** Fixed: no delete sharing; the
+   handle asks only `GENERIC_READ`, which `LockFileEx` needs and which a
+   second user has on a file another user created under ProgramData's
+   inherited ACL; the lock test fails on an error instead of skipping. Not
+   tested with a second user on gremlin (one account); a refused open fails
+   closed (`lock error`, 60 s).
+8. **`Incomplete` and `Unknown` were not kept apart.** Fixed: counters
+   `radio_incomplete`, `radio_silent`, a log line per incomplete, the last
+   error kept with its time, and `radio_qualified` reported apart from the
+   state.
+
+Stated deviations from the plan, kept: the probe is one attempt (a failed
+probe is silence, backed off); `FORBIDDEN` is a 10-minute cooldown, not a
+disable until the build changes (the host cannot see a build change over the
+radio; a USB presence clears it); the first cable-out push can take up to two
+media ticks (the quiet, then the probe and text).
+
+Live again after the fixes (23:52 10-20, `--radio-only`): the lock, the quiet,
+qualified 3 s later, `radio_qualified=yes`, no failures.

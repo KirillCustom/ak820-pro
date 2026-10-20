@@ -233,6 +233,7 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
     let worker = P::spawn_media(opts.interval, &log)?;
     let mut publisher = Publisher::new();
     let mut watch = Watch::new();
+    let mut via = Via::Nothing;
     let mut radio = (opts.radio || opts.radio_only).then(|| {
         if opts.radio_only {
             log.line("radio: --radio-only (development): the media goes over the radio even with the cable in");
@@ -294,52 +295,34 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
             let snapshot = if health.last_poll_ok { snapshot } else { Snapshot::default() };
             if !watch.holding(now) {
                 let mut discarded = Vec::new();
-                // Only the opener's own `Absent` hands the tick to the radio
-                // (the raw81 daemon plan, R2-5): a failure after a successful
-                // open is a USB failure, retried on USB next tick.
-                let opened = if opts.radio_only { Err(hid::Error::Absent) } else { P::open_board() };
-                let (outcome, opener_absent) = match opened {
-                    Ok(dev) => {
-                        if let Some(r) = radio.as_mut() {
-                            if r.state() != radio::State::Off {
-                                r.usb_present(&mut &log);
-                            }
-                        }
-                        // Back from the radio: the panel's text is refreshed
-                        // whole, not at the keepalive (R2-7).
-                        if st.transport == "radio" {
-                            publisher.refresh();
-                        }
-                        st.transport = "usb".into();
+                let (outcome, transport) = media_tick(
+                    opts.radio_only,
+                    P::open_board,
+                    |dev: &P::Device, publisher: &mut Publisher| {
                         let plan = publisher.plan(&snapshot, now);
-                        (cycle::<P>(&dev, &plan, &snapshot, now, &mut publisher, &log, &mut st, &mut discarded), false)
-                    }
-                    Err(e) => {
-                        let absent = matches!(e, hid::Error::Absent);
-                        (Err(e), absent)
-                    }
-                };
-                st.foreign_reports += foreign(&discarded);
-                if !opts.radio_only {
-                    if let Some(line) = watch.observe(outcome.as_ref().map(|_| ()), now) {
-                        log.line(&line);
-                    }
-                }
-                if opener_absent {
-                    st.transport = "none".into();
-                    if let Some(r) = radio.as_mut() {
+                        cycle::<P>(dev, &plan, &snapshot, now, publisher, &log, &mut st, &mut discarded)
+                    },
+                    radio.as_mut(),
+                    |r: &mut Radio, publisher: &mut Publisher| {
                         r.tick(
                             &SystemClock,
                             P::radio_lock,
                             P::open_radio,
-                            &mut publisher,
+                            publisher,
                             &snapshot,
                             || logfile::stamp(&P::host()),
                             &mut &log,
-                        );
-                        if r.active() {
-                            st.transport = "radio".into();
-                        }
+                        )
+                    },
+                    &mut publisher,
+                    &mut via,
+                    &mut &log,
+                );
+                st.transport = transport.into();
+                st.foreign_reports += foreign(&discarded);
+                if let Some(outcome) = outcome {
+                    if let Some(line) = watch.observe(outcome.as_ref().map(|_| ()), now) {
+                        log.line(&line);
                     }
                 }
             }
@@ -397,6 +380,17 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
             next_health = Instant::now() + HEALTH_INTERVAL;
         }
 
+        // Any interaction that found the board on USB (the clock, health)
+        // stands the radio down, not only the media's own open (codex,
+        // daemon review, 5).
+        if watch.state() == Presence::Present && !opts.radio_only {
+            if let Some(r) = radio.as_mut() {
+                if r.acquired() {
+                    r.usb_present(&mut &log);
+                }
+            }
+        }
+
         if worked {
             st.board = watch.state().word().to_string();
             st.updated = logfile::stamp(&P::host());
@@ -417,6 +411,79 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
     }
 }
 
+/// Which transport last delivered the text. Entering any other refreshes the
+/// text whole on the next push, not at the keepalive (R2-7; codex's daemon
+/// review, 4: a radio failure followed by USB must not leave the publisher
+/// believing the panel is current).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Via {
+    Nothing,
+    Usb,
+    Radio,
+}
+
+/// Is this USB opener failure evidence that the board is on USB? A listed
+/// board that would not open (busy), opened as something else, or was listed
+/// twice is there. `Absent` is not, and nor is a failed discovery, which
+/// says nothing about the board (codex's daemon review, 5).
+pub fn usb_evidence(e: &hid::Error) -> bool {
+    matches!(e, hid::Error::Open { .. } | hid::Error::Incompatible { .. } | hid::Error::Ambiguous(_))
+}
+
+/// One media tick's transport choice, over seams (the raw81 daemon plan,
+/// R2-5, R2-6): USB if the opener gives a board, the radio only on the
+/// opener's own `Absent` (a failure after a successful open is a USB
+/// failure, retried on USB next tick). Returns the USB outcome for the
+/// presence `Watch` (`None` with `radio_only`, which never asks USB) and the
+/// transport word for the status file.
+#[allow(clippy::too_many_arguments)]
+pub fn media_tick<D>(
+    radio_only: bool,
+    open_usb: impl FnOnce() -> Result<D, hid::Error>,
+    usb: impl FnOnce(&D, &mut Publisher) -> (bool, Result<(), hid::Error>),
+    radio: Option<&mut Radio>,
+    radio_tick: impl FnOnce(&mut Radio, &mut Publisher) -> bool,
+    publisher: &mut Publisher,
+    via: &mut Via,
+    log: &mut impl radio::Sink,
+) -> (Option<Result<(), hid::Error>>, &'static str) {
+    let opened = if radio_only { Err(hid::Error::Absent) } else { open_usb() };
+    match opened {
+        Ok(dev) => {
+            if let Some(r) = radio {
+                r.usb_present(log);
+            }
+            if *via != Via::Usb {
+                publisher.refresh();
+            }
+            let (pushed, outcome) = usb(&dev, publisher);
+            if pushed {
+                *via = Via::Usb;
+            }
+            (Some(outcome), "usb")
+        }
+        Err(e) => {
+            let mut transport = "none";
+            match radio {
+                Some(r) if usb_evidence(&e) => r.usb_present(log),
+                Some(r) if matches!(e, hid::Error::Absent) => {
+                    if *via != Via::Radio {
+                        publisher.refresh();
+                    }
+                    if radio_tick(r, publisher) {
+                        *via = Via::Radio;
+                    }
+                    if r.active() {
+                        transport = "radio";
+                    }
+                }
+                _ => {}
+            }
+            ((!radio_only).then_some(Err(e)), transport)
+        }
+    }
+}
+
 /// One media open: the text if due, then the playback readout — the second
 /// attempted whether or not the first succeeded, as the Python's two `try`
 /// blocks are independent (finding 9). A `Stuck` handle ends the cycle at
@@ -431,12 +498,14 @@ fn cycle<P: Platform>(
     log: &Log,
     st: &mut Status,
     discarded: &mut Vec<Drained>,
-) -> Result<(), hid::Error> {
+) -> (bool, Result<(), hid::Error>) {
     let mut failure: Option<hid::Error> = None;
+    let mut pushed = false;
     if let Some(text) = &plan.text {
         match send(dev, text, discarded) {
             Ok(()) => {
                 publisher.text_pushed(snapshot, now);
+                pushed = true;
                 st.media_last_push = Some(logfile::stamp(&P::host()));
                 st.media_last_text = Some(Publisher::describe(snapshot));
                 st.media_last_error = None;
@@ -448,7 +517,7 @@ fn cycle<P: Platform>(
                 log.line(&format!("[warn] push: {e}"));
                 st.media_last_error = Some(e.to_string());
                 if matches!(e, hid::Error::Stuck) {
-                    return Err(e);
+                    return (pushed, Err(e));
                 }
                 failure = Some(e);
             }
@@ -465,10 +534,13 @@ fn cycle<P: Platform>(
             }
         }
     }
-    match failure {
-        None => Ok(()),
-        Some(e) => Err(e),
-    }
+    (
+        pushed,
+        match failure {
+            None => Ok(()),
+            Some(e) => Err(e),
+        },
+    )
 }
 
 /// Write the reports in order through one handle, each correlated on its own
@@ -977,5 +1049,296 @@ mod tests {
         let timeout = hid::Error::Timeout { drained: d.to_vec() };
         assert_eq!(foreign(discards_of(&timeout)), 2);
         assert!(discards_of(&hid::Error::Absent).is_empty());
+    }
+}
+
+/// The media tick's transport choice and the radio's ownership, at their
+/// real boundaries (codex's daemon review, must-fix 3; the raw81 daemon plan,
+/// R2-6, R3-3, R4-3): the USB opener's every result, the radio on a fake
+/// dongle and a fake clock, and a lock guard whose release is observable.
+#[cfg(test)]
+mod media_tick_tests {
+    use super::*;
+    use crate::platform::RadioGuard;
+    use crate::raw81::fake::{Board, Fake, FakeClock};
+    use crate::raw81::link::{Clock, QUIET};
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use std::time::Duration;
+
+    /// A lock guard that says when it is dropped.
+    struct Held(Rc<Cell<bool>>);
+    impl Drop for Held {
+        fn drop(&mut self) {
+            self.0.set(false);
+        }
+    }
+
+    fn track() -> Snapshot {
+        Snapshot { title: "Radio title".into(), artist: "The Dongle".into(), playing: true, ..Snapshot::default() }
+    }
+
+    struct Rig<'c> {
+        c: &'c FakeClock,
+        f: Fake<'c>,
+        radio: Radio,
+        p: Publisher,
+        via: Via,
+        log: Vec<String>,
+        /// The lock: free, and is it held now?
+        free: Cell<bool>,
+        held: Rc<Cell<bool>>,
+        /// Time the lock's acquisition takes (a slow open, a slow file).
+        lock_takes: Duration,
+        /// The USB side's pushes: (text pushed?) per USB tick.
+        usb_ticks: Vec<bool>,
+    }
+
+    impl<'c> Rig<'c> {
+        fn new(c: &'c FakeClock, script: &[Board]) -> Rig<'c> {
+            Rig {
+                c,
+                f: Fake::new(c, script),
+                radio: Radio::new(3),
+                p: Publisher::new(),
+                via: Via::Nothing,
+                log: Vec::new(),
+                free: Cell::new(true),
+                held: Rc::new(Cell::new(false)),
+                lock_takes: Duration::ZERO,
+                usb_ticks: Vec::new(),
+            }
+        }
+
+        /// One media tick with the USB opener answering `usb` (and, opened,
+        /// the cycle answering `cycle`).
+        fn tick(&mut self, usb: Result<(), hid::Error>, cycle: Result<(), hid::Error>) -> (Option<Result<(), hid::Error>>, &'static str) {
+            let snap = track();
+            let c = self.c;
+            let f = &self.f;
+            let free = &self.free;
+            let held = self.held.clone();
+            let lock_takes = self.lock_takes;
+            let usb_ticks = &mut self.usb_ticks;
+            media_tick(
+                false,
+                || usb,
+                |_: &(), p: &mut Publisher| {
+                    let plan = p.plan(&snap, c.now());
+                    let pushed = plan.text.is_some() && cycle.is_ok();
+                    if pushed {
+                        p.text_pushed(&snap, c.now());
+                    }
+                    usb_ticks.push(plan.text.is_some());
+                    (pushed, cycle)
+                },
+                Some(&mut self.radio),
+                |r: &mut Radio, p: &mut Publisher| {
+                    let lock = || {
+                        c.advance(lock_takes);
+                        if free.get() && !held.get() {
+                            held.set(true);
+                            Ok(Some(Box::new(Held(held.clone())) as RadioGuard))
+                        } else {
+                            Ok(None)
+                        }
+                    };
+                    r.tick(c, lock, || Ok(f), p, &snap, || "now".into(), &mut Vec::<String>::new())
+                },
+                &mut self.p,
+                &mut self.via,
+                &mut self.log,
+            )
+        }
+
+        fn absent(&mut self) -> &'static str {
+            self.tick(Err(hid::Error::Absent), Ok(())).1
+        }
+
+        fn sent(&self) -> usize {
+            self.f.written.borrow().len()
+        }
+    }
+
+
+    fn open_err() -> hid::Error {
+        hid::Error::Open { path: "p".into(), source: hid::OsError::new(32, "busy") }
+    }
+
+    #[test]
+    fn usb_present_means_no_radio_traffic() {
+        let c = FakeClock::new();
+        let mut g = Rig::new(&c, &[]);
+        let (outcome, t) = g.tick(Ok(()), Ok(()));
+        assert!(matches!(outcome, Some(Ok(()))));
+        assert_eq!(t, "usb");
+        assert_eq!(g.sent(), 0);
+        assert!(!g.held.get());
+        assert_eq!(g.via, Via::Usb);
+    }
+
+    #[test]
+    fn only_the_openers_absent_selects_the_radio() {
+        for e in [
+            open_err(),
+            hid::Error::Incompatible { path: "p".into(), why: "w".into() },
+            hid::Error::Ambiguous(vec!["a".into(), "b".into()]),
+            hid::Error::Discovery("cm".into()),
+        ] {
+            let c = FakeClock::new();
+            let mut g = Rig::new(&c, &[]);
+            let (outcome, t) = g.tick(Err(e.clone()), Ok(()));
+            assert!(matches!(outcome, Some(Err(_))), "{e}: the Watch still sees it");
+            assert_eq!(t, "none");
+            assert!(!g.held.get(), "{e}: no lock taken");
+        }
+        // A failure after a successful open is a USB failure: no radio.
+        let c = FakeClock::new();
+        let mut g = Rig::new(&c, &[]);
+        let (_, t) = g.tick(Ok(()), Err(hid::Error::Absent));
+        assert_eq!(t, "usb");
+        assert!(!g.held.get());
+        // The opener's Absent: the radio takes the lock.
+        assert_eq!(g.absent(), "none");
+        assert!(g.held.get());
+    }
+
+    #[test]
+    fn the_quiet_starts_when_the_lock_is_held_not_before() {
+        let c = FakeClock::new();
+        let mut g = Rig::new(&c, &[]);
+        g.lock_takes = Duration::from_secs(5); // a slow open and lock
+        g.absent();
+        assert!(g.held.get());
+        assert_eq!(g.sent(), 0);
+        c.advance(QUIET - Duration::from_millis(10));
+        g.absent();
+        assert_eq!(g.sent(), 0, "the quiet runs from the acquisition");
+        c.advance(Duration::from_millis(10));
+        assert_eq!(g.absent(), "radio");
+        assert!(g.sent() > 0);
+    }
+
+    #[test]
+    fn usb_returning_in_the_quiet_releases_the_lock() {
+        let c = FakeClock::new();
+        let mut g = Rig::new(&c, &[]);
+        g.absent();
+        assert!(g.held.get());
+        g.tick(Ok(()), Ok(()));
+        assert!(!g.held.get(), "released the moment USB is back");
+        assert_eq!(g.sent(), 0);
+    }
+
+    #[test]
+    fn usb_evidence_without_a_good_open_also_stands_the_radio_down() {
+        for e in [open_err(), hid::Error::Incompatible { path: "p".into(), why: "w".into() }, hid::Error::Ambiguous(vec![])] {
+            let c = FakeClock::new();
+            let mut g = Rig::new(&c, &[]);
+            g.absent();
+            c.advance(QUIET);
+            assert_eq!(g.absent(), "radio");
+            g.tick(Err(e.clone()), Ok(()));
+            assert!(!g.held.get(), "{e}");
+            assert!(!g.radio.acquired());
+        }
+        // A failed discovery is not evidence: the acquisition is kept.
+        let c = FakeClock::new();
+        let mut g = Rig::new(&c, &[]);
+        g.absent();
+        g.tick(Err(hid::Error::Discovery("cm".into())), Ok(()));
+        assert!(g.held.get());
+    }
+
+    #[test]
+    fn a_stuck_radio_keeps_the_lock_for_good() {
+        let c = FakeClock::new();
+        // The probe answers; the first text write's cancellation never lands.
+        let mut g = Rig::new(&c, &[Board::Answer { ms: 20 }, Board::StuckWrite]);
+        g.absent();
+        c.advance(QUIET);
+        g.absent();
+        assert_eq!(g.radio.state(), radio::State::Abandoned);
+        assert!(g.held.get(), "the abandoned write may still go out: no other owner");
+        let n = g.sent();
+        g.tick(Ok(()), Ok(()));
+        assert!(g.held.get(), "USB presence does not release a poisoned lock");
+        for _ in 0..5 {
+            c.advance(Duration::from_secs(120));
+            g.absent();
+        }
+        assert_eq!(g.sent(), n, "nothing more over the radio this process");
+        assert_eq!(g.radio.state(), radio::State::Abandoned);
+    }
+
+    #[test]
+    fn a_radio_failure_then_usb_refreshes_the_text_whole() {
+        let c = FakeClock::new();
+        // Probe, the two lines, playback: all answered. Then silence.
+        let mut script = vec![Board::Answer { ms: 20 }; 4];
+        script.extend(vec![Board::Silent; 4]);
+        let mut g = Rig::new(&c, &script);
+        g.absent();
+        c.advance(QUIET);
+        assert_eq!(g.absent(), "radio");
+        assert_eq!(g.via, Via::Radio);
+        c.advance(Duration::from_secs(3));
+        g.absent(); // the playback goes unanswered: the radio is silent
+        // USB back well inside the keepalive: the text goes whole anyway.
+        c.advance(Duration::from_secs(3));
+        g.tick(Ok(()), Ok(()));
+        assert_eq!(g.usb_ticks, [true], "a full refresh on entering USB");
+        assert_eq!(g.via, Via::Usb);
+        // And a steady USB tick after it sends only the readout.
+        c.advance(Duration::from_secs(3));
+        g.tick(Ok(()), Ok(()));
+        assert_eq!(g.usb_ticks, [true, false]);
+    }
+
+    #[test]
+    fn usb_then_the_radio_refreshes_the_text_on_the_radio() {
+        let c = FakeClock::new();
+        let mut g = Rig::new(&c, &[]);
+        g.tick(Ok(()), Ok(())); // the text over USB
+        g.absent(); // the cable out: the quiet
+        c.advance(QUIET);
+        g.absent();
+        let got = g.f.got.borrow();
+        let cmds: Vec<(u8, u8)> = got.iter().map(|(_, _, i)| (i[1], i[2])).collect();
+        assert_eq!(cmds, [(0x13, 0x01), (0x12, 0x03), (0x12, 0x03), (0x12, 0x04)]);
+    }
+
+    #[test]
+    fn a_stage1_board_echo_is_never_taken_for_an_answer() {
+        let c = FakeClock::new();
+        let mut g = Rig::new(&c, &vec![Board::Echo; 8]);
+        g.absent();
+        c.advance(QUIET);
+        assert_eq!(g.absent(), "none");
+        assert_eq!(g.radio.state(), radio::State::Silent);
+        // Only probes went: never text to a board that did not answer one.
+        assert!(g.f.got.borrow().iter().all(|(_, _, i)| i[1] == 0x13));
+    }
+
+    #[test]
+    fn radio_only_never_asks_usb_and_never_feeds_the_watch() {
+        let c = FakeClock::new();
+        let f = Fake::new(&c, &[]);
+        let mut radio = Radio::new(1);
+        let (mut p, mut via, mut log) = (Publisher::new(), Via::Nothing, Vec::<String>::new());
+        let (outcome, _) = media_tick::<()>(
+            true,
+            || panic!("radio_only must not open USB"),
+            |_, _| unreachable!(),
+            Some(&mut radio),
+            |r: &mut Radio, p: &mut Publisher| {
+                r.tick(&c, || Ok(Some(Box::new(()) as RadioGuard)), || Ok(&f), p, &track(), || "now".into(), &mut Vec::<String>::new())
+            },
+            &mut p,
+            &mut via,
+            &mut log,
+        );
+        assert!(outcome.is_none());
+        assert!(radio.acquired());
     }
 }

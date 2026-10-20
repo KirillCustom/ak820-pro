@@ -9,10 +9,10 @@
 //! including when the process dies: nothing is left behind to go stale.
 
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::{CloseHandle, ERROR_LOCK_VIOLATION, GENERIC_READ, GENERIC_WRITE, HANDLE};
+use windows::Win32::Foundation::{CloseHandle, ERROR_LOCK_VIOLATION, GENERIC_READ, HANDLE};
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, LockFileEx, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY, OPEN_ALWAYS,
+    CreateFileW, LockFileEx, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_SHARE_WRITE, LOCKFILE_EXCLUSIVE_LOCK,
+    LOCKFILE_FAIL_IMMEDIATELY, OPEN_ALWAYS,
 };
 use windows::Win32::System::IO::OVERLAPPED;
 
@@ -45,10 +45,17 @@ pub fn try_take() -> Result<Option<RadioLock>, String> {
     let handle = unsafe {
         CreateFileW(
             PCWSTR(wide.as_ptr()),
-            (GENERIC_READ | GENERIC_WRITE).0,
-            // Shared: the Python opens it too (and truncates it, which is
-            // harmless: the lock is on byte 0 whatever the length).
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            // Read access is all LockFileEx needs, and all a second user is
+            // given on a file another user created under ProgramData's
+            // inherited ACL; the lock conflicts whatever each handle's
+            // access (codex, daemon review, 7). Ours never writes it.
+            GENERIC_READ.0,
+            // Read and write sharing, for the Python, which opens it for
+            // writing (and truncates it: harmless, the lock is on byte 0
+            // whatever the length). No delete sharing: a held file must not
+            // be renamable, which would let a second `raw81.lock` be locked
+            // beside it (codex, 7).
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
             None,
             OPEN_ALWAYS,
             FILE_ATTRIBUTE_NORMAL,
@@ -85,10 +92,12 @@ mod tests {
     /// handle, so this is the cross-process behaviour too.)
     #[test]
     fn the_lock_excludes_a_second_owner_until_dropped() {
-        let Ok(Some(first)) = try_take() else {
+        let first = match try_take() {
+            Ok(Some(l)) => l,
             // Another owner (a test script, the daemon) holds it on this
             // machine right now: nothing to test without disturbing it.
-            return;
+            Ok(None) => return,
+            Err(e) => panic!("the lock could not even be tried: {e}"),
         };
         assert!(matches!(try_take(), Ok(None)));
         drop(first);

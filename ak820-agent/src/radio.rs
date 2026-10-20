@@ -105,6 +105,10 @@ impl Sink for Vec<String> {
 /// The radio's side of the daemon.
 pub struct Radio {
     link: Option<(Link, RadioGuard)>,
+    /// After a stuck transfer: the lock, held until the process exits. The
+    /// abandoned write may still leave the kernel, so no other owner may
+    /// start a session (codex, daemon review, must-fix 1).
+    poisoned: Option<RadioGuard>,
     state: State,
     hold_until: Option<Instant>,
     silence: u32,
@@ -124,6 +128,7 @@ impl Radio {
     pub fn new(seed: u64) -> Radio {
         Radio {
             link: None,
+            poisoned: None,
             state: State::Off,
             hold_until: None,
             silence: 0,
@@ -163,14 +168,24 @@ impl Radio {
 
     /// The board is on USB: the radio stands down, releasing the lock
     /// (R2-2), and its backoffs are forgotten (USB presence is new evidence).
+    /// A poisoned lock is kept, and the radio stays abandoned.
     pub fn usb_present(&mut self, log: &mut impl Sink) {
+        if self.poisoned.is_some() {
+            return;
+        }
         self.release();
         self.hold_until = None;
         self.silence = 0;
         self.set(State::Off, Some("the board is on USB"), log);
     }
 
-    /// One media tick over the radio. See the module documentation.
+    /// Does this radio hold an acquisition (the lock and a session)?
+    pub fn acquired(&self) -> bool {
+        self.link.is_some()
+    }
+
+    /// One media tick over the radio, and whether the text went out. See the
+    /// module documentation.
     #[allow(clippy::too_many_arguments)]
     pub fn tick<W: Wire>(
         &mut self,
@@ -181,10 +196,13 @@ impl Radio {
         snapshot: &Snapshot,
         stamp: impl Fn() -> String,
         log: &mut impl Sink,
-    ) {
+    ) -> bool {
+        if self.poisoned.is_some() {
+            return false;
+        }
         let now = clock.now();
         if self.hold_until.is_some_and(|until| now < until) {
-            return;
+            return false;
         }
         self.hold_until = None;
 
@@ -201,7 +219,7 @@ impl Radio {
                     _ => State::Unresponsive,
                 };
                 self.set(next, Some(&e.to_string()), log);
-                return;
+                return false;
             }
         };
 
@@ -209,17 +227,19 @@ impl Radio {
             match lock() {
                 Ok(Some(guard)) => {
                     self.seed = self.seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                    self.link = Some((Link::new(now, self.seed ^ nanos()), guard));
+                    // The quiet runs from the moment the lock is held, never
+                    // from before the open and the lock (codex, must-fix 2).
+                    self.link = Some((Link::new(clock.now(), self.seed ^ nanos()), guard));
                     self.set(State::Quiet, Some("lock taken; a new session waits out its quiet"), log);
                 }
                 Ok(None) => {
                     self.set(State::Contended, Some("another radio owner on this machine"), log);
-                    return;
+                    return false;
                 }
                 Err(e) => {
                     self.hold_until = Some(now + LOCK_ERROR_BACKOFF);
                     self.set(State::LockError, Some(&e), log);
-                    return;
+                    return false;
                 }
             }
         }
@@ -227,7 +247,8 @@ impl Radio {
 
         if !link.qualified() {
             if let Err(f) = link.probe(&dev, clock) {
-                return self.fail(f, now, log);
+                self.fail(f, now, &stamp, log);
+                return false;
             }
             self.silence = 0;
         }
@@ -241,14 +262,17 @@ impl Radio {
         self.set(State::Qualified, Some("the board answers"), log);
 
         let plan = publisher.plan(snapshot, now);
+        let mut pushed = false;
         if let Some(text) = &plan.text {
             for (command, body) in text {
                 let link = &mut self.link.as_mut().expect("held").0;
                 if let Err(f) = link.push(&dev, clock, *command, body) {
-                    return self.fail(f, now, log);
+                    self.fail(f, now, &stamp, log);
+                    return false;
                 }
             }
             publisher.text_pushed(snapshot, now);
+            pushed = true;
             self.status.pushes += 1;
             self.status.last_push = Some(stamp());
             if plan.changed {
@@ -257,26 +281,33 @@ impl Radio {
         }
         let link = &mut self.link.as_mut().expect("held").0;
         if let Err(f) = link.push(&dev, clock, plan.playback.0, &plan.playback.1) {
-            return self.fail(f, now, log);
+            self.fail(f, now, &stamp, log);
+            return pushed;
         }
-        self.status.last_error = None;
+        self.status.qualified = self.link.as_ref().is_some_and(|(l, _)| l.qualified());
+        pushed
     }
 
-    fn fail(&mut self, f: Failure, now: Instant, log: &mut impl Sink) {
+    fn fail(&mut self, f: Failure, now: Instant, stamp: &impl Fn() -> String, log: &mut impl Sink) {
         if let Some((link, _)) = &self.link {
             self.status.session = link.session();
             self.status.sessions = link.sessions;
+            self.status.qualified = link.qualified();
         }
         if let Failure::Waiting { until } = f {
             self.hold_until = Some(until);
             self.set(State::Quiet, Some("a session's quiet or grace"), log);
             return;
         }
+        // Kept until the next failure, with its time: a success does not
+        // erase it (codex, daemon review, 8).
         self.status.failures += 1;
         self.status.last_error = Some(f.to_string());
+        self.status.last_error_at = Some(stamp());
         match f {
             Failure::Waiting { .. } => unreachable!(),
             Failure::Unknown => {
+                self.status.silent += 1;
                 self.silence += 1;
                 let wait = Duration::from_secs(1u64 << (self.silence - 1).min(5)).min(SILENCE_CAP);
                 self.hold_until = Some(now + wait);
@@ -286,7 +317,13 @@ impl Radio {
                 self.set(State::Silent, Some("no answer on the radio"), log);
             }
             // Retried next tick, the state unchanged: the board is there.
-            Failure::Incomplete | Failure::BadCrc => {}
+            // Incomplete (the board ran it) is kept apart from Unknown (it
+            // may not have), in the log and the counters (R2-4).
+            Failure::Incomplete => {
+                self.status.incomplete += 1;
+                log.line("radio: incomplete (the board ran a command; its reply was lost)");
+            }
+            Failure::BadCrc => {}
             Failure::Stale => self.set(State::Quiet, Some("the session went stale; rotating"), log),
             Failure::Busy => {
                 self.hold_until = Some(now + BUSY_BACKOFF);
@@ -299,9 +336,18 @@ impl Radio {
                 self.set(State::Refused, Some(&why), log);
             }
             Failure::Hid(hid::Error::Stuck) => {
-                self.release();
-                self.hold_until = Some(now + ABANDON_BACKOFF);
-                self.set(State::Abandoned, Some("a radio transfer never completed"), log);
+                // The lock is kept for the process's life and the radio
+                // disabled: the abandoned write may still leave the kernel
+                // (codex, must-fix 1). A cooldown cannot bound it.
+                if let Some((_, guard)) = self.link.take() {
+                    self.poisoned = Some(guard);
+                }
+                self.status.session = None;
+                self.set(
+                    State::Abandoned,
+                    Some("a radio transfer never completed; the radio is off until the daemon restarts"),
+                    log,
+                );
             }
             Failure::Hid(e) => self.set(State::Unresponsive, Some(&e.to_string()), log),
         }
@@ -373,14 +419,6 @@ mod tests {
         }
     }
 
-    impl<'c> Wire for &Fake<'c> {
-        fn write_report(&self, data: &[u8], t: Duration) -> Result<hid::exchange::Sent, hid::Error> {
-            (*self).write_report(data, t)
-        }
-        fn read_report(&self, t: Duration) -> Result<Option<Vec<u8>>, hid::Error> {
-            (*self).read_report(t)
-        }
-    }
 
     #[test]
     fn nothing_is_sent_in_the_first_quiet_then_probe_text_and_playback() {

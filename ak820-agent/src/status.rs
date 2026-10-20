@@ -52,11 +52,19 @@ pub struct RadioStatus {
     /// `refused`, `unresponsive`, `abandoned`, `lock error`.
     pub state: String,
     pub session: Option<u8>,
+    /// Has the board answered this session's probe since the last failure
+    /// that could have changed it?
+    pub qualified: bool,
     pub sessions: u64,
     pub pushes: u64,
     pub failures: u64,
+    /// Of the failures: the board ran a command and its reply was lost.
+    pub incomplete: u64,
+    /// Of the failures: no answer (the board may not have run it).
+    pub silent: u64,
     pub last_push: Option<String>,
     pub last_error: Option<String>,
+    pub last_error_at: Option<String>,
 }
 
 /// Health pages 1 and 2, the counters that decide "is the firmware even
@@ -182,14 +190,20 @@ pub fn render(s: &Status) -> String {
         if let Some(v) = r.session {
             put("radio_session", &v.to_string());
         }
+        put("radio_qualified", if r.qualified { "yes" } else { "no" });
         put("radio_sessions", &r.sessions.to_string());
         put("radio_pushes", &r.pushes.to_string());
         put("radio_failures", &r.failures.to_string());
+        put("radio_incomplete", &r.incomplete.to_string());
+        put("radio_silent", &r.silent.to_string());
         if let Some(v) = &r.last_push {
             put("radio_last_push", v);
         }
         if let Some(v) = &r.last_error {
             put("radio_last_error", v);
+        }
+        if let Some(v) = &r.last_error_at {
+            put("radio_last_error_at", v);
         }
     }
     match &s.clock {
@@ -275,14 +289,18 @@ mod tests {
         s.radio = Some(RadioStatus {
             state: "qualified".into(),
             session: Some(0x42),
+            qualified: true,
             sessions: 2,
             pushes: 7,
             failures: 1,
+            incomplete: 1,
+            silent: 0,
             last_push: Some("2026-10-19 23:40:00".into()),
-            last_error: None,
+            last_error: Some("the board ran it; the reply was lost".into()),
+            last_error_at: Some("2026-10-19 23:39:57".into()),
         });
         let text = render(&s);
-        assert!(text.contains("transport=radio\nradio=qualified\nradio_session=66\nradio_sessions=2\nradio_pushes=7\nradio_failures=1\nradio_last_push=2026-10-19 23:40:00\n"), "{text}");
+        assert!(text.contains("transport=radio\nradio=qualified\nradio_session=66\nradio_qualified=yes\nradio_sessions=2\nradio_pushes=7\nradio_failures=1\nradio_incomplete=1\nradio_silent=0\nradio_last_push=2026-10-19 23:40:00\nradio_last_error=the board ran it; the reply was lost\nradio_last_error_at=2026-10-19 23:39:57\n"), "{text}");
     }
 
     #[test]

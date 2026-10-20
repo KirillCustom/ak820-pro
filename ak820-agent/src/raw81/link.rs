@@ -136,6 +136,8 @@ pub struct Link {
     /// after which the panel's text is refreshed whole (R2-7, R3-3).
     generation: u64,
     rng: u64,
+    /// Candidates a request's search may try ([`SEARCH_TRIES`]; tests force it).
+    search_tries: u16,
     /// Sessions started, for the status file.
     pub sessions: u64,
 }
@@ -151,6 +153,7 @@ impl Link {
             qualified: false,
             generation: 0,
             rng: seed | 1,
+            search_tries: SEARCH_TRIES,
             sessions: 0,
         }
     }
@@ -241,7 +244,7 @@ impl Link {
     fn request(&mut self, wire: &impl Wire, clock: &impl Clock, inner: &[u8]) -> Result<[u8; PAYLOAD], Failure> {
         let now = clock.now();
         let mut l = self.session_at(now)?;
-        let Some((seq, payload)) = safe_request(l.id, l.seq.wrapping_add(1), inner, SEARCH_TRIES) else {
+        let Some((seq, payload)) = safe_request(l.id, l.seq.wrapping_add(1), inner, self.search_tries) else {
             self.rotate(now);
             return Err(Failure::Waiting { until: self.quiet_until });
         };
@@ -259,15 +262,23 @@ impl Link {
         l.seq = seq;
         self.live = Some(l);
 
+        // From the write on, a transport failure leaves the board's state
+        // unknown: qualification is dropped, so the next tick probes and,
+        // answered, refreshes the text whole (codex, daemon review, 6).
         let mut frame = [0u8; PAYLOAD + 1];
         frame[1..].copy_from_slice(&payload);
-        match wire.write_report(&frame, WRITE_TIMEOUT).map_err(Failure::Hid)? {
-            Sent::Yes => {}
-            Sent::TimedOut => {
+        match wire.write_report(&frame, WRITE_TIMEOUT) {
+            Ok(Sent::Yes) => {}
+            Ok(Sent::TimedOut) => {
+                self.qualified = false;
                 return Err(Failure::Hid(Error::Io {
                     op: "write",
                     source: OsError::new(0x800703E3_u32 as i32 as i64, "the radio write timed out and was cancelled"),
-                }))
+                }));
+            }
+            Err(e) => {
+                self.qualified = false;
+                return Err(Failure::Hid(e));
             }
         }
 
@@ -292,7 +303,10 @@ impl Link {
                         break;
                     }
                 }
-                Err(e) => return Err(Failure::Hid(e)),
+                Err(e) => {
+                    self.qualified = false;
+                    return Err(Failure::Hid(e));
+                }
             }
         }
 
@@ -603,5 +617,61 @@ mod tests {
         let mut l = opened(&c);
         assert!(matches!(l.push(&f, &c, 0x03, &[0u8; 24]), Err(Failure::TooLong)));
         l.push(&f, &c, 0x03, &[0x41u8; 23]).unwrap();
+    }
+
+    #[test]
+    fn an_exhausted_search_rotates_with_nothing_sent() {
+        let c = FakeClock::new();
+        let f = Fake::new(&c, &[]);
+        let mut l = opened(&c);
+        l.probe(&f, &c).unwrap();
+        l.search_tries = 0;
+        assert!(matches!(l.push(&f, &c, 0x03, LINE), Err(Failure::Waiting { .. })));
+        assert_eq!(l.session(), None, "rotated");
+        assert_eq!(f.written.borrow().len(), 1, "only the probe went");
+        l.search_tries = SEARCH_TRIES;
+        c.advance(QUIET);
+        l.probe(&f, &c).unwrap();
+        assert_eq!(l.sessions, 2);
+    }
+
+    #[test]
+    fn a_transport_failure_after_the_write_drops_qualification() {
+        let c = FakeClock::new();
+        let f = Fake::new(&c, &[Board::Answer { ms: 20 }, Board::Stuck]);
+        let mut l = opened(&c);
+        l.probe(&f, &c).unwrap();
+        assert!(l.qualified());
+        assert!(matches!(l.push(&f, &c, 0x03, LINE), Err(Failure::Hid(Error::Stuck))));
+        assert!(!l.qualified());
+        let c2 = FakeClock::new();
+        let f2 = Fake::new(&c2, &[Board::Answer { ms: 20 }, Board::StuckWrite]);
+        let mut l2 = opened(&c2);
+        l2.probe(&f2, &c2).unwrap();
+        assert!(matches!(l2.push(&f2, &c2, 0x03, LINE), Err(Failure::Hid(Error::Stuck))));
+        assert!(!l2.qualified());
+    }
+
+    #[test]
+    fn every_text_command_reaches_the_board_whole() {
+        let c = FakeClock::new();
+        let f = Fake::new(&c, &[]);
+        let mut l = opened(&c);
+        let cases: [(u8, &[u8]); 6] = [
+            (0x01, b"\x02Paused"),
+            (0x02, b""),
+            (0x03, b"\x00\x01Zap Zebra ZZZZZZZZZ"),
+            (0x03, b"\x01\x00aaaaaaaaaaaaaaaaaaaaa"),
+            (0x04, &[1, 0x5A, 0x5B, 0x5C, 0x61]),
+            (0x04, &[0, 0, 0, 0, 0]),
+        ];
+        for (cmd, body) in cases {
+            l.push(&f, &c, cmd, body).unwrap();
+            let got = f.got.borrow();
+            let inner = &got.last().unwrap().2;
+            assert_eq!(&inner[..3], &[0x07, 0x12, cmd]);
+            assert_eq!(&inner[3..3 + body.len()], body);
+            assert!(inner[3 + body.len()..].iter().all(|&b| b == 0));
+        }
     }
 }

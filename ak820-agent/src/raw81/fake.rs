@@ -51,6 +51,10 @@ pub(crate) enum Board {
     Unhandled,
     /// Every read fails as a stuck handle.
     Stuck,
+    /// The write's cancellation never landed: the write may still go out.
+    StuckWrite,
+    /// A stage-1 board: the request's 32 bytes echoed back, nothing else.
+    Echo,
 }
 
 /// A fake dongle with a stage-2 board behind it: it decodes each v2
@@ -148,6 +152,11 @@ impl Wire for Fake<'_> {
                 self.deliver(20, receipt(s, q, ST_OK, Some(&u)));
             }
             Board::Stuck => self.stuck.set(true),
+            Board::StuckWrite => {
+                self.stuck.set(true);
+                return Err(Error::Stuck);
+            }
+            Board::Echo => self.deliver(10, p.to_vec()),
         }
         Ok(Sent::Yes)
     }
@@ -175,3 +184,13 @@ impl Wire for Fake<'_> {
     }
 }
 
+
+/// The dongle by reference, as the daemon's openers hand it out.
+impl<'c> Wire for &Fake<'c> {
+    fn write_report(&self, data: &[u8], timeout: Duration) -> Result<Sent, Error> {
+        (*self).write_report(data, timeout)
+    }
+    fn read_report(&self, timeout: Duration) -> Result<Option<Vec<u8>>, Error> {
+        (*self).read_report(timeout)
+    }
+}

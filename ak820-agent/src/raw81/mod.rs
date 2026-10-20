@@ -623,4 +623,81 @@ mod tests {
         assert!(y.feed(&receipt(5, 7, ST_FORBIDDEN, None, 0)));
         assert_eq!(y.outcome(), Some(&Outcome::Ok(reply())));
     }
+
+    /// The window model from any starting state (two bytes already pending,
+    /// as a module frame cut short leaves): every match, as (index of the
+    /// completing byte, an ACK?).
+    fn window_matches_from(b2: u8, b1: u8, bytes: &[u8]) -> Vec<(usize, bool)> {
+        let (mut p2, mut p1) = (b2, b1);
+        let mut out = Vec::new();
+        for (i, &c) in bytes.iter().enumerate() {
+            let ack = (p2, p1, c) == (0x61, 0x0D, 0x0A);
+            let frame = matches!(p2, 0x5A | 0x5B | 0x5C) && c == p2.wrapping_add(p1);
+            if ack || frame {
+                out.push((i, ack));
+                p2 = 0;
+                p1 = 0;
+            } else {
+                p2 = p1;
+                p1 = c;
+            }
+        }
+        out
+    }
+
+    /// R4-2's residual, asserted rather than "no window action": from any
+    /// pending pair, an inert request's wire frame completes at most one
+    /// valid frame, only with its leading 0x81, and never an ACK.
+    #[test]
+    fn from_any_window_only_the_leading_0x81_can_complete_a_frame() {
+        let mut frames = Vec::new();
+        for (s, from) in [(1u8, 0u16), (0x42, 0x5A00), (0xFE, 0x7FFF), (0x99, 0xFFF0)] {
+            for inner in [&PROBE_INNER[..], b"\x07\x12\x03\x00\x01Zap Zebra", b"\x07\x12\x04\x01\x5a\x5b\x5c\x61"] {
+                let (_, p) = safe_request(s, from, inner, 256).unwrap();
+                let mut w = vec![0x81];
+                w.extend_from_slice(&p);
+                w.push(wire_sum(&p));
+                frames.push(w);
+            }
+        }
+        let mut residual = 0;
+        for b2 in 0..=255u8 {
+            for b1 in 0..=255u8 {
+                for w in &frames {
+                    let m = window_matches_from(b2, b1, w);
+                    assert!(m.len() <= 1, "{b2:02x} {b1:02x}: {m:?}");
+                    if let Some(&(i, ack)) = m.first() {
+                        assert_eq!((i, ack), (0, false), "{b2:02x} {b1:02x}");
+                        assert_eq!(b2.wrapping_add(b1), 0x81);
+                        residual += 1;
+                    }
+                }
+            }
+        }
+        // Exactly the pending pairs <5A|5B|5C, d> with type + d == 0x81.
+        assert_eq!(residual, 3 * frames.len());
+    }
+
+    #[test]
+    fn every_allowed_command_round_trips() {
+        let mut allowed: Vec<Vec<u8>> = vec![
+            b"\x07\x12\x01\x02Paused".to_vec(),
+            b"\x07\x12\x02".to_vec(),
+            b"\x07\x12\x03\x01\x00aaaaaaaaaaaaaaaaaaaaa".to_vec(),
+            b"\x07\x12\x04\x01\x00\x10\x00\xf0".to_vec(),
+        ];
+        for h in [0x01u8, 0x02, 0x04, 0x06, 0x07] {
+            allowed.push(vec![0x07, 0x13, h]);
+        }
+        for page in std::iter::once(0u8).chain(0x21..=0x2A) {
+            allowed.push(vec![0x07, 0x13, 0x0E, page]);
+        }
+        for inner in &allowed {
+            for s in [1u8, 0x80, 0xFF] {
+                let (_, p) = safe_request(s, 0x5A5A, inner, 256).unwrap();
+                let got = board_unwrap(&p).expect("crc");
+                assert_eq!(&got[..inner.len()], &inner[..]);
+            }
+        }
+    }
 }
