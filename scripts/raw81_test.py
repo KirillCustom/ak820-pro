@@ -24,6 +24,12 @@ sys.path.insert(0, HERE)
 import raw81_proto as P   # noqa: E402
 
 FRAME = 34
+SESSION = 0x5A
+
+
+def env(seq, inner, session=SESSION):
+    return P.envelope(session, seq, inner)
+
 SILENCE = 938          # ticks: TIME_MS2I(5) at 187.5 kHz
 TICKS_PER_MS = 187.5
 LIFETIME = 20
@@ -32,10 +38,11 @@ LIFETIME = 20
 class RX(ctypes.Structure):
     _fields_ = [("state", ctypes.c_int), ("boundary", ctypes.c_bool), ("tainted", ctypes.c_bool),
                 ("buf", ctypes.c_uint8 * 34), ("len", ctypes.c_uint8), ("start_ms", ctypes.c_uint32),
-                ("last_tick", ctypes.c_uint16), ("have_last", ctypes.c_bool), ("last_seq", ctypes.c_uint8),
-                ("seq", ctypes.c_uint8), ("inner", ctypes.c_uint8 * 28)] + \
+                ("last_tick", ctypes.c_uint16), ("have_session", ctypes.c_bool), ("session", ctypes.c_uint8),
+                ("last_seq", ctypes.c_uint16), ("admitted_ms", ctypes.c_uint32),
+                ("c_session", ctypes.c_uint8), ("c_seq", ctypes.c_uint16), ("inner", ctypes.c_uint8 * 26)] + \
                [(n, ctypes.c_uint32) for n in ("ok", "stale", "forbidden", "badenv", "badsum",
-                                              "taint", "lifetime", "qbytes")]
+                                              "taint", "lifetime", "qbytes", "busy")]
 
 
 def build(cc):
@@ -54,13 +61,16 @@ def build(cc):
     L.raw81_commit.argtypes = [ctypes.POINTER(RX), ctypes.c_bool, ctypes.c_uint32, ctypes.c_uint32]
     L.raw81_poll.argtypes = [ctypes.POINTER(RX), ctypes.c_bool, ctypes.c_uint32, ctypes.c_uint32]
     L.raw81_window_done.argtypes = [ctypes.POINTER(RX), ctypes.c_bool]
+    L.raw81_admit.argtypes = [ctypes.POINTER(RX), ctypes.c_uint32]
+    L.raw81_receipt.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint16, ctypes.c_uint8,
+                                ctypes.c_uint16, ctypes.c_void_p]
     L.raw81_allowed.restype = ctypes.c_bool
     L.raw81_crc16.restype = ctypes.c_uint16
     L.raw81_crc16.argtypes = [ctypes.c_char_p, ctypes.c_uint8, ctypes.c_uint16]
     return L
 
 
-V = {0: "OK", 1: "STALE", 2: "FORBIDDEN", 3: "BADENV", 4: "BADSUM", 5: "TAINT", 6: "LIFETIME"}
+V = {0: "OK", 1: "STALE", 2: "FORBIDDEN", 3: "BADENV", 4: "BADSUM", 5: "TAINT", 6: "LIFETIME", 7: "BUSY"}
 
 
 class Board:
@@ -72,6 +82,7 @@ class Board:
         self.w = [0, 0, 0]
         self.ms, self.tick = 1000, 0
         self.verdicts, self.frames, self.acks = [], [], 0
+        self.admit = True      # the glue dispatches every OK (False models a drop)
 
     def advance(self, ms):
         self.ms += ms
@@ -90,7 +101,9 @@ class Board:
                 self.w = [0, 0, 0]
             elif r == 3:                     # FRAME
                 v = self.L.raw81_commit(ctypes.byref(self.rx), self.err_at_commit, self.ms, LIFETIME)
-                self.verdicts.append((V[v], self.rx.seq, bytes(self.rx.inner) if v == 0 else None))
+                if v == 0 and self.admit:
+                    self.L.raw81_admit(ctypes.byref(self.rx), self.ms)   # the dispatch happened
+                self.verdicts.append((V[v], self.rx.c_seq, bytes(self.rx.inner) if v == 0 else None))
             elif r == 0:                     # the window's turn
                 self.w = self.w[1:] + [c]
                 b2, b1, b0 = self.w
@@ -141,17 +154,17 @@ def run(L):
 
     # 1. A request in one drain, then in every split across two drains.
     b = fresh(L)
-    b.drain(wire81(P.envelope(1, text)))
-    check("whole", b.verdicts == [("OK", 1, text + bytes(28 - len(text)))], b.verdicts)
+    b.drain(wire81(env(1, text)))
+    check("whole", b.verdicts == [("OK", 1, text + bytes(26 - len(text)))], b.verdicts)
     for cut in range(1, FRAME):
         b = fresh(L)
-        w = wire81(P.envelope(1, health))
+        w = wire81(env(1, health))
         b.drain(w[:cut]); b.advance(1); b.drain(w[cut:])
         check(f"split@{cut}", [v[0] for v in b.verdicts] == ["OK"], b.verdicts)
 
     # 2. Short frames and ACKs around a request still parse.
     b = fresh(L)
-    b.drain(short(0x5C, 0x40) + b"\x61\x0d\x0a" + wire81(P.envelope(2, health)) + short(0x5B, 0x32))
+    b.drain(short(0x5C, 0x40) + b"\x61\x0d\x0a" + wire81(env(2, health)) + short(0x5B, 0x32))
     check("around", [v[0] for v in b.verdicts] == ["OK"] and b.frames == [(0x5C, 0x40), (0x5B, 0x32)]
           and b.acks == 1, (b.verdicts, b.frames, b.acks))
 
@@ -167,24 +180,24 @@ def run(L):
 
     # 5. A pending `61 0D`, silence, a whole 81, then `0A`: no phantom ACK.
     b = fresh(L)
-    b.drain(b"\x61\x0d"); b.quiet(10); b.drain(wire81(P.envelope(3, health)) + b"\x0a")
+    b.drain(b"\x61\x0d"); b.quiet(10); b.drain(wire81(env(3, health)) + b"\x0a")
     check("no phantom ACK", b.acks == 0 and [v[0] for v in b.verdicts] == ["OK"], (b.acks, b.verdicts))
 
     # 6. A byte deleted at every position: never OK, never a phantom frame.
     for pos in range(FRAME):
         b = fresh(L)
-        w = bytearray(wire81(P.envelope(4, text)))
+        w = bytearray(wire81(env(4, text)))
         del w[pos]
         b.drain(bytes(w)); b.advance(25); b.drain(b"")
         ok = [v for v in b.verdicts if v[0] == "OK"]
         check(f"delete@{pos}", not ok and not b.frames and not b.acks, (b.verdicts, b.frames, b.acks))
         b.quiet(10)
-        b.drain(wire81(P.envelope(5, health)))   # recovers after silence
+        b.drain(wire81(env(5, health)))   # recovers after silence
         check(f"delete@{pos} recovers", b.verdicts[-1:] and b.verdicts[-1][0] == "OK", b.verdicts)
 
     # 7. Codex's constructed case: a TEXT_SET with one byte lost that still
     #    sums, followed by a real 5B: the CRC rejects it, the 5B is not forged.
-    payload = bytearray(P.envelope(6, b"\x07\x12\x01\x02\x11"))
+    payload = bytearray(env(6, b"\x07\x12\x01\x02\x11"))
     w = bytearray(wire81(bytes(payload)))
     for pos in range(2, FRAME - 1):
         v = bytearray(w)
@@ -196,49 +209,49 @@ def run(L):
 
     # 8. Truncated (the rest never comes): lifetime, quarantine, recovery.
     b = fresh(L)
-    b.drain(wire81(P.envelope(7, health))[:20]); b.advance(LIFETIME + 1); b.drain(b"")
+    b.drain(wire81(env(7, health))[:20]); b.advance(LIFETIME + 1); b.drain(b"")
     # The lifetime aborts it; the same empty read, 21 ms after the last byte,
     # is also silence, so the quarantine ends at once: idle, not collecting.
     check("truncated", b.rx.lifetime == 1 and b.rx.state == 0, (b.rx.lifetime, b.rx.state))
     b = fresh(L)
-    b.drain(wire81(P.envelope(7, health))[:20]); b.advance(LIFETIME + 1)
+    b.drain(wire81(env(7, health))[:20]); b.advance(LIFETIME + 1)
     b.L.raw81_poll(ctypes.byref(b.rx), False, b.ms, LIFETIME)
     check("truncated -> quarantine before silence is judged", b.rx.state == 2, b.rx.state)
-    b.quiet(10); b.drain(wire81(P.envelope(8, health)))
+    b.quiet(10); b.drain(wire81(env(8, health)))
     check("truncated recovers", [v[0] for v in b.verdicts] == ["OK"], b.verdicts)
 
     # 9. A UART error during the frame taints it.
     b = fresh(L)
-    w = wire81(P.envelope(9, health))
+    w = wire81(env(9, health))
     b.drain(w[:10]); b.advance(1); b.drain(w[10:], uart_err=True)
     check("taint", b.rx.taint >= 1 and not [v for v in b.verdicts if v[0] == "OK"], (b.rx.taint, b.verdicts))
     # ... and one first seen at the commit, raised during this very drain.
     b = fresh(L)
-    b.drain(wire81(P.envelope(9, health)), err_at_commit=True)
+    b.drain(wire81(env(9, health)), err_at_commit=True)
     check("taint at commit", [v[0] for v in b.verdicts] == ["TAINT"] and b.rx.state == 2, (b.verdicts, b.rx.state))
     # ... and one latched while idle, before the 81 starts.
     b = fresh(L)
-    b.drain(short(0x5C, 0x40), uart_err=True); b.advance(1); b.drain(wire81(P.envelope(9, health)))
+    b.drain(short(0x5C, 0x40), uart_err=True); b.advance(1); b.drain(wire81(env(9, health)))
     check("taint while idle", not [v for v in b.verdicts if v[0] == "OK"] and b.rx.taint >= 1, (b.verdicts, b.rx.taint))
 
     # 10. Bad magic, bad CRC: BADENV and quarantine.
-    for name, mut in (("magic", 0), ("crc", 2), ("inner", 10)):
-        p = bytearray(P.envelope(10, health)); p[mut] ^= 0x40
+    for name, mut in (("magic", 0), ("session", 1), ("seq", 3), ("crc", 4), ("inner", 10)):
+        p = bytearray(env(10, health)); p[mut] ^= 0x40
         b = fresh(L); b.drain(wire81(bytes(p)))
         check(f"badenv {name}", [v[0] for v in b.verdicts] == ["BADENV"] and b.rx.state == 2, b.verdicts)
 
-    # 10b. A valid CRC over a wrong magic: still BADENV.
-    for magic in (0x00, 0x07, 0xC6, 0xFF):
-        inner = health + bytes(28 - len(health))
-        head = bytes([magic, 13])
+    # 10b. A valid CRC over a wrong magic, or over session 0: still BADENV.
+    for magic, session in ((0x00, 5), (0x07, 5), (0xC6, 5), (0xFF, 5), (0xC7, 0)):
+        inner = health + bytes(26 - len(health))
+        head = bytes([magic, session, 0, 13])
         c = P.crc16(head + inner)
         b = fresh(L); b.drain(wire81(head + bytes([c >> 8, c & 0xFF]) + inner))
-        check(f"magic {magic:02x}", [v[0] for v in b.verdicts] == ["BADENV"], b.verdicts)
+        check(f"magic {magic:02x} session {session}", [v[0] for v in b.verdicts] == ["BADENV"], b.verdicts)
 
     # 10c. A collection that crosses its lifetime inside the drain that
     #      completes it: the poll at the drain's start passed, the commit must not.
     b = fresh(L)
-    w = wire81(P.envelope(14, health))
+    w = wire81(env(14, health))
     b.drain(w[:30]); b.advance(LIFETIME - 2)
     b.drain(w[30:], step_ms=1)
     check("lifetime at commit", [v[0] for v in b.verdicts] == ["LIFETIME"], b.verdicts)
@@ -246,35 +259,70 @@ def run(L):
     # 11. Forbidden but well formed: FORBIDDEN, boundary kept.
     for inner in (b"\x07\x13\x05", b"\x07\x13\x79BOOT", b"\x07\x13\x76\x01", b"\x07\x10\x01",
                   b"\x07\x11\x01", b"\x05\x00\x00\x00\x00\x00", b"\x07\x13\x0e\x05", b"\x07\x12\x05"):
-        b = fresh(L); b.drain(wire81(P.envelope(11, inner)) + wire81(P.envelope(12, health)))
+        b = fresh(L); b.drain(wire81(env(11, inner)) + wire81(env(12, health)))
         check(f"forbidden {inner.hex()}", [v[0] for v in b.verdicts] == ["FORBIDDEN", "OK"], b.verdicts)
     for inner in (b"\x07\x12\x01", b"\x07\x12\x02", b"\x07\x12\x03", b"\x07\x12\x04", b"\x07\x13\x01",
                   b"\x07\x13\x02", b"\x07\x13\x04", b"\x07\x13\x06", b"\x07\x13\x07", b"\x07\x13\x0e\x00",
                   b"\x07\x13\x0e\x21", b"\x07\x13\x0e\x2a"):
-        check(f"allowed {inner.hex()}", L.raw81_allowed((ctypes.c_uint8 * 28)(*(inner + bytes(28 - len(inner))))))
+        check(f"allowed {inner.hex()}", L.raw81_allowed((ctypes.c_uint8 * 26)(*(inner + bytes(26 - len(inner))))))
 
-    # 12. Freshness: a duplicate is stale; wrap; the window of 127; link loss.
+    # 12. Freshness (16-bit): a duplicate is stale; wrap at 65536; the window
+    #     of 32767; codex's 8-bit case (old 0 after 129) now stale.
     b = fresh(L)
-    for s in (250, 251, 251, 255, 0, 3, 3 + 128, 4):
-        b.drain(wire81(P.envelope(s, health))); b.advance(5)
+    for s in (65530, 65531, 65531, 65535, 0, 3, 3 + 32768, 4, 129, 0, 1129, 1129 + 32767):
+        b.drain(wire81(env(s, health))); b.advance(5)
     got = [v[0] for v in b.verdicts]
-    check("freshness", got == ["OK", "OK", "STALE", "OK", "OK", "OK", "STALE", "OK"], got)
-    b.drain(wire81(P.envelope(4, health)))
+    check("freshness", got == ["OK", "OK", "STALE", "OK", "OK", "OK", "STALE", "OK", "OK", "STALE", "OK", "OK"], got)
+    b.drain(wire81(env(1129 + 32767, health)))
     check("repeat is stale", b.verdicts[-1][0] == "STALE", b.verdicts[-1])
     L.raw81_link_lost(ctypes.byref(b.rx))
-    b.drain(wire81(P.envelope(4, health)))
+    b.drain(wire81(env(1129 + 32767, health)))
     check("the same seq is fresh after link loss", b.verdicts[-1][0] == "OK", b.verdicts[-1])
+
+    # 12b. Freshness advances only on admission: a dropped OK (the glue
+    #      could not dispatch it) leaves the same seq fresh for the retry.
+    b = fresh(L)
+    b.drain(wire81(env(10, health))); b.advance(5)
+    b.admit = False
+    b.drain(wire81(env(11, health))); b.advance(5)
+    b.admit = True
+    b.drain(wire81(env(11, health)))
+    check("drop does not advance", [v[0] for v in b.verdicts] == ["OK", "OK", "OK"], b.verdicts)
+    b.drain(wire81(env(12, b"\x07\x13\x05"))); b.advance(5)   # forbidden
+    b.drain(wire81(env(12, health)))
+    check("forbidden does not advance", [v[0] for v in b.verdicts][-2:] == ["FORBIDDEN", "OK"], b.verdicts)
+
+    # 12c. Sessions: another session is busy while this one is live, and may
+    #      start after RAW81_SESSION_IDLE_MS (1000) with no admitted request;
+    #      a reset or link loss ends the session at once.
+    b = fresh(L)
+    b.drain(wire81(env(1, health, session=9))); b.advance(500)
+    b.drain(wire81(env(1, health, session=10)))
+    check("other session busy", b.verdicts[-1][0] == "BUSY", b.verdicts)
+    b.advance(400)
+    b.drain(wire81(env(2, health, session=9)))     # the live session continues
+    b.advance(999)
+    b.drain(wire81(env(1, health, session=10)))
+    check("still busy at 999 ms", b.verdicts[-1][0] == "BUSY", b.verdicts)
+    b.advance(1)
+    b.drain(wire81(env(1, health, session=10)))
+    check("new session after 1 s idle", b.verdicts[-1][0] == "OK", b.verdicts)
+    b.drain(wire81(env(3, health, session=9)))
+    check("the old session is now busy", b.verdicts[-1][0] == "BUSY", b.verdicts)
+    L.raw81_reset(ctypes.byref(b.rx))
+    b.drain(wire81(env(3, health, session=9)))
+    check("any session after a reset", b.verdicts[-1][0] == "OK", b.verdicts)
 
     # 13. Back to back, and a random soak with junk between requests.
     b = fresh(L)
-    b.drain(b"".join(wire81(P.envelope(s, health)) for s in range(1, 6)))
+    b.drain(b"".join(wire81(env(s, health)) for s in range(1, 6)))
     check("back to back", [v[0] for v in b.verdicts] == ["OK"] * 5, b.verdicts)
     rng = random.Random(81)
     b, sent = fresh(L), 0
     for s in range(1, 400):
         junk = b"".join(rng.choice([short(0x5C, rng.randrange(101)), b"\x61\x0d\x0a", short(0x5A, rng.randrange(32))])
                         for _ in range(rng.randrange(3)))
-        b.drain(junk + wire81(P.envelope(s % 256, bytes([0x07, 0x13, 0x01]))))
+        b.drain(junk + wire81(env(s, bytes([0x07, 0x13, 0x01]))))
         sent += 1
         b.advance(rng.choice([1, 3, 7]))
     ok = sum(1 for v in b.verdicts if v[0] == "OK")
@@ -283,10 +331,16 @@ def run(L):
     # 14. The receipt and the 91 frame agree with the host side.
     reply = bytes(range(32))
     out = (ctypes.c_uint8 * 32)()
-    L.raw81_receipt(out, 7, 0, True, 7, (ctypes.c_uint8 * 32)(*reply))
+    L.raw81_receipt(out, 9, 0x1234, 0, 0x1233, (ctypes.c_uint8 * 32)(*reply))
     r = bytes(out)
     c = P.crc16(reply)
-    check("receipt", r[:7] == bytes([0xC7, 7, 0, 7, c >> 8, c & 0xFF, 1]) and r[7:] == bytes(25), r.hex())
+    rc = P.parse_receipt(r)
+    check("receipt", rc == {"session": 9, "seq": 0x1234, "status": 0, "last_seq": 0x1233, "reply_crc": c}, (r.hex(), rc))
+    t = P.Transaction(9, 0x1234); t.feed(reply); t.feed(r)
+    check("receipt completes the host's transaction", t.result == "ok" and t.reply == reply, t.result)
+    L.raw81_receipt(out, 9, 0x1235, 2, 0x1234, None)
+    t = P.Transaction(9, 0x1235); t.feed(bytes(out))
+    check("NAK receipt", t.result == "nak" and t.status == 2, t.result)
     f = (ctypes.c_uint8 * 34)()
     L.raw81_frame91(f, (ctypes.c_uint8 * 32)(*reply))
     check("frame91", bytes(f) == bytes([0x91]) + reply + bytes([(0x91 + sum(reply)) & 0xFF]))
