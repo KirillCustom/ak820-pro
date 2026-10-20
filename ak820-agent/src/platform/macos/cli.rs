@@ -489,6 +489,9 @@ fn lockchan_send(artist: &str, title: &str, repeat: u32) -> Result<(), String> {
             std::thread::sleep(t.saturating_duration_since(Instant::now()));
             true
         }
+        fn sleep_through(&self, t: Instant) {
+            std::thread::sleep(t.saturating_duration_since(Instant::now()));
+        }
     }
     struct Never;
     impl Control for Never {
