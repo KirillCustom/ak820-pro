@@ -205,6 +205,7 @@ def stalls(h):
 
 
 FAILS = []
+RUN0 = time.perf_counter()   # every loss's times are seconds from here, across a whole load run
 
 
 def check(name, ok, detail=""):
@@ -339,12 +340,17 @@ def test_stream(r, h, n, log=None):
     res, rtts, losses = {}, [], []
     t_start = time.time()
     for i in range(n):
+        sent = time.perf_counter() - RUN0
         t, rtt = r.xact(b"\x07\x13\x01")
         res[t.result] = res.get(t.result, 0) + 1
         if t.result == "ok":
             rtts.append(rtt)
         else:
-            losses.append({"i": i, "at": round(time.time() - t_start, 3), "result": t.result, "status": t.status})
+            # The send and the give-up (the deadline, or the NAK), in seconds
+            # from the run's start: the overrun A/B's idle intervals.
+            losses.append({"i": i, "at": round(time.time() - t_start, 3), "result": t.result, "status": t.status,
+                           "sent_s": round(sent, 4), "gave_up_s": round(time.perf_counter() - RUN0, 4),
+                           "wall": time.strftime("%H:%M:%S")})
     c1, s1 = counters(h), stalls(h)
     rtts.sort()
     q = lambda f: round(rtts[min(len(rtts) - 1, int(f * len(rtts)))], 2) if rtts else None
