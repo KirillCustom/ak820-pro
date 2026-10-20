@@ -147,8 +147,16 @@ Two workstreams, Phase 2 first:
   no light ([`plans/LOCK-LED-CHANNEL-PLAN.md`](plans/LOCK-LED-CHANNEL-PLAN.md)
   has the resume list; what the module forwards is in
   [docs/wireless.md](docs/wireless.md)).
-- **On the board: deep sleep and the power-mode icons**, `83d8768c64` (a
-  `dev` build, token `0xcf9da0e0`, since 16:16 10-19: `26fcafaeca`, flashed
+- **On the board since 18:32 10-19: `7387d18947`** (a `dev` build, token
+  `0x19f958d5`): the build below plus Gremlin's RX tap and raw HID over
+  2.4G's stage 1, the echo (dev builds only; the daily is unchanged). Its
+  echo works from the Mac (`history/raw81-echo-20261019-mac/`); every echo
+  costs one main-loop pass of 10 ms or more, still to explain
+  ([`plans/RAWHID-24G-PLAN.md`](plans/RAWHID-24G-PLAN.md)). BLE has no
+  vendor channel; its `FEE0` is the module's OTA, never to be written
+  ([docs/wireless.md](docs/wireless.md)).
+- **Before it: deep sleep and the power-mode icons**, `83d8768c64` (a
+  `dev` build, token `0xcf9da0e0`, from 16:16 10-19: `26fcafaeca`, flashed
   13:18 and soaked, plus the bulbs' art reworked on the panel, display.c
   only): the ladder sleeps on battery (Balanced 7 min, Power saver 3, Lights
   out 30 s, Always on never; the enum keeps Full/Normal/Saver/Minimal), a
@@ -159,8 +167,8 @@ Two workstreams, Phase 2 first:
   deep sleep draws 3.2 mA against ~27 awake and dark, wakes on a key, and
   the waking key is not lost; light sleep with WFI saves ~4.7 mA.** **Pushed 10-19** (`ak820pro-jdlien`
   and ChibiOS-Contrib's `ak820pro-patches`), and `deps.lock` pins
-  `de5450e487` (the board's `83d8768c64` plus `PATCHES.md` notes), so a fresh
-  `setup.sh` builds this firmware. JD: push freely now; the repo is not widely
+  `7387d18947` (the board's firmware: `ak820pro-jdlien` fast-forwarded to
+  `gremlin/raw81` after its echo passed), so a fresh `setup.sh` builds it. JD: push freely now; the repo is not widely
   circulated.
 - **The power logger stays on the pack** (INA228 + MAX17048,
   [docs/test-bench.md](docs/test-bench.md), "The power logger"): current and

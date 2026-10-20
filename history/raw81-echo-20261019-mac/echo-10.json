@@ -1,0 +1,58 @@
+{
+ "n": 10,
+ "replied": 10,
+ "lost": 0,
+ "stray_reports": 0,
+ "late_reports": 0,
+ "rtt_ms": {
+  "min": 17.76,
+  "median": 20.07,
+  "p95": 21.22,
+  "max": 21.22
+ },
+ "gap_ms": 20,
+ "timeout_ms": 250,
+ "board_before": {
+  "committed": 0,
+  "bad_sum": 0,
+  "lifetime": 0,
+  "uart_taint": 0,
+  "sent_91": 0,
+  "dropped": 0,
+  "acks_in_window": 0,
+  "state": 0,
+  "boundary": 1,
+  "pending": 0,
+  "ack_window": 0,
+  "quarantined_bytes": 0
+ },
+ "board_after": {
+  "committed": 10,
+  "bad_sum": 0,
+  "lifetime": 0,
+  "uart_taint": 0,
+  "sent_91": 10,
+  "dropped": 0,
+  "acks_in_window": 0,
+  "state": 0,
+  "boundary": 1,
+  "pending": 0,
+  "ack_window": 0,
+  "quarantined_bytes": 0
+ },
+ "board_delta": {
+  "committed": 10,
+  "bad_sum": 0,
+  "lifetime": 0,
+  "uart_taint": 0,
+  "sent_91": 10,
+  "dropped": 0,
+  "acks_in_window": 0,
+  "state": 0,
+  "boundary": 0,
+  "pending": 0,
+  "ack_window": 0,
+  "quarantined_bytes": 0
+ },
+ "at": "2026-10-19 18:33:34"
+}
