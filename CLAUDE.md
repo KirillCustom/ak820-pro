@@ -116,9 +116,21 @@ ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 **Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-20
 — RESUME HERE").
 
-**On the board since 01:04 10-20: `b2a07e0d37`** (a `dev` build, token
-`0x398a2e17`; `ak820pro-jdlien` and `deps.lock` point at it). It is the
-UART-latency build ([`plans/UART-LATENCY-PLAN.md`](plans/UART-LATENCY-PLAN.md)):
+**On the board since 15:16 10-20: `8b06e4dcc4`** (a `dev` build, token
+`0x3e1c880c`; `ak820pro-jdlien` and `deps.lock` point at it). It is
+`b2a07e0d37` with the deep sleep's wake from SRAM. On `b2a07e0d37` every
+deep sleep ended after one second, because of where the linker put the WFI
+([docs/sn32f299.md](docs/sn32f299.md), errata item 37;
+[`plans/DEEP-SLEEP-REGRESSION-2026-10-20.md`](plans/DEEP-SLEEP-REGRESSION-2026-10-20.md)).
+- **Its first checks:** 10/10 sleeps over 2.4G and 5/5 over BT.
+- **Not yet run:** the long soak, and the two cross-check builds codex
+  cleared (`221ffb103a`, `5a9f7b406d`). JD's call (10-20): the Rust
+  lock-light agent first.
+- **Open:** a 26-28 ms blit around some wakes, seen on the fix and on a
+  pad build without it.
+
+**Before it, from 01:04 10-20: `b2a07e0d37`** (a `dev` build, token
+`0x398a2e17`). It is the UART-latency build ([`plans/UART-LATENCY-PLAN.md`](plans/UART-LATENCY-PLAN.md)):
 - **the PCF's transfer runs unlocked,** with only the row ISR's IRQ held off;
 - **UART2 sits above USB;**
 - **the animation's stop and the boot redraw go through the staged restore;**

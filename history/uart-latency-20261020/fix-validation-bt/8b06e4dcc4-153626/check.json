@@ -1,0 +1,134 @@
+{
+ "control": false,
+ "fix": true,
+ "host": true,
+ "board": "other",
+ "complete": true,
+ "gates": true,
+ "strict_pass": true,
+ "failing": [],
+ "unexplained": [],
+ "problems": [],
+ "advance": false,
+ "summary": {
+  "cycles": 5,
+  "passed": 5,
+  "stopped": null,
+  "path": "ladder",
+  "mac_latency_ms": {
+   "median": 71.2,
+   "max": 104.8
+  },
+  "clock_before_abs_ms": null,
+  "timed_out": {}
+ },
+ "ring": [
+  {
+   "seq": 7,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 31,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 270107,
+   "strays": 0,
+   "written": 15
+  },
+  {
+   "seq": 8,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 28,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 300181,
+   "strays": 0,
+   "written": 15
+  },
+  {
+   "seq": 9,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 25,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 330250,
+   "strays": 0,
+   "written": 15
+  },
+  {
+   "seq": 10,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 24,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 817500,
+   "strays": 0,
+   "written": 15
+  },
+  {
+   "seq": 11,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 20,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 847566,
+   "strays": 0,
+   "written": 15
+  },
+  {
+   "seq": 12,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 9,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 877640,
+   "strays": 0,
+   "written": 15
+  },
+  {
+   "seq": 13,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 17,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 907710,
+   "strays": 0,
+   "written": 15
+  },
+  {
+   "seq": 14,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 18,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 937772,
+   "strays": 0,
+   "written": 15
+  }
+ ],
+ "artifact": "via-dev-8b06e4dcc4-20261020-150215.bin",
+ "head": "8b06e4dcc4a98c85a68c7915608eb1e50b876c15",
+ "token": "0x3e1c880c",
+ "lines": [
+  "2026-10-20 15:37:23 cycle   1: asleep 29.0 s (PCF 29, counted 24), woke key, p2 0x100, seq 11, key 1, Mac 105 ms, link sent 7 timeouts 7  ok",
+  "2026-10-20 15:38:17 cycle   2: asleep 23.0 s (PCF 23, counted 20), woke key, p2 0x100, seq 12, key 1, Mac 71 ms, link sent 8 timeouts 5  ok",
+  "2026-10-20 15:38:58 cycle   3: asleep 11.0 s (PCF 11, counted 9), woke key, p2 0x100, seq 13, key 1, Mac 66 ms, link sent 8 timeouts 3  ok",
+  "2026-10-20 15:39:48 cycle   4: asleep 20.0 s (PCF 20, counted 17), woke key, p2 0x100, seq 14, key 1, Mac 75 ms, link sent 8 timeouts 5  ok",
+  "2026-10-20 15:40:39 cycle   5: asleep 21.0 s (PCF 21, counted 18), woke key, p2 0x100, seq 15, key 1, Mac 68 ms, link sent 8 timeouts 3  ok",
+  "deep cycles: PASS {\"cycles\": 5, \"passed\": 5, \"stopped\": null, \"path\": \"ladder\", \"mac_latency_ms\": {\"median\": 71.2, \"max\": 104.8}, \"clock_before_abs_ms\": null, \"timed_out\": {}}"
+ ]
+}

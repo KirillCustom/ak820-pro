@@ -50,8 +50,8 @@ The rest of the short version:
   (measured once).
 - **A full charge takes 9-10 hours** (measured).
 
-⚠️ **The standby figures assume deep sleep works.** On the pinned dev build
-`b2a07e0d37` it does not ("Known issues", below).
+**The standby figures assume deep sleep works.** It does from `8b06e4dcc4`,
+not on `b2a07e0d37` before it ("Known issues", below).
 
 ## The battery
 
@@ -325,17 +325,20 @@ and the power modes", and [hardware.md](hardware.md), "Deep sleep".
 
 ## Known issues
 
-- ⚠️ **Deep sleep fails on the pinned dev build `b2a07e0d37`** (found
-  10-20). Each sleep ends after about a second, and the board sleeps again
-  ~3 s later, so idle draw would be ~75 mW rather than ~13 (an estimate). At
-  JD's use that roughly halves Balanced's runtime.
-  - **It follows where the code sits in flash, not the radio.** The same
-    code moved (`981631b925`, and the diagnostic builds since) sleeps
-    normally over 2.4G. It was found over 2.4G; BT was not tried on that
-    build.
-  - **Until the cause is known, any rebuild can land on a failing layout,**
-    so each build's sleep has to be checked.
-  - It is being chased in
+- **Deep sleep failed on `b2a07e0d37`; fixed from `8b06e4dcc4`** (10-20).
+  On `b2a07e0d37` each sleep ended after about a second, and the board
+  slept again ~3 s later, so idle draw would be ~75 mW rather than ~13 (an
+  estimate). At JD's use that roughly halves Balanced's runtime.
+  - **It followed where the linker put the sleep's WFI in flash**, not the
+    radio or the power mode:
+    [sn32f299.md](sn32f299.md), errata item 37.
+  - **The fix enters and leaves Deep-sleep from SRAM,** so the layout no
+    longer matters.
+  - **Its first checks:** 10 of 10 sleeps over 2.4G and 5 of 5 over BT,
+    every one ending on the key, and the key reaching the Mac. The long
+    soak (100+ cycles a transport, an hour asleep on the logger) is still
+    to come.
+  - The chase:
     [`plans/DEEP-SLEEP-REGRESSION-2026-10-20.md`](../plans/DEEP-SLEEP-REGRESSION-2026-10-20.md).
   - The sleep figures in this document come from the builds before it
     (`83d8768c64`, `7387d18947`), where sleep held on BT and 2.4G alike.
