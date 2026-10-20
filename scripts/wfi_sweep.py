@@ -25,7 +25,7 @@ cm = ds.cm
 
 
 def variant(h, v):
-    """op 14 sub 7: v 0-8 or 0xFF sets, 0xFE reads; returns the sequence in force."""
+    """op 14 sub 7: v 0-7, 9, 10 or 0xFF sets (8 on 466aa04636 only), 0xFE reads; returns the sequence in force."""
     r = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 14, 7, v] + [0] * 25)
     if len(r) < 32 or r[3] != 14 or r[4] != 7:
         raise SystemExit(f"op 14 sub 7 unhandled ({bytes(r[:8]).hex()}): not the diagnostic image")
@@ -52,13 +52,13 @@ def offset(v):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--variants", default="ff,0,1,2,3,4,5,6,7,8")
+    ap.add_argument("--variants", default="ff,0,1,2,3,4,5,6,7")
     ap.add_argument("--n", type=int, default=2)
     ap.add_argument("--out", default=os.path.join(HERE, "..", "history", "wfi-sweep-" + time.strftime("%Y%m%d-%H%M")))
     a = ap.parse_args()
     vs = [int(x, 16) for x in a.variants.split(",")]
     if any(v > 10 and v != 0xFF for v in vs):
-        sys.exit("--variants: 0-a or ff")
+        sys.exit("--variants: 0-7, 8 (466aa04636 only), 9, a or ff")
     res = []
     try:
         for v in vs:
@@ -72,12 +72,21 @@ def main():
                                 "--board-only", "--out", out], capture_output=True, text=True)
             lines = [ln for ln in r.stdout.splitlines() if "cycle " in ln or "deep cycles" in ln]
             ring = ds.with_dev(od.wakes)[-a.n:]
-            ok = r.returncode == 0
-            row = {"variant": v, "wfi": offset(v), "pass": ok, "cycles": lines, "ring": ring}
+            slept = r.returncode == 0
+            row = {"variant": v, "wfi": offset(v), "slept": slept, "cycles": lines, "ring": ring}
+            verdict = "PASS" if slept else "FAIL"
             if v in (9, 10):
-                row["probe"] = ds.with_dev(lambda h: probe(h, False))
+                # codex (flash-probe review, P2): the probe has its own verdict. A
+                # clean probe needs wakes probed and none wrong, and says only
+                # that these data reads came back right after the wake.
+                pr = row["probe"] = ds.with_dev(lambda h: probe(h, False))
+                row["probe_verdict"] = ("NO WAKES" if not pr["wakes"] else
+                                        "BAD READS" if pr["bad_wakes"] else "CLEAN")
+                verdict = f"sleep {verdict}, probe {row['probe_verdict']}"
+                slept = slept and row["probe_verdict"] == "CLEAN"
+            row["pass"] = slept
             res.append(row)
-            print(f"variant {v:#04x} ({offset(v)}): {'PASS' if ok else 'FAIL'}", flush=True)
+            print(f"variant {v:#04x} ({offset(v)}): {verdict}", flush=True)
             if "probe" in row:
                 print("    probe:", json.dumps(row["probe"]), flush=True)
             for ln in lines:
@@ -90,7 +99,8 @@ def main():
         os.makedirs(a.out, exist_ok=True)
         with open(os.path.join(a.out, "sweep.json"), "w") as f:
             json.dump({"at": time.strftime("%Y-%m-%d %H:%M:%S"), "args": vars(a), "results": res}, f, indent=1)
-    print("summary:", ", ".join(f"{r['wfi']} {'ok' if r['pass'] else 'FAIL'}" for r in res))
+    print("summary:", ", ".join(f"{r['wfi']} {'ok' if r['pass'] else 'FAIL'}"
+                                + (f" (probe {r['probe_verdict']})" if "probe_verdict" in r else "") for r in res))
 
 
 if __name__ == "__main__":

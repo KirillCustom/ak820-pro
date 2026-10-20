@@ -212,3 +212,52 @@ p1 read `0x0` throughout. The sequence was put back to `0xFF` afterwards.
    `deep_sleep` is byte-identical apart from its branches to other code.
 3. **The register capture** (codex's P1), on a padded build that still
    fails.
+
+## The flash probe (`83371a49f2`, `mac/sleep-flash-probe`)
+
+`466aa04636` plus WFI variants 9 and 10 and op 14 sub 8. The steps, all in
+SRAM:
+1. Read word 0 of `ds_probe_words` (`0x245c0`), the last flash access
+   before the sleep.
+2. Set CTRL to 2, then DSB and WFI.
+3. Set CTRL to 0, then read 16 times, alternating word 1 (`0x245c4`) and
+   word 15 (`0x245fc`): 8 reads back to back, then 8 more ~17 µs apart.
+   The last lands ~146 µs after the wake.
+4. Back in flash, `ds_probe_run` tallies the reads.
+
+Variant 9 reads word 15 first, variant 10 word 1. Variant 8 (the SRAM
+copy) is dropped to make RAM room, and now refuses. Built as
+`via-dev-83371a49f2-20261020-135325.bin`, token `0xb86f33e3`.
+- RAM: the gap above `.bss` is 72 bytes. The only allocators that could
+  use it are newlib's tzset, which skips allocating with TZ unset, and
+  sscanf's ungetc buffer, which asks for 1,024 bytes and fails at any of
+  these sizes.
+- Stack: ~164 bytes more during the probe, against 1,280 never touched
+  after the sweep's 20 sleeps.
+
+**Codex (`review-codex-sleep-flash-probe-2026-10-20.md`): clear for an
+attended bench flash.** It checked against the ELF:
+- nothing touches the flash between word 0 and the reads;
+- the code's constants sit in SRAM;
+- all 16 reads finish before the return to flash.
+
+Its findings:
+- **P2, a clean probe is weak evidence.** It says only that these data
+  reads came back right. The M0 marks instruction fetches apart
+  (`HPROT[0]`), so a flash buffer could treat them differently. A clean
+  probe also does not measure a readiness delay. **Taken:** a clean result
+  is reported in exactly those words.
+- **P2, `wfi_sweep.py` called PASS on bad reads.** **Fixed:** the probe has
+  its own verdict (CLEAN needs wakes probed and none wrong), and the
+  overall pass needs both.
+- **P3, the default sweep still asked for variant 8.** **Fixed.**
+- **P3, "8-byte line" overstates the manual,** which documents an 8-byte
+  programming unit, not a read buffer. **Taken:** words 0 and 1 are "the
+  same aligned 8-byte block", word 15 a different 8-, 16- and 32-byte
+  block, all in one 64-byte block. The diagnostic's comment stays as
+  built, so the reviewed image's commit is unchanged.
+- **Codex's next step, which matches step 2 above: move b2a0's own
+  instructions.** Its `nm` check found all 884 SRAM symbols identical in
+  address and size between b2a0 and `981631b925`. So `981631b925` moved
+  only the code, and it slept. The probe still runs first: it costs one
+  flash, and a bad read would settle the lead.
