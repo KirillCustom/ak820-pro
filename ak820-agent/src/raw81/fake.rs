@@ -55,6 +55,8 @@ pub(crate) enum Board {
     StuckWrite,
     /// A stage-1 board: the request's 32 bytes echoed back, nothing else.
     Echo,
+    /// The write timed out and its cancellation landed: it never left.
+    WriteTimeout,
 }
 
 /// A fake dongle with a stage-2 board behind it: it decodes each v2
@@ -157,6 +159,7 @@ impl Wire for Fake<'_> {
                 return Err(Error::Stuck);
             }
             Board::Echo => self.deliver(10, p.to_vec()),
+            Board::WriteTimeout => return Ok(Sent::TimedOut),
         }
         Ok(Sent::Yes)
     }

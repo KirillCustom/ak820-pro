@@ -105,10 +105,12 @@ impl Sink for Vec<String> {
 /// The radio's side of the daemon.
 pub struct Radio {
     link: Option<(Link, RadioGuard)>,
-    /// After a stuck transfer: the lock, held until the process exits. The
-    /// abandoned write may still leave the kernel, so no other owner may
-    /// start a session (codex, daemon review, must-fix 1).
-    poisoned: Option<RadioGuard>,
+    /// A stuck transfer happened: the lock was leaked on purpose
+    /// (`mem::forget`), so only the process's exit releases it, whatever
+    /// becomes of this object. The abandoned write may still leave the
+    /// kernel, so no other owner may start a session (codex, daemon review,
+    /// must-fix 1, and its verify).
+    poisoned: bool,
     state: State,
     hold_until: Option<Instant>,
     silence: u32,
@@ -128,7 +130,7 @@ impl Radio {
     pub fn new(seed: u64) -> Radio {
         Radio {
             link: None,
-            poisoned: None,
+            poisoned: false,
             state: State::Off,
             hold_until: None,
             silence: 0,
@@ -164,13 +166,14 @@ impl Radio {
         self.link = None;
         self.pushed_generation = 0;
         self.status.session = None;
+        self.status.qualified = false;
     }
 
     /// The board is on USB: the radio stands down, releasing the lock
     /// (R2-2), and its backoffs are forgotten (USB presence is new evidence).
     /// A poisoned lock is kept, and the radio stays abandoned.
     pub fn usb_present(&mut self, log: &mut impl Sink) {
-        if self.poisoned.is_some() {
+        if self.poisoned {
             return;
         }
         self.release();
@@ -197,7 +200,7 @@ impl Radio {
         stamp: impl Fn() -> String,
         log: &mut impl Sink,
     ) -> bool {
-        if self.poisoned.is_some() {
+        if self.poisoned {
             return false;
         }
         let now = clock.now();
@@ -340,9 +343,11 @@ impl Radio {
                 // disabled: the abandoned write may still leave the kernel
                 // (codex, must-fix 1). A cooldown cannot bound it.
                 if let Some((_, guard)) = self.link.take() {
-                    self.poisoned = Some(guard);
+                    std::mem::forget(guard);
                 }
+                self.poisoned = true;
                 self.status.session = None;
+                self.status.qualified = false;
                 self.set(
                     State::Abandoned,
                     Some("a radio transfer never completed; the radio is off until the daemon restarts"),

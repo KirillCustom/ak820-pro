@@ -458,3 +458,26 @@ media ticks (the quiet, then the probe and text).
 
 Live again after the fixes (23:52 10-19, `--radio-only`): the lock, the quiet,
 qualified 3 s later, `radio_qualified=yes`, no failures.
+
+### Codex's verify (10-20) and its dispositions
+
+[Verify](review-codex-raw81-daemon-verify-2026-10-20.md), verbatim: hold;
+findings 2, 4 and 6 closed, 7 sound, 1, 3, 5 and 8 partial.
+
+1. **A poisoned lock still died with the `Radio`** (the `--once` return
+   drops it). Fixed: the guard is `mem::forget`-ten, so only the process's
+   exit releases it; the test drops the `Radio` and asserts the lock still
+   held, and fails with the guard dropped instead.
+2. **Clock and health evidence reached the radio only through the Watch's
+   final state.** Fixed: every clock and health open notes USB evidence
+   (a good open, or a busy, refused or ambiguous one) whatever its
+   transaction then does, and the loop stands the radio down on it,
+   clearing its backoffs whether or not it held a link.
+3. **Qualification telemetry went stale on release, and the status
+   snapshot preceded the stand-down.** Fixed: a release clears it, and the
+   snapshot is taken after every stand-down.
+
+Regressions added: the poisoned lock outliving the `Radio`; a write timeout
+recovering with a probe and the whole text; USB back during a backoff
+clearing it; text delivered with the playback failing still recording the
+radio; qualification cleared when the acquisition ends. 392 tests.

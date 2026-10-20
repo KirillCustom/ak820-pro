@@ -326,7 +326,6 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
                     }
                 }
             }
-            st.radio = radio.as_ref().map(|r| r.status.clone());
             st.smtc_polls = health.polls;
             st.smtc_failures = health.failures;
             st.smtc_last_error = health.last_error;
@@ -383,15 +382,19 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
         // Any interaction that found the board on USB (the clock, health)
         // stands the radio down, not only the media's own open (codex,
         // daemon review, 5).
-        if watch.state() == Presence::Present && !opts.radio_only {
+        let seen = USB_SEEN.swap(false, std::sync::atomic::Ordering::Relaxed);
+        if seen && !opts.radio_only {
             if let Some(r) = radio.as_mut() {
-                if r.acquired() {
-                    r.usb_present(&mut &log);
+                r.usb_present(&mut &log);
+                if st.transport == "radio" {
+                    st.transport = "usb".into();
                 }
             }
         }
 
         if worked {
+            // After every stand-down, so the file says what is so now.
+            st.radio = radio.as_ref().map(|r| r.status.clone());
             st.board = watch.state().word().to_string();
             st.updated = logfile::stamp(&P::host());
             if let Err(e) = status::write(&opts.status, &st) {
@@ -409,6 +412,24 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
             .unwrap_or(next_media);
         std::thread::sleep(next.saturating_duration_since(Instant::now()).min(SLICE));
     }
+}
+
+/// Set by every clock and health open that finds the board on USB (a good
+/// open, or a busy, refused or ambiguous one), whatever the transaction then
+/// does; taken by the loop to stand the radio down (codex's daemon verify,
+/// 2). The media tick handles its own opener in [`media_tick`].
+static USB_SEEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// `P::open_board()`, noting USB evidence in [`USB_SEEN`].
+fn open_noting<P: Platform>() -> Result<P::Device, hid::Error> {
+    let r = P::open_board();
+    if match &r {
+        Ok(_) => true,
+        Err(e) => usb_evidence(e),
+    } {
+        USB_SEEN.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    r
 }
 
 /// Which transport last delivered the text. Entering any other refreshes the
@@ -594,7 +615,7 @@ enum HealthRead {
 /// Pages 1 and 2 on one open: the counters that say whether the firmware is
 /// stalling, read before the clock takeover can add stalls of its own.
 fn read_health<P: Platform>(discarded: &mut Vec<Drained>) -> Result<HealthStatus, HealthRead> {
-    let dev = P::open_board().map_err(HealthRead::Hid)?;
+    let dev = open_noting::<P>().map_err(HealthRead::Hid)?;
     let mut page = |command: u8| -> Result<[u8; 32], HealthRead> {
         match dev.request(Channel::Health, command, &[], REQUEST_TIMEOUT) {
             Ok(reply) => {
@@ -695,7 +716,7 @@ impl ClockLoop {
     /// Open the board for a clock interaction, resynchronising first when a
     /// command is unaccounted for.
     fn open<P: Platform>(&mut self, log: &Log) -> Result<P::Device, hid::Error> {
-        let dev = P::open_board()?;
+        let dev = open_noting::<P>()?;
         if self.unresolved {
             let (_, first) = dev.drain();
             std::thread::sleep(RESYNC_SETTLE);
@@ -1269,6 +1290,74 @@ mod media_tick_tests {
         }
         assert_eq!(g.sent(), n, "nothing more over the radio this process");
         assert_eq!(g.radio.state(), radio::State::Abandoned);
+        // Not even dropping the Radio releases it: only the process's exit
+        // (codex's daemon verify, 1; the --once return drops it).
+        drop(std::mem::replace(&mut g.radio, Radio::new(9)));
+        assert!(g.held.get(), "a poisoned lock outlives the Radio");
+    }
+
+    #[test]
+    fn a_write_timeout_recovers_with_a_probe_and_the_whole_text() {
+        let c = FakeClock::new();
+        // Probe, two lines, playback answered; then the next playback's write
+        // times out (cancelled, never left).
+        let mut script = vec![Board::Answer { ms: 20 }; 4];
+        script.push(Board::WriteTimeout);
+        let mut g = Rig::new(&c, &script);
+        g.absent();
+        c.advance(QUIET);
+        g.absent();
+        c.advance(Duration::from_secs(3));
+        g.absent();
+        assert_eq!(g.radio.state(), radio::State::Unresponsive);
+        assert!(!g.radio.status.qualified);
+        let n = g.f.got.borrow().len();
+        c.advance(Duration::from_secs(3));
+        assert_eq!(g.absent(), "radio");
+        let got = g.f.got.borrow();
+        let cmds: Vec<(u8, u8)> = got[n..].iter().map(|(_, _, i)| (i[1], i[2])).collect();
+        assert_eq!(cmds, [(0x13, 0x01), (0x12, 0x03), (0x12, 0x03), (0x12, 0x04)]);
+    }
+
+    #[test]
+    fn usb_back_during_a_backoff_clears_it() {
+        let c = FakeClock::new();
+        let mut g = Rig::new(&c, &vec![Board::Silent; 8]);
+        g.absent();
+        c.advance(QUIET);
+        g.absent();
+        assert_eq!(g.radio.state(), radio::State::Silent);
+        g.tick(Ok(()), Ok(()));
+        assert!(!g.held.get());
+        // The cable out again at once: no leftover backoff, the lock retaken.
+        g.absent();
+        assert!(g.held.get());
+        assert_eq!(g.radio.state(), radio::State::Quiet);
+    }
+
+    #[test]
+    fn text_delivered_and_playback_failed_still_records_the_radio() {
+        let c = FakeClock::new();
+        let script = [Board::Answer { ms: 20 }, Board::Answer { ms: 20 }, Board::Answer { ms: 20 }, Board::Silent, Board::Silent];
+        let mut g = Rig::new(&c, &script);
+        g.absent();
+        c.advance(QUIET);
+        g.absent();
+        assert_eq!(g.via, Via::Radio);
+        assert_eq!(g.radio.status.pushes, 1);
+    }
+
+    #[test]
+    fn qualification_is_cleared_whenever_the_acquisition_ends() {
+        let c = FakeClock::new();
+        let mut g = Rig::new(&c, &[]);
+        g.absent();
+        c.advance(QUIET);
+        g.absent();
+        assert!(g.radio.status.qualified);
+        g.tick(Ok(()), Ok(()));
+        assert!(!g.radio.status.qualified);
+        assert_eq!(g.radio.status.session, None);
     }
 
     #[test]
