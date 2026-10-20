@@ -14,6 +14,11 @@ keystrokes while typing fast on BT, a ~12 s watchdog that recovers a wedged
 board instead of needing a replug, and an LCD that shows something worth
 looking at.
 
+**Battery:** 50-52 hours of typing with every LED at full white, about seven
+weeks asleep (modelled), and four power modes between them. What each feature
+costs, how to work out your own runtime, and how it was all measured:
+[docs/power.md](docs/power.md).
+
 ---
 
 ## ⚠️ Read this before your first flash
@@ -432,7 +437,7 @@ it to take effect.
 
 | Path | What |
 |---|---|
-| [`docs/`](docs/) | The topic docs — wireless, display, fonts/assets, clock, LEDs, hardware, battery, the test bench. Read the one for what you are touching. |
+| [`docs/`](docs/) | The topic docs — wireless, display, fonts/assets, clock, LEDs, hardware, battery, the test bench. Read the one for what you are touching. [`docs/power.md`](docs/power.md) is the battery-life reference for readers. |
 | [`hostagent/`](hostagent/) | Host tools — keymap and lighting backup, health counters, battery log — and the older Python/bash clock-sync and now-playing agents, kept as the fallback |
 | [`ak820-agent/`](ak820-agent/) | The host agent: one Rust daemon for clock sync and now playing, on Windows (released, v0.1.1) and macOS (running on JD's Mac, not yet released) |
 | [`assets-src/`](assets-src/) | Font atlas and splash generators |

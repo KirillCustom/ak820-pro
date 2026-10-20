@@ -32,6 +32,38 @@ on the pack showed no pass of 25 ms or more. On the board since 16:16 10-19
 but the bezel clipping the slot at an angle, noted. The record:
 [`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
 
+## Merge Balanced and Power saver? (2026-10-20, an idea, not decided)
+
+The model says the two are close in practice
+([`../docs/power.md`](../docs/power.md), "The power modes at JD's use"):
+- **At JD's logged use:** Balanced ~13.2 days, Power saver ~13.7, within
+  ~4%. Nearly all idle time is in stretches of hours, and both spend those
+  asleep.
+- **For someone who stops and starts:** with 4 h of typing and twenty
+  15-minute breaks a day, ~8.8 days against ~9.7, about 10%.
+  - Power saver saves ~9 mWh a break, from dimming at 30 s instead of 1 min,
+    going dark at 2 min instead of 5, and sleeping at 3 instead of 7.
+
+What differs most is the feel: Power saver dims after 30 s.
+
+**The case for merging.** Three modes, each with a clear reason:
+- Always on, for people who never want the board dark;
+- Balanced;
+- Lights out, for the most battery.
+
+Below 15% every mode already takes Power saver's stages, so that behaviour
+would stay as the automatic low-battery stage, not a mode.
+
+**No drain is needed to decide.** Both modes use the same measured stage
+draws (within 2% of the logger), so the gap is arithmetic, not a model
+waiting on data. R5 measures Balanced either way.
+
+**If merged:**
+- The mode is persisted (kb datablock byte 6, values 0-3). Keep the enum's
+  values, drop Saver from `Fn`+`B`'s cycle, and map a stored Saver to
+  Balanced at boot.
+- Saver's bulb art goes. The docs' mode table loses a column.
+
 ## ~~The animation's resume clears the whole panel synchronously (43-44 ms)~~ FIXED 2026-10-20 (`ce70c8da41`) (2026-10-19)
 
 Routed through the staged restore with the boot redraw: 20 restores measured
