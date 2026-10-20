@@ -50,6 +50,8 @@ goes unserviced for its length: up to 101 ILRC cycles, ~2.9 ms, against a
 The host's sync writes the PCF every 5 min; two syncs fell in the Caps
 windows after the soak, when the module was busy.
 
+**Planned 10-19:** [`OVERRUN-CAPS-PLAN.md`](OVERRUN-CAPS-PLAN.md) (measure in a dev build with an A/B under the 2.4G echo's load, then a per-byte lock in the I2C driver), at codex.
+
 **To do:** first confirm it (do the overruns line up with PCF transactions:
 a cheap per-overrun stamp, or an hour's correlation with the daemon's sync
 times). Then a bit-bang without the whole-transaction lock. ⚠️ The open-drain

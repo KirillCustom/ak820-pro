@@ -88,11 +88,13 @@ def main():
         before = None
     d = hid.Device(path=dongle_path("mi_03").encode())
     rtts, lost, stray, dup = [], 0, 0, 0
+    lost_at = []    # wall-clock send times of the lost ones, to line up with other logs
     try:
         while d.read(33, 0):     # anything already waiting is not ours
             stray += 1
         for i in range(a.n):
             body = bytes([0xE0 | (i >> 8) & 0x0F, i & 0xFF]) + bytes(rng.getrandbits(8) for _ in range(30))
+            t_wall = time.time()
             t0 = time.perf_counter()
             d.write(bytes([0]) + body)
             got = None
@@ -108,6 +110,7 @@ def main():
                 stray += 1
             if got is None:
                 lost += 1
+                lost_at.append(round(t_wall, 3))
             else:
                 rtts.append(got)
             time.sleep(a.gap_ms / 1000)
@@ -120,7 +123,7 @@ def main():
 
     rtts.sort()
     pct = lambda q: round(rtts[min(len(rtts) - 1, int(q * len(rtts)))], 2) if rtts else None
-    res = {"n": a.n, "replied": len(rtts), "lost": lost, "stray_reports": stray, "late_reports": dup,
+    res = {"n": a.n, "replied": len(rtts), "lost": lost, "lost_at": lost_at, "stray_reports": stray, "late_reports": dup,
            "rtt_ms": {"min": pct(0), "median": pct(0.5), "p95": pct(0.95), "max": pct(1.0)},
            "gap_ms": a.gap_ms, "timeout_ms": a.timeout_ms,
            "board_before": before, "board_after": after,
