@@ -19,6 +19,13 @@ pub trait LockLights {
     fn profile(&self) -> Profile;
     /// The least time from one write's completion to the next write.
     fn spacing(&self) -> Duration;
+    /// The most a data write may take, from the previous write's completion
+    /// to its own (R3-6): the receiver's [`RECEIVER_GAP`], less a
+    /// margin for how far a completion can trail the board's arrival on this
+    /// platform. Default: [`DATA_GAP`].
+    fn data_gap(&self) -> Duration {
+        DATA_GAP
+    }
     /// The user's real Num/Caps/Scroll as HID bits, read now; `None` when
     /// they cannot be known (R4-1), which stops the channel.
     fn user(&mut self) -> Option<u8>;
@@ -65,6 +72,9 @@ pub const RECOVERY: Duration = Duration::from_millis(600);
 pub const QUIET: Duration = Duration::from_millis(300);
 pub const PREAMBLE_GAP: Duration = Duration::from_millis(100);
 pub const DATA_GAP: Duration = Duration::from_millis(300);
+/// The receiver's own limit between transitions (`LOCKCHAN_GAP_MS`): every
+/// platform's data gap stays under it.
+pub const RECEIVER_GAP: Duration = Duration::from_millis(500);
 pub const FRAME_LIMIT: Duration = Duration::from_secs(10);
 /// Repairs a restore makes before `restore_pending` (R3-1).
 pub const RESTORE_TRIES: usize = 3;
@@ -292,7 +302,8 @@ fn frame<L: LockLights, T: Time, C: Control>(
 
     // The warm-up: one change and back, so the board has the baseline.
     r.write(u ^ warm_bit(p), None, Some(u))?;
-    r.write(u, Some(DATA_GAP), Some(u))?;
+    let data_gap = r.lights.data_gap();
+    r.write(u, Some(data_gap), Some(u))?;
     // The quiet.
     let quiet_from = r.line.last_completion.expect("just written");
     r.wait(quiet_from + QUIET)?;
@@ -309,7 +320,7 @@ fn frame<L: LockLights, T: Time, C: Control>(
         let limit = match i {
             0 => None, // after the quiet, which is longer by design
             1 | 2 => Some(PREAMBLE_GAP),
-            _ => Some(DATA_GAP),
+            _ => Some(data_gap),
         };
         r.write(v, limit, Some(u))?;
     }
@@ -357,10 +368,11 @@ mod tests {
         fail_at: Option<(usize, WriteError)>,
         slow_at: Option<(usize, Duration)>,
         unknown: bool,
+        data_gap: Option<Duration>,
     }
     impl<'t> Fake<'t> {
         fn new(time: &'t FakeTime) -> Self {
-            Fake { time, cost: Duration::from_millis(1), user: 0x02, writes: vec![], change_at: None, fail_at: None, slow_at: None, unknown: false }
+            Fake { time, cost: Duration::from_millis(1), user: 0x02, writes: vec![], change_at: None, fail_at: None, slow_at: None, unknown: false, data_gap: None }
         }
     }
     impl LockLights for Fake<'_> {
@@ -372,6 +384,9 @@ mod tests {
         }
         fn user(&mut self) -> Option<u8> {
             (!self.unknown).then_some(self.user)
+        }
+        fn data_gap(&self) -> Duration {
+            self.data_gap.unwrap_or(DATA_GAP)
         }
         fn write(&mut self, v: u8) -> Result<(), WriteError> {
             let i = self.writes.len();
@@ -540,6 +555,33 @@ mod tests {
         let t = FakeTime(Cell::new(Instant::now()));
         let mut k = Fake::new(&t);
         k.slow_at = Some((30, Duration::from_millis(320)));
+        assert_eq!(run(&mut k, &t, &go(), &mut Line::default(), payload), Outcome::Abandoned(Why::Deadline));
+    }
+
+    #[test]
+    fn the_default_gaps_sit_under_the_receivers_limit() {
+        assert!(PREAMBLE_GAP < DATA_GAP && DATA_GAP < RECEIVER_GAP);
+    }
+
+    #[test]
+    fn a_platforms_data_gap_replaces_the_300_ms_for_the_warm_up_and_the_data() {
+        for (at, ms, gap, want) in [
+            (30, 400, Some(450), Outcome::Sent),
+            (30, 460, Some(450), Outcome::Abandoned(Why::Deadline)),
+            (1, 400, Some(450), Outcome::Sent), // the warm-up's return
+            (1, 400, None, Outcome::Abandoned(Why::Deadline)),
+        ] {
+            let t = FakeTime(Cell::new(Instant::now()));
+            let mut k = Fake::new(&t);
+            k.slow_at = Some((at, Duration::from_millis(ms)));
+            k.data_gap = gap.map(Duration::from_millis);
+            assert_eq!(run(&mut k, &t, &go(), &mut Line::default(), payload), want, "write {at} at {ms} ms, gap {gap:?}");
+        }
+        // The preamble keeps its own 100 ms whatever the data gap.
+        let t = FakeTime(Cell::new(Instant::now()));
+        let mut k = Fake::new(&t);
+        k.slow_at = Some((3, Duration::from_millis(120)));
+        k.data_gap = Some(Duration::from_millis(450));
         assert_eq!(run(&mut k, &t, &go(), &mut Line::default(), payload), Outcome::Abandoned(Why::Deadline));
     }
 

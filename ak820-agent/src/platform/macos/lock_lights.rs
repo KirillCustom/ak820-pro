@@ -44,6 +44,14 @@ const REPORT_ID: u8 = 2;
 const WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 const WRITE_GRACE: Duration = Duration::from_millis(250);
 const TRANSPORT: &str = "Bluetooth Low Energy";
+/// A data write's limit, not the default 300 ms. The Mac's BLE writes take
+/// 88-430 ms, and five of the six frames lost to the 300 ms on 10-20 were a
+/// data write of 343-379 ms (`history/lockchan-mac-interference-20261020/`).
+/// A write completes at its ATT response, after the board has the byte, so
+/// the gap the board sees is at most this plus how far that response trails
+/// the arrival: 50 ms is left for it under the receiver's 500. Sent must
+/// still always mean committed; `scripts/mac_lockchan_gaps.py` checks it.
+const DATA_GAP: Duration = Duration::from_millis(450);
 
 /// The board's keyboard among the BLE device's services: the keyboard
 /// collection (usage page 1, usage 6) over BLE. `Err` when more than one.
@@ -230,6 +238,9 @@ impl LockLights for BleLights {
     fn spacing(&self) -> Duration {
         Duration::ZERO
     }
+    fn data_gap(&self) -> Duration {
+        DATA_GAP
+    }
     fn user(&mut self) -> Option<u8> {
         if !session_active() {
             return None;
@@ -364,6 +375,13 @@ impl crate::lockchan::sender::Platform for Mac {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_data_gap_leaves_50_ms_under_the_receivers_limit() {
+        use crate::lockchan::frame::RECEIVER_GAP;
+        assert!(DATA_GAP > crate::lockchan::frame::DATA_GAP);
+        assert!(DATA_GAP + Duration::from_millis(50) <= RECEIVER_GAP);
+    }
 
     fn cand(page: i64, usage: i64, transport: &str) -> Candidate {
         Candidate {

@@ -113,6 +113,14 @@ pub fn main() {
         }
     }
 
+    // Without it there is no orderly stop, and --lockchan's promise to put
+    // the user's lights back on a stop could not be kept (codex, verify 2).
+    match super::stop::install() {
+        Ok(()) => {}
+        Err(e) if opts.lockchan => bail(&opts.log, &format!("not starting with --lockchan: {e}")),
+        Err(e) => Log::at(&opts.log).line(&format!("[warn] {e}: a bootout will end the daemon outright")),
+    }
+
     let _held: Lock = match Lock::claim_all(&instance::default_path(), &instance::all_paths()) {
         Ok(held) => held,
         Err(e) => bail(&opts.log, &format!("not starting: {e}")),

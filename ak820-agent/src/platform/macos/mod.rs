@@ -20,6 +20,7 @@ pub mod media;
 pub mod process;
 pub mod radio_lock;
 mod runloop;
+pub mod stop;
 mod sys;
 
 use std::time::Duration;
@@ -56,6 +57,11 @@ impl crate::platform::Platform for Native {
 
     fn open_radio() -> Result<device::Device, hid::Error> {
         device::open_radio()
+    }
+
+    /// SIGTERM (launchd's bootout) or SIGINT taken (`stop.rs`).
+    fn stop_requested() -> bool {
+        stop::requested()
     }
 
     /// The lock-LED channel's sender, on a thread of its own: P3 over the
