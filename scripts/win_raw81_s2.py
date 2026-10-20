@@ -297,11 +297,20 @@ def test_clock(h, tenths=35):
 
 
 def test_expiry(r, h, tenths=35):
+    """A response held in the pump through a stall must expire, and be seen
+    to expire across the stall (codex's verify of 0ae4cf8c): pending at the
+    stall's entry, gone on the first look after it with the hold still on.
+    With the old clock (a stall of 3.5 s counted as ~5 ms) it would still be
+    pending there, about 110 ms old, so the test cannot pass by accident."""
     c0 = counters(h)
-    devhook(h, 17, 5, 1)                                   # hold responses in the pump
     try:
+        devhook(h, 17, 5, 1)                               # hold responses in the pump
+        t0 = time.perf_counter()
         t, _ = r.xact(b"\x07\x13\x01")                  # dispatched; its response held
-        devhook(h, 17, 4, tenths, wait_s=tenths / 10 + 3)  # at once: the stall
+        before = counters(h)
+        entry = time.perf_counter() - t0                   # write -> the stall's request, an upper bound
+        devhook(h, 17, 4, tenths, wait_s=tenths / 10 + 3)  # the stall
+        after = counters(h)                                # first look, hold still on
     finally:
         devhook(h, 17, 5, 2)                               # release
     late = []
@@ -311,10 +320,16 @@ def test_expiry(r, h, tenths=35):
         if rep:
             late.append(bytes(rep).hex())
     c1 = counters(h)
+    check(f"expiry: pending at the stall's entry, {entry * 1000:.0f} ms after the write (TTL 250)",
+          t.result == "unknown" and before["resp_pending"] == 2 and before["resp_expired"] == c0["resp_expired"]
+          and entry < 0.200, (t.result, before["resp_pending"], entry))
+    check("expiry: gone on the first look after the stall, the hold still on",
+          after["resp_pending"] == 0 and after["resp_expired"] - c0["resp_expired"] == 1,
+          (after["resp_pending"], after["resp_expired"] - c0["resp_expired"]))
     d = {k: c1[k] - c0[k] for k in ("dispatched", "resp_expired", "sent91")}
-    check(f"expiry: held through a {tenths / 10:.1f} s stall, the response expired once and never went out",
-          t.result == "unknown" and d == {"dispatched": 1, "resp_expired": 1, "sent91": 0}
-          and c1["resp_pending"] == 0 and not late, (t.result, d, c1["resp_pending"], late[:2]))
+    check("expiry: dispatched once, expired once, never sent, nothing heard",
+          d == {"dispatched": 1, "resp_expired": 1, "sent91": 0} and c1["resp_pending"] == 0 and not late,
+          (d, c1["resp_pending"], late[:2]))
     t, _ = r.xact(b"\x07\x13\x01")
     check("expiry: the session is served after it", t.result == "ok", t.result)
 
