@@ -508,8 +508,8 @@ the main clone's checkout is untouched (neither pushed):
   landed, so no rebase). `power.c`, `power.h`, `rgb_matrix_kb.inc`,
   `rules.mk`'s comment. Dev, daily and fpb compile with no warnings, and the
   dev build's `ds_deep_wfi` is in SRAM (`0x200014ec`).
-- **Host side: `c89e06b`, `67ae9e8` (the docs) and `dbc33d6` (codex's
-  fixes)** on this repo, rebased onto `main` at `37ac5ca`. It is not on
+- **Host side: `58be856`, `4d00aec` (the docs) and `05a6f60` (codex's
+  fixes)** on this repo, rebased onto `main` at `7e2d218`. It is not on
   `main` because `run.sh` runs against the main clone's `power.c`, the one on
   the board, and the new ladder cases fail there until the firmware merges.
   Both merge together.
@@ -558,7 +558,7 @@ the bench scripts before accepting validation 4.
 
 1. **Must-fix: `colour.c`'s `scale8` was not the board's.** QMK builds
    lib8tion with `FASTLED_SCALE8_FIXED=1`, so the board scales by `i × (1 + s)
-   >> 8`. **Fixed** (`dbc33d6`); everything passes with it.
+   >> 8`. **Fixed** (`05a6f60`); everything passes with it.
 2. **Must-fix: `ladder_check.py` passed on all-zero readings.** **Fixed:** a
    reference must read lit (at least 20 ‰ at value 255, 2 at 100, white at
    128 at least 100). It ends INCOMPLETE (exit 2) without `--rig`, since the
@@ -595,10 +595,10 @@ the bench scripts before accepting validation 4.
    cut, the consumers (sleep, op 14, the bulb, the energy count), and
    applying 128 to a held ACTIVE in Lights out.
 9. **Should-fix: comments.**
-   - **Fixed** (`5df4e0e3b7`, `dbc33d6`): `power.h`'s dim (a ceiling at 64),
+   - **Fixed** (`5df4e0e3b7`, `05a6f60`): `power.h`'s dim (a ceiling at 64),
      DRIFT's half saving, "the MCU never slept", `ladder.c`'s op 14 sub 1.
    - **Already done:** the documentation it listed as open was on the branch
-     (`67ae9e8`) after the commit it read.
+     (`4d00aec`) after the commit it read.
 
 **Results after the fixes:** `run.sh` passes against `5df4e0e3b7`, and the
 mutants are 26 of 27 caught (all 9 new ones, plus the known survivor).
