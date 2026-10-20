@@ -1,0 +1,19 @@
+You are verifying a fix to firmware before it is flashed (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS; a dev build only). Your previous review is plans/review-codex-raw81-v2-impl-2026-10-19.md. Read it first.
+
+Its must-fix: r81_long_now() in qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c extended the 16-bit system tick (187.5 kHz, a wrap every ~0.35 s) only when the main loop called it, so a main-loop stall of whole wraps lost them, and a response could be held past the host's 3 s quiet and match a reused identity.
+
+The fix is commit 145a8234 on branch gremlin/raw81 of qmk_firmware-ak820pro (the submodule-like clone in the repo root); its parent is 5a7696ae, the commit you reviewed. Run `git -C qmk_firmware-ak820pro show 145a8234` to see it. In short:
+- r81_long is extended by r81_long_extend() under the kernel lock, from two paths: r81_long_now() (thread context; chSysGetStatusAndLockX/chSysRestoreStatusX, so it is safe from any context) and a virtual timer r81_long_tick() that re-arms itself every half wrap (1 << (CH_CFG_ST_RESOLUTION - 1) ticks), as QMK's platforms/chibios/timer.c does for its own high bits. The timer is started once from r81_ensure() (thread context).
+- HC_DEVHOOK op 17 sub 4 (hid_protocol.c): a deliberate main-loop stall of [5] x 100 ms (1..50), returning how far r81_long moved across it, as the long-stall regression; the host checks it against the stall.
+- op 17 page 2's byte [6] now reports liveness (admitted within the idle), not have_session.
+
+Check, citing file:line:
+1. Does the fix close the must-fix? Can r81_long still lose a wrap while the tick interrupt runs (the virtual timer's own latency, a lock held across the boundary, the ISR/thread race on r81_long and r81_long_last, the first call before the timer is armed, a deep sleep or wake that stops or reprograms the system tick: see sleep.c, which is not ours, for what it does to the tick and the virtual-timer list)? Is under-counting still the only possible error, and is it bounded?
+2. Is the virtual timer correct ChibiOS usage for this kernel version (callback signature, chVTSetI from the callback under chSysLockFromISR, chVTObjectInit/chVTSet once, lock nesting)? Any interaction with tickless mode (CH_CFG_ST_TIMEDELTA) or with the other virtual timers?
+3. The cost: the virtual timer fires ~5.7 times a second; r81_long_now() now takes the kernel lock, which on a Cortex-M0 masks all interrupts. Count its callers per main-loop pass and judge the added interrupt latency against the CH582F UART's ~87 us service requirement and the row ISR.
+4. Is op 17 sub 4 a sound regression, and safe as a dev hook (the watchdog's ~12 s, the 5 s cap, keyboard and radio traffic during the stall)?
+5. Anything else in the delta. Daily builds are unchanged (the symbol table is identical to the previous daily's).
+
+Your previous review's should-fixes are in the host script scripts/win_raw81_s2.py; they are being fixed separately and need not be reviewed here.
+
+Give a verdict first (flash or hold), then findings ranked must-fix / should-fix / note.

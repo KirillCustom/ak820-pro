@@ -5,7 +5,7 @@ scripts/raw81_proto.py). Needs the gremlin/raw81 stage-2 dev build, the slider
 on 2.4G with the link up, and the USB cable (the board's own counters and its
 stored text are read over it).
 
-    win_raw81_s2.py [all | text | health | nak | stream N | load SECONDS] [--json OUT]
+    win_raw81_s2.py [all | text | health | nak | clock | stream N | load SECONDS] [--json OUT]
 
   text    each text command over the radio, the band's stored state read back
           over USB (op 18) and compared
@@ -15,13 +15,17 @@ stored text are read over it).
           and a second session inside the idle time (4)
   stream  N health reads back to back: loss, latency to the receipt, and the
           board's counters (drops, deferral overruns, short writes must be 0)
+  clock   the board's long clock across a deliberate 3.5 s main-loop stall
+          (op 17 sub 4): it must count the whole stall, not the stall modulo
+          the tick's 0.35 s wrap (codex, v2 implementation review, must-fix)
   load    health reads at full rate for SECONDS, logging each loss with its
           time, for the overrun A/B (the Mac session's request)
 
-The owner lock and the session: one owner per dongle on this machine (a lock
-file held for the run); the session id is persisted beside it, incremented on
-every open (skipping 0), and a new open waits until 1 s after the previous
-one (R5-2). Never hid_enumerate: the dongle and the board are found in the
+The owner lock and the session (daemon plan R3-2, R4-1): one owner per dongle
+on this machine (a byte-range lock under ProgramData, held for the run); no
+persisted state: every new session waits 3 s with nothing sent and draws a
+random safe id. Every frame written is checked inert first, the deliberately
+bad ones included (codex, v2 implementation review). Never hid_enumerate: the dongle and the board are found in the
 Configuration Manager's list (CLAUDE.md).
 """
 import ctypes, json, msvcrt, os, struct, sys, time
@@ -76,6 +80,7 @@ class Owner:
         self.seq = random.randrange(65536)
         self.issued = 0                    # seq positions consumed, skips included
         self.admitted = False              # for the initial-admission BUSY grace
+        self.grace = 0                     # its retries, per session
 
     def next_request(self, inner):
         """(session, seq, payload): the next inert v2 request, rotating the
@@ -115,6 +120,10 @@ class Radio:
             session = self.owner.session if session is None else session
             seq = self.owner.seq if seq is None else seq
             req = raw if raw is not None else P.envelope(session, seq, inner)
+        # The rule every request keeps (R3-1), the deliberately bad ones too:
+        # no byte of the whole wire frame an older board's window acts on.
+        if not P.frame_is_inert(req):
+            raise RuntimeError(f"refusing a frame that is not inert: {bytes(req).hex()}")
         t = P.Transaction(session, seq, inner)
         self.drain()
         t0 = time.perf_counter()
@@ -131,14 +140,15 @@ class Radio:
             if rep and t.feed(rep):
                 break
         rtt = (time.perf_counter() - t0) * 1000
-        if t.result == "ok" and session == self.owner.session:
+        # A status-0 receipt proves admission whether or not the reply survived.
+        if t.result in ("ok", "incomplete") and session == self.owner.session:
             self.owner.admitted = True
         if (t.result == "nak" and t.status == 4 and session == self.owner.session
-                and not self.owner.admitted and getattr(self, "_grace", 0) < BUSY_GRACE_TRIES):
+                and not self.owner.admitted and self.owner.grace < BUSY_GRACE_TRIES):
             # R4-1's initial-admission grace: until this session's first
             # admission, BUSY means an old request was admitted near the end of
             # the quiet and restarted the board's idle. Wait it out and retry.
-            self._grace = getattr(self, "_grace", 0) + 1
+            self.owner.grace += 1
             time.sleep(1.1)
             return self.xact(inner)
         if t.result in ("ok", "nak", "incomplete"):
@@ -151,14 +161,14 @@ def usb_open():
     return ak820text.open_device()
 
 
-def usb_xfer(h, payload, match=3):
+def usb_xfer(h, payload, match=3, wait_s=2.0):
     # Windows delivers every input report to every open handle (CLAUDE.md):
     # a handle left unread during a long radio run fills with the daemon's
     # traffic, so drain it first, then read until the answer or 2 s.
     while h.read(32, 0):
         pass
     h.write(bytes([0]) + bytes(payload) + bytes(32 - len(payload)))
-    end = time.time() + 2.0
+    end = time.time() + wait_s
     while time.time() < end:
         r = h.read(32, 200)
         if r and bytes(r[1:match]) == bytes(payload[1:match]):
@@ -166,8 +176,8 @@ def usb_xfer(h, payload, match=3):
     raise RuntimeError(f"no USB reply to {bytes(payload).hex()}")
 
 
-def devhook(h, op, arg):
-    r = usb_xfer(h, [0x07, 0x13, 0x76, op, arg], match=4)
+def devhook(h, op, arg, *more, wait_s=2.0):
+    r = usb_xfer(h, [0x07, 0x13, 0x76, op, arg, *more], match=4, wait_s=wait_s)
     if r[0] != 0x07:
         sys.exit(f"op {op} unhandled: not the stage-2 build")
     return r
@@ -236,6 +246,17 @@ def test_health(r, h):
               (t.result, t.reply[:6].hex() if t.reply else None, u[:6].hex()))
 
 
+def inert_corruption(good):
+    """`good` with one masked inner byte changed so the CRC fails, the whole
+    frame (its new sum included) still inert."""
+    for x in range(1, 256):
+        bad = bytearray(good)
+        bad[10] ^= x
+        if P.frame_is_inert(bytes(bad)):
+            return bytes(bad)
+    raise RuntimeError("no inert corruption")
+
+
 def test_nak(r, h):
     t, _ = r.xact(b"\x07\x13\x05")                         # HC_RESET: not allowed
     check("forbidden -> NAK 2", t.result == "nak" and t.status == 2, (t.result, t.status))
@@ -247,15 +268,30 @@ def test_nak(r, h):
     check("repeated admitted seq -> NAK 3", t.result == "ok" and t2.result == "nak" and t2.status == 3,
           (t.result, t2.result, t2.status))
     s_, q_, good = r.owner.next_request(b"\x07\x13\x01")
-    bad = bytearray(good); bad[10] ^= 0x55                 # a masked inner byte: the CRC fails
-    t, _ = r.xact(b"\x07\x13\x01", raw=bytes(bad), session=s_, seq=q_)
+    bad = inert_corruption(good)                           # a masked inner byte: the CRC fails
+    t, _ = r.xact(b"\x07\x13\x01", raw=bad, session=s_, seq=q_)
     check("corrupted envelope -> NAK 1", t.result == "nak" and t.status == 1, (t.result, t.status))
     time.sleep(0.05)                                      # the quarantine ends on silence
-    other = (r.owner.session % 255) + 1
-    t, _ = r.xact(b"\x07\x13\x01", session=other, seq=1)
+    other = next(x & 0xFF for x in range(r.owner.session + 1, r.owner.session + 256)
+                 if P.safe_session(x & 0xFF))
+    q_other, req_other = P.safe_request(other, 1, b"\x07\x13\x01")
+    t, _ = r.xact(b"\x07\x13\x01", raw=req_other, session=other, seq=q_other)
     check("another session inside the idle -> NAK 4", t.result == "nak" and t.status == 4, (t.result, t.status))
     t, _ = r.xact(b"\x07\x13\x01")
     check("own session still served", t.result == "ok", t.result)
+
+
+def test_clock(h, tenths=35):
+    t0 = time.perf_counter()
+    rep = devhook(h, 17, 4, tenths, wait_s=tenths / 10 + 3)
+    wall = time.perf_counter() - t0
+    if rep[4] != 4:
+        check("clock: op 17 sub 4 answered", False, rep[:8].hex())
+        return
+    ticks, hz = struct.unpack_from("<II", rep, 5)
+    got = ticks / hz
+    check(f"clock: the long clock counted {got:.3f} s of a {tenths / 10:.1f} s stall (USB round trip {wall:.3f} s)",
+          abs(got - tenths / 10) < 0.05, (ticks, hz))
 
 
 def test_stream(r, h, n, log=None):
@@ -313,6 +349,8 @@ def main():
         test_text(r, h)
     if what in ("all", "health"):
         test_health(r, h)
+    if what in ("all", "clock"):
+        test_clock(h)
     if what in ("all", "nak"):
         test_nak(r, h)
     if what == "all":
