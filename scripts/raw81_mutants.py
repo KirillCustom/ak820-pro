@@ -24,7 +24,7 @@ MUTANTS = [
     ("other session never busy", "} else if (rx->have_session && now_ms - rx->admitted_ms < RAW81_SESSION_IDLE_MS) {",
      "} else if (0 && now_ms - rx->admitted_ms < RAW81_SESSION_IDLE_MS) {"),
     ("session idle off by one", "now_ms - rx->admitted_ms < RAW81_SESSION_IDLE_MS", "now_ms - rx->admitted_ms <= RAW81_SESSION_IDLE_MS"),
-    ("admit forgets the session", "    rx->session      = rx->c_session;\n", ""),
+    ("admit forgets the session", "    rx->session      = session;\n", "    (void)session;\n"),
     ("commit advances freshness", "    memcpy(rx->inner, &p[RAW81_HEAD], RAW81_INNER);",
      "    rx->have_session = true; rx->session = rx->c_session; rx->last_seq = rx->c_seq;\n    memcpy(rx->inner, &p[RAW81_HEAD], RAW81_INNER);"),
     ("reset keeps the session", "    rx->tainted      = false;\n    rx->have_session = false;", "    rx->tainted      = false;"),

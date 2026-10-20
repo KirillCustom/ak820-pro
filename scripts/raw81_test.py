@@ -61,7 +61,7 @@ def build(cc):
     L.raw81_commit.argtypes = [ctypes.POINTER(RX), ctypes.c_bool, ctypes.c_uint32, ctypes.c_uint32]
     L.raw81_poll.argtypes = [ctypes.POINTER(RX), ctypes.c_bool, ctypes.c_uint32, ctypes.c_uint32]
     L.raw81_window_done.argtypes = [ctypes.POINTER(RX), ctypes.c_bool]
-    L.raw81_admit.argtypes = [ctypes.POINTER(RX), ctypes.c_uint32]
+    L.raw81_admit.argtypes = [ctypes.POINTER(RX), ctypes.c_uint8, ctypes.c_uint16, ctypes.c_uint32]
     L.raw81_receipt.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint16, ctypes.c_uint8,
                                 ctypes.c_uint16, ctypes.c_void_p]
     L.raw81_allowed.restype = ctypes.c_bool
@@ -102,7 +102,8 @@ class Board:
             elif r == 3:                     # FRAME
                 v = self.L.raw81_commit(ctypes.byref(self.rx), self.err_at_commit, self.ms, LIFETIME)
                 if v == 0 and self.admit:
-                    self.L.raw81_admit(ctypes.byref(self.rx), self.ms)   # the dispatch happened
+                    # the dispatch happened, with the identity reserved at commit
+                    self.L.raw81_admit(ctypes.byref(self.rx), self.rx.c_session, self.rx.c_seq, self.ms)
                 self.verdicts.append((V[v], self.rx.c_seq, bytes(self.rx.inner) if v == 0 else None))
             elif r == 0:                     # the window's turn
                 self.w = self.w[1:] + [c]
@@ -336,10 +337,10 @@ def run(L):
     c = P.crc16(reply)
     rc = P.parse_receipt(r)
     check("receipt", rc == {"session": 9, "seq": 0x1234, "status": 0, "last_seq": 0x1233, "reply_crc": c}, (r.hex(), rc))
-    t = P.Transaction(9, 0x1234); t.feed(reply); t.feed(r)
+    t = P.Transaction(9, 0x1234, reply[:3]); t.feed(reply); t.feed(r)
     check("receipt completes the host's transaction", t.result == "ok" and t.reply == reply, t.result)
     L.raw81_receipt(out, 9, 0x1235, 2, 0x1234, None)
-    t = P.Transaction(9, 0x1235); t.feed(bytes(out))
+    t = P.Transaction(9, 0x1235, reply[:3]); t.feed(bytes(out))
     check("NAK receipt", t.result == "nak" and t.status == 2, t.result)
     f = (ctypes.c_uint8 * 34)()
     L.raw81_frame91(f, (ctypes.c_uint8 * 32)(*reply))

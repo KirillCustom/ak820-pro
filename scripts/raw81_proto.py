@@ -55,51 +55,79 @@ def parse_receipt(r):
             "last_seq": r[5] << 8 | r[6], "reply_crc": r[7] << 8 | r[8]}
 
 
-class Transaction:
-    """One request in flight, per codex's revision-2 verify (must-fix 2):
-    hold the latest non-receipt report as the candidate reply; a valid
-    receipt for this session and seq decides. Either half missing is never
-    success; a reply after its receipt cannot match (the transaction is
-    closed); anything else, or the timeout, is unknown.
+def reply_shaped(reply, inner):
+    """Is this report shaped like an answer to `inner`? Its first three bytes
+    are the request's, or 0xFF (unhandled) and then the request's [1..2]."""
+    inner = bytes(inner)
+    return len(reply) == 32 and reply[1:3] == inner[1:3] and reply[0] in (inner[0], 0xFF)
 
-        t = Transaction(session, seq); for each report: done = t.feed(report)
+
+class Transaction:
+    """One request in flight: plans/RAWHID-24G-PLAN.md, R4-3, rule by rule.
+
+    Per 32-byte report (a 33-byte one with a leading 0x00 report id is
+    stripped; any other length is ignored):
+      - starting 0xC7: its own CRC fails -> closes UNKNOWN (a corrupt receipt
+        may be ours); valid but another session or seq -> ignored; ours:
+        status 0 with a candidate whose CRC matches -> OK, status 0 otherwise
+        -> INCOMPLETE, status 1-4 -> NAK, any other status -> UNKNOWN;
+      - otherwise: shaped like an answer to this command -> the candidate (the
+        latest wins); not -> ignored.
+    The caller enforces the deadline: timeout() closes UNKNOWN and discards
+    the candidate; a reconnect does the same.
+
+        t = Transaction(session, seq, inner); done = t.feed(report) ...
         t.result in ("ok", "nak", "incomplete", "unknown"); t.reply; t.status
     """
 
-    def __init__(self, session, seq):
+    def __init__(self, session, seq, inner):
         self.session, self.seq = session, seq & 0xFFFF
+        self.inner = bytes(inner) + bytes(INNER - len(bytes(inner)))
         self.candidate = None
         self.result = None     # None while open
         self.reply = None
         self.status = None
         self.receipt = None
 
+    def _close(self, result):
+        self.result = result
+        if result != "ok":
+            self.candidate = None
+
     def feed(self, report):
         if self.result is not None:
             return True
         r = bytes(report)
-        if len(r) == 33:       # with the report id (hidapi on Windows)
+        if len(r) == 33 and r[0] == 0x00:
             r = r[1:]
         if len(r) != 32:
             return False
         if r[0] == MAGIC:
             rc = parse_receipt(r)
-            if rc is None or rc["session"] != self.session or rc["seq"] != self.seq:
-                return False   # not ours, or corrupt: ignore, keep waiting
+            if rc is None:
+                self._close("unknown")
+                return True
+            if rc["session"] != self.session or rc["seq"] != self.seq:
+                return False
             self.receipt, self.status = rc, rc["status"]
-            if rc["status"] != 0:
-                self.result = "nak"
-            elif self.candidate is not None and crc16(self.candidate) == rc["reply_crc"]:
-                self.result, self.reply = "ok", self.candidate
+            if rc["status"] == 0:
+                if self.candidate is not None and crc16(self.candidate) == rc["reply_crc"]:
+                    self.reply = self.candidate
+                    self._close("ok")
+                else:
+                    self._close("incomplete")
+            elif 1 <= rc["status"] <= 4:
+                self._close("nak")
             else:
-                self.result = "incomplete"
+                self._close("unknown")
             return True
-        self.candidate = r     # the latest; a stale one is replaced or fails the CRC
+        if reply_shaped(r, self.inner):
+            self.candidate = r
         return False
 
     def timeout(self):
         if self.result is None:
-            self.result = "unknown"
+            self._close("unknown")
 
 
 def _selftest():
@@ -117,19 +145,25 @@ def _selftest():
         c = crc16(bytes(out[:9])); out[9], out[10] = c >> 8, c & 0xFF
         return bytes(out)
 
-    reply = b"\x07\x13\x01" + bytes(range(29))
-    t = Transaction(5, 7); t.feed(reply); assert t.feed(receipt(5, 7, 0, reply)) and t.result == "ok"
-    t = Transaction(5, 7); assert t.feed(receipt(5, 7, 0, reply)) and t.result == "incomplete"   # receipt first
-    t = Transaction(5, 7); t.feed(reply); t.feed(receipt(5, 6, 0, reply)); assert t.result is None  # older seq
-    t = Transaction(5, 7); t.feed(reply); t.feed(receipt(9, 7, 0, reply)); assert t.result is None  # other session
-    t = Transaction(5, 7); t.feed(b"\x07\x13\x01" + bytes(29)); t.feed(receipt(5, 7, 0, reply))
-    assert t.result == "incomplete"                                                                # stale candidate
-    t = Transaction(5, 7); bad = bytearray(receipt(5, 7, 0, reply)); bad[4] = 2; t.feed(reply); t.feed(bytes(bad))
-    assert t.result is None                                                                        # corrupt receipt
-    t = Transaction(5, 7); t.feed(receipt(5, 7, 2)); assert t.result == "nak" and t.status == 2
-    t = Transaction(5, 7); t.feed(bytes([0]) + reply); t.feed(bytes([0]) + receipt(5, 7, 0, reply))
-    assert t.result == "ok"                                                                        # with report ids
-    t = Transaction(5, 7); t.feed(reply); t.timeout(); assert t.result == "unknown"
+    q = b"\x07\x13\x01"
+    reply = q + bytes(range(29))
+    T = lambda: Transaction(5, 7, q)
+    t = T(); t.feed(reply); assert t.feed(receipt(5, 7, 0, reply)) and t.result == "ok" and t.reply == reply
+    t = T(); assert t.feed(receipt(5, 7, 0, reply)) and t.result == "incomplete"               # receipt first
+    t = T(); t.feed(reply); t.feed(receipt(5, 6, 0, reply)); assert t.result is None           # older seq: ignored
+    t = T(); t.feed(reply); t.feed(receipt(9, 7, 0, reply)); assert t.result is None           # other session: ignored
+    t = T(); t.feed(q + bytes(29)); t.feed(receipt(5, 7, 0, reply)); assert t.result == "incomplete"  # stale candidate
+    t = T(); bad = bytearray(receipt(5, 7, 0, reply)); bad[4] = 2; t.feed(reply); t.feed(bytes(bad))
+    assert t.result == "unknown" and t.candidate is None                                       # corrupt receipt
+    t = T(); t.feed(receipt(5, 7, 2)); assert t.result == "nak" and t.status == 2
+    t = T(); t.feed(receipt(5, 7, 9)); assert t.result == "unknown"                            # unknown status
+    t = T(); t.feed(bytes([0]) + reply); t.feed(bytes([0]) + receipt(5, 7, 0, reply)); assert t.result == "ok"
+    t = T(); t.feed(b"\x07\x12\x04" + bytes(29)); t.feed(receipt(5, 7, 0, b"\x07\x12\x04" + bytes(29)))
+    assert t.result == "incomplete"                                                            # wrong shape ignored
+    unh = b"\xff" + reply[1:]
+    t = T(); t.feed(unh); t.feed(receipt(5, 7, 0, unh)); assert t.result == "ok" and t.reply[0] == 0xFF
+    t = T(); t.feed(reply); t.timeout(); assert t.result == "unknown" and t.candidate is None
+    t = T(); t.feed(reply); t.feed(receipt(5, 7, 0, reply)); t.feed(receipt(5, 7, 2)); assert t.result == "ok"  # closed
     print("raw81_proto: self-test passed")
 
 
