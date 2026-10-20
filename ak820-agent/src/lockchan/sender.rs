@@ -68,13 +68,35 @@ pub struct Status {
     pub writes: u64,
 }
 
+/// What the panel should show, as the loop sees it each poll: the text frame
+/// (type 1 or 2, its icon included), the icon on its own, and the playback
+/// readout while playing (`lockchan::Playback::of`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Media {
+    pub text: Content,
+    pub icon: crate::text::Icon,
+    pub pb: Option<super::Playback>,
+}
+
+impl Media {
+    /// From a snapshot, as the daemon's loop builds it.
+    pub fn of(snapshot: &crate::smtc::Snapshot) -> Media {
+        Media { text: super::content(snapshot), icon: snapshot.icon, pb: super::Playback::of(snapshot) }
+    }
+}
+
 #[derive(Default)]
 struct Slot {
-    content: Option<Content>,
-    /// Bumped on every different content: the frame's own generation check,
+    media: Option<Media>,
+    /// Bumped on every different text identity (the lines) and transport
+    /// identity (icon, playing, duration): each frame's own generation check,
     /// so A, B, A is two changes, not none (implementation review, 10).
-    epoch: u64,
+    text_epoch: u64,
+    tr_epoch: u64,
     observed: Option<Instant>,
+    /// When the media's position was true (codex, play times, P2-2): apart
+    /// from `observed`, the staleness clock.
+    pos_at: Option<Instant>,
     granted: bool,
     owner_gen: u64,
     force: bool,
@@ -105,14 +127,28 @@ impl Handle {
         r
     }
 
-    /// The content now, and when the media source last observed it.
-    pub fn set(&self, content: Content, observed: Instant) {
+    /// The media now, when the source last observed it, and when its
+    /// position was true.
+    pub fn set(&self, media: Media, observed: Instant, pos_at: Instant) {
         self.with(|s| {
-            if s.content.as_ref() != Some(&content) {
-                s.epoch += 1;
-                s.content = Some(content);
+            let (t, r) = (text_id(&media.text), tr_id(&media));
+            match &s.media {
+                Some(old) => {
+                    if text_id(&old.text) != t {
+                        s.text_epoch += 1;
+                    }
+                    if tr_id(old) != r {
+                        s.tr_epoch += 1;
+                    }
+                }
+                None => {
+                    s.text_epoch += 1;
+                    s.tr_epoch += 1;
+                }
             }
+            s.media = Some(media);
             s.observed = Some(observed);
+            s.pos_at = Some(pos_at);
         });
     }
 
@@ -179,14 +215,59 @@ impl Default for Handle {
     }
 }
 
-/// The content the slot asks for, made CLEAR once its observation is stale,
-/// and when that happens.
-fn current_of(slot: &Slot, now: Instant) -> (Option<Content>, Option<Instant>) {
-    let Some(c) = slot.content.clone() else { return (None, None) };
+/// The text frame's identity: its lines, never its icon (the icon rides in
+/// type 3).
+fn text_id(text: &Content) -> Content {
+    super::text_identity(text.0, &text.1)
+}
+
+/// The transport's identity as policy content: icon, playing, duration.
+fn tr_id(m: &Media) -> Content {
+    let t = super::transport_identity(m.icon, m.pb);
+    let mut v = vec![t.icon, t.playing as u8];
+    v.extend_from_slice(&t.dur_s.to_be_bytes());
+    (super::TYPE_TRANSPORT, v)
+}
+
+/// What the slot asks for now: the media made idle (CLEAR, no readout) once
+/// its observation is stale, and when that happens.
+fn current_of(slot: &Slot, now: Instant) -> (Option<(Media, Instant)>, Option<Instant>) {
+    let Some(m) = slot.media.clone() else { return (None, None) };
+    let pos_at = slot.pos_at.unwrap_or(now);
     match slot.observed {
-        Some(o) if now.saturating_duration_since(o) < STALE_AFTER => (Some(c), Some(o + STALE_AFTER)),
-        _ => (Some((super::TYPE_CLEAR, Vec::new())), None),
+        Some(o) if now.saturating_duration_since(o) < STALE_AFTER => (Some((m, pos_at)), Some(o + STALE_AFTER)),
+        _ => (
+            Some((Media { text: (super::TYPE_CLEAR, Vec::new()), icon: crate::text::Icon::None, pb: None }, pos_at)),
+            None,
+        ),
     }
+}
+
+/// Which frame a step sends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    Text,
+    Transport,
+}
+
+/// What a frame picked, for its in-flight checks and its credit.
+#[derive(Clone, Copy, Debug)]
+struct Picked {
+    gen: u64,
+    text_epoch: u64,
+    tr_epoch: u64,
+    /// The picked identity, hashed (`Cell` wants `Copy`).
+    id: u64,
+    /// A transport's position, and when it was picked.
+    pos: Option<u32>,
+    at: Instant,
+}
+
+fn id_hash(c: &Content) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    c.hash(&mut h);
+    h.finish()
 }
 
 /// The thread's state: everything [`Core::step`] carries between calls.
@@ -195,7 +276,17 @@ pub struct Core<P: Platform> {
     lights: Option<P::Lights>,
     guard: Option<Box<dyn Any + Send>>,
     owner_seen: u64,
-    policy: Policy,
+    /// Type 1/2: when the lines change, refresh every 60 s.
+    text: Policy,
+    /// Type 3: when the icon, playing or duration change, a seek, after
+    /// every text frame (type 1 turns the board's playback off), refresh.
+    tr: Policy,
+    /// The text generation last sent whole: type 3 goes only while a title
+    /// is shown (the Mac session: it cannot bring back an icon after a clear).
+    text_sent: Option<u64>,
+    /// The position the last type 3 carried and when it was picked, for the
+    /// seek check.
+    sent_pos: Option<(u32, Instant)>,
     line: Line,
     next_open: Option<Instant>,
     armed: Option<u32>,
@@ -221,24 +312,20 @@ pub enum Next {
 struct Ctl<'a> {
     h: &'a Handle,
     owner: u64,
-    epoch: u64,
 }
 
-impl Control for Ctl<'_> {
-    fn abort(&self) -> Option<Abort> {
-        let (stop, owned, epoch) = {
-            let s = self.h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
-            (s.stop, s.granted && s.owner_gen == self.owner, s.epoch)
-        };
-        if stop {
+impl Ctl<'_> {
+    /// Stop or ownership, and the slot's two epochs.
+    fn check(&self) -> (Option<Abort>, u64, u64) {
+        let s = self.h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
+        let a = if s.stop {
             Some(Abort::Stop)
-        } else if !owned {
+        } else if !(s.granted && s.owner_gen == self.owner) {
             Some(Abort::Revoked)
-        } else if epoch != self.epoch {
-            Some(Abort::Superseded)
         } else {
             None
-        }
+        };
+        (a, s.text_epoch, s.tr_epoch)
     }
 }
 
@@ -259,7 +346,10 @@ impl<P: Platform> Core<P> {
             lights: None,
             guard: None,
             owner_seen: 0,
-            policy: Policy::default(),
+            text: Policy::default(),
+            tr: Policy::default(),
+            text_sent: None,
+            sent_pos: None,
             line: Line::default(),
             next_open: None,
             armed: None,
@@ -269,9 +359,6 @@ impl<P: Platform> Core<P> {
         }
     }
 
-    fn current(slot: &Slot, now: Instant) -> (Option<Content>, Option<Instant>) {
-        current_of(slot, now)
-    }
 
     /// The wake guess: armed after IDLE_ARM of input idleness, fired on any
     /// change of the last input's tick, forwards or backwards.
@@ -340,8 +427,8 @@ impl<P: Platform> Core<P> {
                 let t = if for_restore {
                     now + TICK
                 } else {
-                    self.policy.failed(self.policy.generation(), now);
-                    self.policy.due().unwrap_or(now + RELIST)
+                    self.text.failed(self.text.generation(), now);
+                    self.text.due().unwrap_or(now + RELIST)
                 };
                 self.next_open = Some(t);
                 Err(Next::WaitUntil(t))
@@ -350,27 +437,40 @@ impl<P: Platform> Core<P> {
     }
 
     /// One pass: update from the slot, service a pending restore, and send a
-    /// frame if one is due.
+    /// frame if one is due: text first, then the transport.
     pub fn step<T: Time>(&mut self, h: &Handle, time: &T) -> Next {
         if self.poisoned {
             return Next::Exit;
         }
         let now = time.now();
         let woke = self.wake_guess();
-        let (granted, owner, stop, stale_at) = {
+        let (granted, owner, stop, stale_at, view) = {
             let mut s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
-            let (c, stale_at) = Self::current(&s, now);
-            if let Some(c) = c {
-                self.policy.set(c, now);
+            let (view, stale_at) = current_of(&s, now);
+            if let Some((m, _)) = &view {
+                self.text.set(text_id(&m.text), now);
+                self.tr.set(tr_id(m), now);
             }
             if std::mem::take(&mut s.force) || woke {
-                self.policy.force(now);
+                self.text.force(now);
+                self.tr.force(now);
             }
             if let Some(nb) = s.not_before.take() {
-                self.policy.not_before(nb);
+                self.text.not_before(nb);
+                self.tr.not_before(nb);
             }
-            (s.granted, s.owner_gen, s.stop, stale_at)
+            (s.granted, s.owner_gen, s.stop, stale_at, view)
         };
+        // A seek: the position is not where the last type 3 said it would be.
+        if let (Some((m, pos_at)), Some((sent, at))) = (&view, self.sent_pos) {
+            if let Some(pb) = m.pb {
+                let pos_now = pb.pos_s.saturating_add(now.saturating_duration_since(*pos_at).as_secs() as u32);
+                if super::is_seek(sent, now.saturating_duration_since(at), pos_now, pb.dur_s) {
+                    self.tr.force(now);
+                    self.sent_pos = None;
+                }
+            }
+        }
         if stop {
             // One bounded restore if one is owed and the lights are open,
             // its waits through the stop flag (verify, 1).
@@ -386,9 +486,12 @@ impl<P: Platform> Core<P> {
         }
         if granted && owner != self.owner_seen {
             // A new acquisition: the current content again, with its repeat
-            // (implementation review, 11).
+            // (implementation review, 11); the board's state is unknown.
             self.owner_seen = owner;
-            self.policy.acquired(now);
+            self.text.acquired(now);
+            self.tr.acquired(now);
+            self.text_sent = None;
+            self.sent_pos = None;
         }
 
         // A pending restore goes first, granted or not, every TICK, until it
@@ -439,7 +542,8 @@ impl<P: Platform> Core<P> {
             if !self.locks_known {
                 // Known again (an unlock, a reconnect): a resend reason.
                 self.locks_known = true;
-                self.policy.force(now);
+                self.text.force(now);
+                self.tr.force(now);
             }
         }
         let wake_at = now + TICK;
@@ -447,14 +551,21 @@ impl<P: Platform> Core<P> {
         let soonest = |due: Option<Instant>| {
             [due, Some(wake_at), stale_wait].into_iter().flatten().min().expect("wake_at is always there")
         };
-        let Some(due) = self.policy.due() else {
-            self.publish_counts(h, "idle");
-            return Next::WaitUntil(soonest(None));
+        // Type 3 only while a title is shown: the current text generation sent
+        // whole, and a now-playing one.
+        let shown = view.as_ref().is_some_and(|(m, _)| m.text.0 == super::TYPE_NOW_PLAYING)
+            && self.text_sent == Some(self.text.generation());
+        let text_due = self.text.due();
+        let tr_due = if shown { self.tr.due() } else { None };
+        let kind = match (text_due, tr_due) {
+            (Some(t), _) if t <= now => Kind::Text,
+            (_, Some(t)) if t <= now => Kind::Transport,
+            _ => {
+                let due = [text_due, tr_due].into_iter().flatten().min();
+                self.publish_counts(h, if due.is_some() { "waiting" } else { "idle" });
+                return Next::WaitUntil(soonest(due));
+            }
         };
-        if due > now {
-            self.publish_counts(h, "waiting");
-            return Next::WaitUntil(soonest(Some(due)));
-        }
         if self.guard.is_none() {
             match self.platform.lock() {
                 Ok(Some(g)) => self.guard = Some(g),
@@ -486,83 +597,108 @@ impl<P: Platform> Core<P> {
         if !self.locks_known {
             // Known again (an unlock, a reconnect): a resend reason (review, 9).
             self.locks_known = true;
-            self.policy.force(now);
+            self.text.force(now);
+            self.tr.force(now);
         }
 
         self.publish_counts(h, "sending");
         let seq = self.seq;
-        // The newest content is picked after the warm-up and the quiet, and
-        // its epoch is what the frame then guards (R4-5; review, 10).
-        let picked: Cell<Option<u64>> = Cell::new(None);
-        let ctl_epoch: Cell<Option<u64>> = Cell::new(None);
-        let picked_content: std::cell::RefCell<Option<Content>> = std::cell::RefCell::new(None);
+        // The newest media is picked after the warm-up and the quiet, and its
+        // epochs and identity are what the frame then guards (R4-5; review,
+        // 10; verify, 3). A transport frame is also cut by a text change.
+        let picked: Cell<Option<Picked>> = Cell::new(None);
         let out = {
-            /// Before the pick only stop and ownership matter; after it, the
-            /// picked content's epoch and its freshness too: a title that goes
-            /// stale mid-frame is superseded by its CLEAR (verify, 3).
             struct Picking<'a, T: Time> {
-                h: &'a Handle,
-                owner: u64,
-                epoch: &'a Cell<Option<u64>>,
-                content: &'a std::cell::RefCell<Option<Content>>,
+                ctl: Ctl<'a>,
+                kind: Kind,
+                picked: &'a Cell<Option<Picked>>,
                 time: &'a T,
             }
             impl<T: Time> Control for Picking<'_, T> {
                 fn abort(&self) -> Option<Abort> {
-                    let Some(epoch) = self.epoch.get() else {
-                        let ctl = Ctl { h: self.h, owner: self.owner, epoch: 0 };
-                        return match ctl.abort() {
-                            Some(Abort::Superseded) => None,
-                            other => other,
-                        };
-                    };
-                    let ctl = Ctl { h: self.h, owner: self.owner, epoch };
-                    if let Some(a) = ctl.abort() {
-                        return Some(a);
+                    let (a, te, re) = self.ctl.check();
+                    if a.is_some() {
+                        return a;
                     }
-                    let now_content = {
-                        let s = self.h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
-                        current_of(&s, self.time.now()).0
-                    };
-                    (now_content != *self.content.borrow()).then_some(Abort::Superseded)
+                    let Some(p) = self.picked.get() else { return None };
+                    if te != p.text_epoch || (self.kind == Kind::Transport && re != p.tr_epoch) {
+                        return Some(Abort::Superseded);
+                    }
+                    // Still fresh: an identity gone stale mid-frame is
+                    // superseded by the idle that replaces it.
+                    let s = self.ctl.h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
+                    let now_id = current_of(&s, self.time.now()).0.map(|(m, _)| match self.kind {
+                        Kind::Text => text_id(&m.text),
+                        Kind::Transport => tr_id(&m),
+                    });
+                    (now_id.map(|c| id_hash(&c)) != Some(p.id)).then_some(Abort::Superseded)
                 }
             }
-            let ctl = Picking { h, owner, epoch: &ctl_epoch, content: &picked_content, time };
+            let ctl = Picking { ctl: Ctl { h, owner }, kind, picked: &picked, time };
             let lights = self.lights.as_mut().expect("opened above");
-            let policy = &mut self.policy;
+            let (text, tr) = (&mut self.text, &mut self.tr);
             let line = &mut self.line;
             frame::run(lights, time, &ctl, line, || {
-                let (epoch, c) = {
+                let at = time.now();
+                let (view, te, re) = {
                     let s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
-                    let (c, _) = Self::current(&s, time.now());
-                    (s.epoch, c)
+                    (current_of(&s, at).0, s.text_epoch, s.tr_epoch)
                 };
-                let c = c?;
-                let c_for_check = c.clone();
-                policy.set(c, time.now());
-                let gen = policy.generation();
-                let content = policy.content(gen)?.clone();
-                picked.set(Some(gen));
-                ctl_epoch.set(Some(epoch));
-                *picked_content.borrow_mut() = Some(c_for_check.clone());
-                Some(Payload { kind: content.0, seq, bytes: content.1 })
+                let (m, pos_at) = view?;
+                let (gen, id, payload, pos) = match kind {
+                    Kind::Text => {
+                        let id = text_id(&m.text);
+                        text.set(id.clone(), at);
+                        (text.generation(), id, m.text.clone(), None)
+                    }
+                    Kind::Transport => {
+                        let id = tr_id(&m);
+                        tr.set(id.clone(), at);
+                        let pos = m.pb.map(|pb| pb.pos_s.saturating_add(at.saturating_duration_since(pos_at).as_secs() as u32));
+                        (tr.generation(), id, super::transport(m.icon, m.pb, pos.unwrap_or(0)), pos)
+                    }
+                };
+                picked.set(Some(Picked { gen, text_epoch: te, tr_epoch: re, id: id_hash(&id), pos, at }));
+                Some(Payload { kind: payload.0, seq, bytes: payload.1 })
             })
         };
         let done = time.now();
-        let gen = picked.get().unwrap_or(self.policy.generation());
-        // Credited only if the owner, the content epoch and the content's
-        // freshness are all still the frame's (verify, 4).
-        let still_owner = {
+        let p = picked.get();
+        let policy = match kind {
+            Kind::Text => &mut self.text,
+            Kind::Transport => &mut self.tr,
+        };
+        let gen = p.map_or(policy.generation(), |p| p.gen);
+        // Credited only if the owner, the epochs and the identity's freshness
+        // are all still the frame's (verify, 4).
+        let credited = p.is_some_and(|p| {
             let s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
+            let id = current_of(&s, done).0.map(|(m, _)| match kind {
+                Kind::Text => text_id(&m.text),
+                Kind::Transport => tr_id(&m),
+            });
             s.granted
                 && s.owner_gen == owner
-                && ctl_epoch.get() == Some(s.epoch)
-                && current_of(&s, done).0 == *picked_content.borrow()
-        };
+                && s.text_epoch == p.text_epoch
+                && (kind == Kind::Text || s.tr_epoch == p.tr_epoch)
+                && id.map(|c| id_hash(&c)) == Some(p.id)
+        });
         match out {
-            Outcome::Sent if still_owner => {
+            Outcome::Sent if credited => {
                 self.seq = self.seq.wrapping_add(1);
-                self.policy.sent(gen, done);
+                policy.sent(gen, done);
+                match kind {
+                    Kind::Text => {
+                        self.text_sent = Some(gen);
+                        // Type 1 turned the board's readout off: the
+                        // transport goes right after (the Mac session).
+                        self.tr.force(done);
+                        self.sent_pos = None;
+                    }
+                    Kind::Transport => {
+                        self.sent_pos = p.and_then(|p| p.pos.map(|pos| (pos, p.at)));
+                    }
+                }
                 self.publish(h, |st| {
                     st.frames += 1;
                     st.last_sent = Some(done);
@@ -585,14 +721,14 @@ impl<P: Platform> Core<P> {
                 Why::Write(e) => {
                     // The handle may be bad: drop it; the next frame reopens.
                     self.lights = None;
-                    self.policy.failed(gen, done);
+                    policy.failed(gen, done);
                     self.publish(h, |st| {
                         st.failures += 1;
                         st.last_error = Some(e);
                     });
                 }
                 Why::Deadline | Why::UserChanged => {
-                    self.policy.retry(gen, done);
+                    policy.retry(gen, done);
                     self.publish(h, |st| st.retries += 1);
                 }
                 Why::RestorePending => {}
@@ -696,6 +832,19 @@ mod tests {
     use crate::lockchan::Profile;
     use std::cell::RefCell;
     use std::rc::Rc;
+
+
+    impl Handle {
+        /// A text frame and no readout, its icon from the payload.
+        fn set_text(&self, text: Content, observed: Instant) {
+            let icon = match text.1.first() {
+                Some(1) if text.0 == super::super::TYPE_NOW_PLAYING => crate::text::Icon::Play,
+                Some(2) if text.0 == super::super::TYPE_NOW_PLAYING => crate::text::Icon::Pause,
+                _ => crate::text::Icon::None,
+            };
+            self.set(Media { text, icon, pb: None }, observed, observed);
+        }
+    }
 
     struct FakeTime(Cell<Instant>);
     impl Time for FakeTime {
@@ -844,7 +993,7 @@ mod tests {
 
     fn granted(r: &mut Rig, c: Content) -> Instant {
         let t0 = r.t.now();
-        r.h.set(c, t0);
+        r.h.set_text(c, t0);
         r.h.grant(Some(t0 - HANDOVER), t0);
         t0
     }
@@ -853,13 +1002,13 @@ mod tests {
     fn nothing_goes_until_granted_then_after_the_handover_wait() {
         let mut r = rig();
         let t0 = r.t.now();
-        r.h.set(title("A"), t0);
+        r.h.set_text(title("A"), t0);
         assert_eq!(r.core.step(&r.h, &*r.t), Next::Wait);
         assert!(r.kb.borrow().writes.is_empty());
         r.h.grant(None, t0);
         assert!(matches!(r.core.step(&r.h, &*r.t), Next::WaitUntil(_)));
         assert!(r.kb.borrow().writes.is_empty(), "no history: the full 12 s wait");
-        r.h.set(title("A"), t0 + HANDOVER);
+        r.h.set_text(title("A"), t0 + HANDOVER);
         r.t.0.set(t0 + HANDOVER);
         run_until(&mut r, t0 + HANDOVER + Duration::from_secs(1));
         assert!(sent(&r, &title("A"), 0));
@@ -887,7 +1036,7 @@ mod tests {
         let t = r.t.clone();
         r.kb.borrow_mut().hook = Some(Box::new(move |i| {
             if i == 20 {
-                h.set(title("Bravo"), t.now());
+                h.set_text(title("Bravo"), t.now());
             }
         }));
         run_until(&mut r, t0 + Duration::from_secs(20));
@@ -903,8 +1052,8 @@ mod tests {
         let t = r.t.clone();
         r.kb.borrow_mut().hook = Some(Box::new(move |i| {
             if i == 20 {
-                h.set(title("Bravo"), t.now());
-                h.set(title("Alpha"), t.now());
+                h.set_text(title("Bravo"), t.now());
+                h.set_text(title("Alpha"), t.now());
             }
         }));
         run_until(&mut r, t0 + Duration::from_secs(20));
@@ -923,7 +1072,7 @@ mod tests {
         let t0 = r.t.now();
         // Observed 28 s ago: fresh when picked (~1 s in), stale ~1 s into the
         // frame, which runs ~3.5 s.
-        r.h.set(title("A rather long title to take time"), t0 - STALE_AFTER + Duration::from_secs(2));
+        r.h.set_text(title("A rather long title to take time"), t0 - STALE_AFTER + Duration::from_secs(2));
         r.h.grant(Some(t0 - HANDOVER), t0);
         run_until(&mut r, t0 + Duration::from_secs(10));
         assert!(!sent(&r, &title("A rather long title to take time"), 0), "never committed whole");
@@ -1064,7 +1213,7 @@ mod tests {
         assert_eq!(r.h.status().state, "locks unknown");
         r.kb.borrow_mut().unknown = false;
         let t2 = r.t.now();
-        r.h.set(title("Alpha"), t2);
+        r.h.set_text(title("Alpha"), t2);
         run_until(&mut r, t2 + Duration::from_secs(6));
         assert!(r.kb.borrow().writes.len() > n + 20, "resent on their return, before the 60 s refresh");
     }
@@ -1074,18 +1223,139 @@ mod tests {
         let mut r = rig();
         let t0 = granted(&mut r, title("Alpha"));
         r.input.set(Some((1000, 1000)));
-        run_until(&mut r, t0 + Duration::from_secs(5));
+        // The title, its transport, and both repeats settle first.
+        run_until(&mut r, t0 + Duration::from_secs(15));
         let n = r.kb.borrow().writes.len();
         r.input.set(Some((1000, 40_000))); // 39 s idle: armed
         let t1 = r.t.now();
-        r.h.set(title("Alpha"), t1);
+        r.h.set_text(title("Alpha"), t1);
         run_until(&mut r, t1 + Duration::from_secs(2));
         assert_eq!(r.kb.borrow().writes.len(), n);
         r.input.set(Some((40_500, 40_500))); // a key
         let t2 = r.t.now();
-        r.h.set(title("Alpha"), t2);
+        r.h.set_text(title("Alpha"), t2);
         run_until(&mut r, t2 + Duration::from_secs(6));
         assert!(r.kb.borrow().writes.len() > n + 20);
+    }
+
+    // --- type 3, the transport -------------------------------------------
+
+    use crate::lockchan::Playback;
+    use crate::text::Icon;
+
+    fn playing(lines: &str, icon: Icon, pos_s: u32, dur_s: u32) -> Media {
+        let (_, text) = title(lines);
+        let mut text1 = text.clone();
+        text1[0] = icon.id();
+        Media { text: (super::super::TYPE_NOW_PLAYING, text1), icon, pb: (icon == Icon::Play).then_some(Playback { pos_s, dur_s }) }
+    }
+
+    /// Every type-3 frame in the writes, as (icon, state, pos, dur), for any
+    /// position up to `max_pos`.
+    fn transports(r: &Rig, icon: Icon, dur: u32, max_pos: u32) -> Vec<u32> {
+        let w: Vec<u8> = r.kb.borrow().writes.iter().map(|w| w.1).collect();
+        let mut found = vec![];
+        for pos in 0..=max_pos {
+            let (k, b) = crate::lockchan::transport(icon, Some(Playback { pos_s: pos, dur_s: dur }), pos);
+            if (0..=255u8).any(|seq| {
+                let e = crate::lockchan::encode(&b, k, seq, Profile::P0, 0).unwrap();
+                w.windows(e.len()).any(|x| x == &e[..])
+            }) {
+                found.push(pos);
+            }
+        }
+        found
+    }
+
+    fn paused_transport_sent(r: &Rig) -> bool {
+        let (k, b) = crate::lockchan::transport(Icon::Pause, None, 0);
+        let w: Vec<u8> = r.kb.borrow().writes.iter().map(|w| w.1).collect();
+        (0..=255u8).any(|seq| {
+            let e = crate::lockchan::encode(&b, k, seq, Profile::P0, 0).unwrap();
+            w.windows(e.len()).any(|x| x == &e[..])
+        })
+    }
+
+    #[test]
+    fn a_playing_title_sends_its_text_then_its_transport_with_the_position_at_the_pick() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 100, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(8));
+        assert!(sent(&r, &playing("Alpha", Icon::Play, 0, 0).text, 0), "the title");
+        let pos = transports(&r, Icon::Play, 300, 140);
+        assert!(!pos.is_empty(), "a transport followed");
+        // Picked a few seconds after t0: the position moved with the clock.
+        assert!(pos[0] > 100 && pos[0] < 110, "{pos:?}");
+    }
+
+    #[test]
+    fn a_pause_sends_only_the_transport() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 100, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(15));
+        let n = r.kb.borrow().writes.len();
+        let t1 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Pause, 115, 300), t1, t1);
+        run_until(&mut r, t1 + Duration::from_secs(3));
+        let new = r.kb.borrow().writes.len() - n;
+        assert!(paused_transport_sent(&r), "the pause went as type 3");
+        // A type 3 is short; a whole title would be far more writes.
+        assert!(new > 10 && new < 90, "{new} writes after the pause");
+    }
+
+    #[test]
+    fn a_seek_sends_the_transport_at_once() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 100, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(15));
+        let n = r.kb.borrow().writes.len();
+        let t1 = r.t.now();
+        // Jumped to 200 s: far from 100 + 15.
+        r.h.set(playing("Alpha", Icon::Play, 200, 300), t1, t1);
+        run_until(&mut r, t1 + Duration::from_secs(4));
+        assert!(r.kb.borrow().writes.len() > n, "something went at once");
+        assert!(transports(&r, Icon::Play, 300, 210).iter().any(|p| *p >= 200), "the new position");
+    }
+
+    #[test]
+    fn no_transport_follows_a_clear() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(Media { text: (super::super::TYPE_CLEAR, vec![]), icon: Icon::None, pb: None }, t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(8));
+        assert!(sent(&r, &(super::super::TYPE_CLEAR, vec![]), 0));
+        let (k, b) = crate::lockchan::transport(Icon::None, None, 0);
+        let w: Vec<u8> = r.kb.borrow().writes.iter().map(|w| w.1).collect();
+        let t3 = (0..=255u8).any(|seq| {
+            let e = crate::lockchan::encode(&b, k, seq, Profile::P0, 0).unwrap();
+            w.windows(e.len()).any(|x| x == &e[..])
+        });
+        assert!(!t3, "no type 3 after a clear");
+    }
+
+    #[test]
+    fn the_position_ticking_is_not_a_change() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 100, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(15));
+        let n = r.kb.borrow().writes.len();
+        // The loop's polls: the position moving with the clock.
+        for i in 1..=20u64 {
+            let t = t0 + Duration::from_secs(15 + i);
+            r.t.0.set(r.t.now().max(t));
+            r.h.set(playing("Alpha", Icon::Play, 115 + i as u32, 300), t, t);
+            run_until(&mut r, t);
+        }
+        assert_eq!(r.kb.borrow().writes.len(), n, "nothing sent for a ticking position");
     }
 
     #[test]
