@@ -33,6 +33,12 @@ pub const HANDOVER: Duration = Duration::from_secs(12);
 pub const RELIST: Duration = Duration::from_secs(10);
 /// The wake guess: armed past this much input idleness (R3-8, R4).
 pub const IDLE_ARM: Duration = Duration::from_secs(30);
+/// The wake guess's resend waits this long after the input that fired it.
+/// That input is often a media key, and the player takes a few seconds to
+/// show its new state in SMTC or MediaRemote: resent at once, the frame
+/// carried the old icon over the board's correct guess, wrong until the
+/// real change went (JD's test, 10-20; the Mac session's diagnosis).
+pub const WAKE_DELAY: Duration = Duration::from_secs(4);
 /// How often a pending restore is tried, and the wake guess and the locks'
 /// validity are sampled while the channel is granted.
 pub const TICK: Duration = Duration::from_secs(1);
@@ -474,9 +480,13 @@ impl<P: Platform> Core<P> {
                 self.text.set(text_id(&m.text), now);
                 self.tr.set(tr_policy_id(m, self.seek_rev), now);
             }
-            if std::mem::take(&mut s.force) || woke {
+            if std::mem::take(&mut s.force) {
                 self.text.force(now);
                 self.tr.force(now);
+            }
+            if woke {
+                self.text.force(now + WAKE_DELAY);
+                self.tr.force(now + WAKE_DELAY);
             }
             if let Some(nb) = s.not_before.take() {
                 self.text.not_before(nb);
@@ -1493,6 +1503,41 @@ mod tests {
         // Write n0+11 is the restore after the recovery wait: the frame was cut.
         assert!(w.len() > n0 + 11);
         assert!(w[n0 + 11].0 - w[n0 + 10].0 >= frame::RECOVERY);
+    }
+
+    #[test]
+    fn a_media_key_that_wakes_waits_for_the_players_new_state() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.input.set(Some((1000, 1000)));
+        r.h.set(playing("Alpha", Icon::Play, 100, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        r.input.set(Some((1000, 40_000))); // idle: armed
+        let t1 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 120, 300), t1, t1);
+        run_until(&mut r, t1 + Duration::from_millis(500));
+        let n = r.kb.borrow().writes.len();
+        // The play/pause key: input, but the player still says playing.
+        r.input.set(Some((40_500, 40_500)));
+        let t2 = r.t.now();
+        run_until(&mut r, t2 + Duration::from_secs(2));
+        assert_eq!(r.kb.borrow().writes.len(), n, "nothing in the first 2 s (old code: resent at once, the old icon)");
+        // The player shows paused 2 s after the key.
+        let t3 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Pause, 122, 300), t3, t3);
+        run_until(&mut r, t3 + Duration::from_secs(8));
+        assert!(paused_transport_sent(&r), "the pause went");
+        // And no play-icon transport after the key.
+        let w: Vec<u8> = r.kb.borrow().writes[n..].iter().map(|w| w.1).collect();
+        for pos in 115..135 {
+            let (k, b) = crate::lockchan::transport(Icon::Play, Some(Playback { pos_s: pos, dur_s: 300 }), pos);
+            let hit = (0..=255u8).any(|seq| {
+                let e = crate::lockchan::encode(&b, k, seq, Profile::P0, 0).unwrap();
+                w.windows(e.len()).any(|x| x == &e[..])
+            });
+            assert!(!hit, "a play-icon transport at {pos} after the key");
+        }
     }
 
     #[test]
