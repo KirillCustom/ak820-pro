@@ -386,8 +386,10 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
         if seen && !opts.radio_only {
             if let Some(r) = radio.as_mut() {
                 r.usb_present(&mut &log);
+                // The radio no longer carries the media; USB has not yet
+                // either, until the next media tick (codex's second verify).
                 if st.transport == "radio" {
-                    st.transport = "usb".into();
+                    st.transport = "none".into();
                 }
             }
         }
@@ -445,10 +447,15 @@ pub enum Via {
 
 /// Is this USB opener failure evidence that the board is on USB? A listed
 /// board that would not open (busy), opened as something else, or was listed
-/// twice is there. `Absent` is not, and nor is a failed discovery, which
-/// says nothing about the board (codex's daemon review, 5).
+/// twice is there; so is one opened and identified whose event object could
+/// not be made (`Io { op: "event" }`, codex's second verify). `Absent` is
+/// not, and nor is a failed discovery, which says nothing about the board
+/// (codex's daemon review, 5).
 pub fn usb_evidence(e: &hid::Error) -> bool {
-    matches!(e, hid::Error::Open { .. } | hid::Error::Incompatible { .. } | hid::Error::Ambiguous(_))
+    matches!(
+        e,
+        hid::Error::Open { .. } | hid::Error::Incompatible { .. } | hid::Error::Ambiguous(_) | hid::Error::Io { op: "event", .. }
+    )
 }
 
 /// One media tick's transport choice, over seams (the raw81 daemon plan,
@@ -1253,7 +1260,12 @@ mod media_tick_tests {
 
     #[test]
     fn usb_evidence_without_a_good_open_also_stands_the_radio_down() {
-        for e in [open_err(), hid::Error::Incompatible { path: "p".into(), why: "w".into() }, hid::Error::Ambiguous(vec![])] {
+        for e in [
+            open_err(),
+            hid::Error::Incompatible { path: "p".into(), why: "w".into() },
+            hid::Error::Ambiguous(vec![]),
+            hid::Error::Io { op: "event", source: hid::OsError::new(8, "no memory") },
+        ] {
             let c = FakeClock::new();
             let mut g = Rig::new(&c, &[]);
             g.absent();

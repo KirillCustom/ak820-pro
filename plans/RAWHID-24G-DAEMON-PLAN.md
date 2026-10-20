@@ -481,3 +481,18 @@ Regressions added: the poisoned lock outliving the `Radio`; a write timeout
 recovering with a probe and the whole text; USB back during a backoff
 clearing it; text delivered with the playback failing still recording the
 radio; qualification cleared when the acquisition ends. 392 tests.
+
+### Codex's second verify (10-20): install
+
+[Verify 2](review-codex-raw81-daemon-verify2-2026-10-20.md), verbatim:
+**install for the supervised cable-out test**; no must-fix; findings 1, 2,
+4, 6 and 8 closed, 3 sufficient, 7's second-user check deferred. Its two
+should-fixes, done: a USB open that identified the board but could not make
+its event object is USB evidence; after a stand-down from the clock or
+health, `transport` reads `none` until the next media tick, not `usb`. And
+the opener's contract is written on `Platform::open_radio`: it sends nothing
+and leaves no I/O outstanding. Left as stated gaps: an outer-loop test of
+`open_noting` to the stand-down and status (the rig drives `media_tick`
+directly), a second Windows user, and exhausting 256 real search candidates.
+The cable-out test runs on the Mac (JD, 10-20): its bench drops USB data
+with no hands.

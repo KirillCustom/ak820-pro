@@ -61,6 +61,11 @@ pub trait Platform {
     /// [`Platform::open_board`], used only by the media cycle's radio path, so
     /// the clock and health can never reach the radio. The default: no radio
     /// on this platform yet (macOS: the Mac session's IOKit path).
+    ///
+    /// ⚠️ The contract: the open sends nothing to the board and leaves no
+    /// I/O outstanding. A failed open releases the radio's acquisition, so an
+    /// opener that could leave a write in flight would break the quiet that
+    /// ownership guarantees (codex's second daemon verify).
     fn open_radio() -> Result<Self::Device, hid::Error> {
         Err(hid::Error::Absent)
     }
