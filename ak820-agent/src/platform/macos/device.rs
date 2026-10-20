@@ -70,11 +70,27 @@ fn retirement_allowed(log: &mut std::collections::VecDeque<Instant>, now: Instan
     true
 }
 
-static RETIREMENTS: Mutex<std::collections::VecDeque<Instant>> = Mutex::new(std::collections::VecDeque::new());
+/// One opener's retirement budget: the board's and the radio's apart, so a
+/// radio that answers and then sleeps cannot spend the board's six, nor its
+/// cap message hide the board's (codex, the macOS radio review, 2).
+struct Budget {
+    retirements: Mutex<std::collections::VecDeque<Instant>>,
+    /// The cap message is said once per capped spell, not once per
+    /// interaction: a deaf object past the cap is dropped every 3 s.
+    cap_said: std::sync::atomic::AtomicBool,
+}
 
-/// The cap message is said once per capped spell, not once per interaction:
-/// a deaf object past the cap is dropped every 3 s.
-static CAP_SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+impl Budget {
+    const fn new() -> Budget {
+        Budget {
+            retirements: Mutex::new(std::collections::VecDeque::new()),
+            cap_said: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+}
+
+static BOARD_BUDGET: Budget = Budget::new();
+static RADIO_BUDGET: Budget = Budget::new();
 
 /// ⚠️ **An `IOHIDDevice` object can go deaf for good** (measured live
 /// 2026-09-16, 20:55:07). After 5 minutes of clean exchanges, every write
@@ -183,6 +199,7 @@ struct Board {
     abandoned: std::sync::atomic::AtomicBool,
     open: std::sync::atomic::AtomicBool,
     deafness: Mutex<Deafness>,
+    budget: &'static Budget,
 }
 
 // The raw pointers are dereferenced only under the inbox mutex, or on the
@@ -194,11 +211,18 @@ struct SendPtr(*mut c_void);
 unsafe impl Send for SendPtr {}
 
 impl Board {
-    fn create(service: &super::cf::Io, registry_id: u64, name: String) -> Result<Board, Error> {
+    fn create(service: &super::cf::Io, registry_id: u64, name: String, budget: &'static Budget) -> Result<Board, Error> {
         unsafe {
             let dev = IOHIDDeviceCreate(kCFAllocatorDefault, service.0);
             if dev.is_null() {
-                return Err(Error::Absent); // the service went away between listing and here
+                // Listed, and not made into a device: not `Absent`, which on
+                // the USB path hands now-playing to the radio. The next
+                // listing establishes absence, if that is what this was
+                // (codex, the macOS radio review's must-fix).
+                return Err(Error::Open {
+                    path: name,
+                    source: OsError::new(0, "IOHIDDeviceCreate returned NULL for a listed service"),
+                });
             }
             let ctx = Arc::into_raw(Arc::new(Shared { inbox: Mutex::new(Inbox::default()), ready: Condvar::new() }));
             let buffer = Box::into_raw(Box::new([0u8; INPUT_BUFFER]));
@@ -224,6 +248,7 @@ impl Board {
                 abandoned: false.into(),
                 open: false.into(),
                 deafness: Mutex::new(Deafness::default()),
+                budget,
             })
         }
     }
@@ -322,7 +347,7 @@ pub fn listed() -> Vec<String> {
 pub fn open_board() -> Result<Device, Error> {
     let all = discovery::list().map_err(Error::Discovery)?;
     let choice = discovery::choose(&all.iter().map(|(c, _)| c.clone()).collect::<Vec<_>>());
-    open_chosen(&BOARD, all, choice)
+    open_chosen(&BOARD, &BOARD_BUDGET, all, choice)
 }
 
 /// The 2.4G dongle's radio interface (0C45:FDFD, FF60/61), opened for one
@@ -337,11 +362,12 @@ pub fn open_board() -> Result<Device, Error> {
 pub fn open_radio() -> Result<Device, Error> {
     let all = discovery::list_dongle().map_err(Error::Discovery)?;
     let choice = discovery::choose_radio(&all.iter().map(|(c, _)| c.clone()).collect::<Vec<_>>());
-    open_chosen(&RADIO, all, choice)
+    open_chosen(&RADIO, &RADIO_BUDGET, all, choice)
 }
 
 fn open_chosen(
     slot: &Mutex<Option<Arc<Board>>>,
+    budget: &'static Budget,
     all: Vec<(discovery::Candidate, super::cf::Io)>,
     choice: Choice,
 ) -> Result<Device, Error> {
@@ -362,7 +388,7 @@ fn open_chosen(
     if !reuse {
         // Dropping a board that is still open elsewhere in this process
         // cannot happen: `Device` holds its own `Arc`.
-        *slot = Some(Arc::new(Board::create(&service, id, chosen.name())?));
+        *slot = Some(Arc::new(Board::create(&service, id, chosen.name(), budget)?));
     }
     let board = Arc::clone(slot.as_ref().expect("just set"));
     drop(slot);
@@ -399,14 +425,15 @@ impl Drop for Device {
             let stamp = crate::logfile::stamp(&super::host::SystemHost);
             // stderr is the daemon's stdio log under launchd: rare, and worth
             // counting when it happens.
-            if retirement_allowed(&mut RETIREMENTS.lock().unwrap_or_else(|e| e.into_inner()), Instant::now()) {
+            let budget = self.board.budget;
+            if retirement_allowed(&mut budget.retirements.lock().unwrap_or_else(|e| e.into_inner()), Instant::now()) {
                 self.board.abandoned.store(true, Relaxed);
-                CAP_SAID.store(false, Relaxed);
+                budget.cap_said.store(false, Relaxed);
                 eprintln!(
                     "{stamp} transport: {} replaced after {SILENT_LIMIT} interactions that wrote and heard nothing",
                     self.board.name
                 );
-            } else if !CAP_SAID.swap(true, Relaxed) {
+            } else if !budget.cap_said.swap(true, Relaxed) {
                 eprintln!(
                     "{stamp} transport: {} is deaf, but {RETIREMENTS_PER_HOUR} replacements in an hour is the cap; keeping it",
                     self.board.name

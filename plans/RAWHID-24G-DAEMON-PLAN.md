@@ -429,6 +429,20 @@ never `lockf` or `fcntl`.** `mac_raw81_s2.py` does since `30e8605`, and the
 Rust then sees its lock as held. Windows is unaffected: `LockFileEx` and
 `msvcrt.locking` are one mechanism there.
 
+**Codex's review of the Mac's half (10-20)**
+([`review-codex-macos-radio-2026-10-20.md`](review-codex-macos-radio-2026-10-20.md),
+verbatim): the selection, the sizes, the seize handling, the two objects'
+lifetimes, flock's ownership, the parser, the plist and uninstall sound; one
+must-fix.
+
+| # | finding | disposition |
+|---|---|---|
+| 1 | must: `IOHIDDeviceCreate` returning NULL for a listed service was `Absent`, which on the USB path hands now-playing to the radio | **Taken:** `Open` (busy); the next listing establishes absence. |
+| 2 | should: one retirement budget and cap message for both objects, so a radio that answers and then sleeps can spend the board's six | **Taken:** a budget per opener. |
+| 3 | should: two users racing at the lock file's creation (the loser's read-and-append open fails), and the umask can shut a second user out | **Taken:** the file is created exclusively and the loser opens it read-only; the directory is set 1777 (sticky, so only the file's owner can replace it, which matters because flock does not stop a rename), the file 0666. |
+| 4 | should: the lock test skipped errors as well as contention | **Taken:** it skips `Ok(None)` and fails `Err`, as Windows' does. |
+
+
 ### Codex's implementation review (10-20) and its dispositions
 
 [Review](review-codex-raw81-daemon-impl-2026-10-20.md), verbatim: hold the
