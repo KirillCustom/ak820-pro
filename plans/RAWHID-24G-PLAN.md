@@ -174,3 +174,13 @@ the fixes, both verbatim; prompts beside them.
 The daily build carries none of it: no new symbols, and the same text, data
 and bss as `de5450e487`'s daily. **Verdict: nothing blocks flashing it for
 the stage-1 measurements.**
+
+## BLE has no equivalent (the Mac session, 10-19)
+
+Read in BT mode on the Mac (`docs/wireless.md`, "The GATT services over BLE";
+`history/ble-gatt-20261019/`): besides HID, the module offers 180A (WCH's
+unfilled example strings; software 2024.07.26 SVN0138, PnP 0C45:FEFE), 180F,
+1813, and **FEE0 with one characteristic FEE1 (read, write, write without
+response): WCH's CH58x OTA profile, the module's own firmware update. Never
+write FEE1.** So raw HID over the dongle is the only two-way wireless path;
+over BLE the lock-LED report stays the only host-to-board one.
