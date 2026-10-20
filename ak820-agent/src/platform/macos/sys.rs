@@ -34,6 +34,8 @@ pub type IOReturn = kern_return_t;
 pub type IOOptionBits = u32;
 pub type IOHIDDeviceRef = *mut c_void;
 pub type IOHIDReportType = u32;
+pub type io_connect_t = mach_port_t;
+pub type CFBooleanRef = *const c_void;
 
 pub const kCFNumberSInt64Type: CFIndex = 4;
 pub const kCFStringEncodingUTF8: u32 = 0x0800_0100;
@@ -44,6 +46,13 @@ pub const kIORegistryIterateParents: IOOptionBits = 2;
 pub const kIOHIDOptionsTypeNone: IOOptionBits = 0;
 pub const kIOHIDOptionsTypeSeizeDevice: IOOptionBits = 1;
 pub const kIOHIDReportTypeOutput: IOHIDReportType = 1;
+
+// The lock-LED channel (lock_lights.rs). IOHIDLib.h and IOHIDShared.h.
+pub const kIOHIDRequestTypeListenEvent: u32 = 1;
+pub const kIOHIDAccessTypeGranted: u32 = 0;
+pub const kIOHIDAccessTypeDenied: u32 = 1;
+pub const kIOHIDParamConnectType: u32 = 1;
+pub const kIOHIDCapsLockState: i32 = 1;
 
 pub const kIOReturnSuccess: IOReturn = 0;
 pub const kIOReturnNoDevice: IOReturn = 0xE00002C0_u32 as i32;
@@ -126,6 +135,14 @@ extern "C" {
 
     pub fn CFRunLoopGetCurrent() -> CFRunLoopRef;
     pub fn CFRunLoopRun();
+    pub fn CFRunLoopRunInMode(
+        mode: CFStringRef,
+        seconds: CFTimeInterval,
+        return_after_source_handled: Boolean,
+    ) -> i32;
+    pub fn CFDictionaryGetValue(dict: CFDictionaryRef, key: *const c_void) -> *const c_void;
+    pub fn CFBooleanGetTypeID() -> CFTypeID;
+    pub fn CFBooleanGetValue(boolean: CFBooleanRef) -> Boolean;
     pub fn CFRunLoopWakeUp(rl: CFRunLoopRef);
     pub fn CFRunLoopSourceCreate(
         alloc: CFAllocatorRef,
@@ -145,6 +162,16 @@ extern "C" {
         existing: *mut io_iterator_t,
     ) -> kern_return_t;
     pub fn IOIteratorNext(iterator: io_iterator_t) -> io_object_t;
+    pub fn IOServiceGetMatchingService(main_port: mach_port_t, matching: CFDictionaryRef) -> io_service_t;
+    pub fn IOServiceOpen(
+        service: io_service_t,
+        owning_task: mach_port_t,
+        connect_type: u32,
+        connect: *mut io_connect_t,
+    ) -> kern_return_t;
+    pub fn IOServiceClose(connect: io_connect_t) -> kern_return_t;
+    pub fn IOHIDGetModifierLockState(handle: io_connect_t, selector: i32, state: *mut bool) -> kern_return_t;
+    pub fn IOHIDCheckAccess(request_type: u32) -> u32;
     pub fn IOObjectRelease(object: io_object_t) -> kern_return_t;
     pub fn IORegistryEntryCreateCFProperty(
         entry: io_registry_entry_t,
@@ -215,6 +242,12 @@ extern "C" {
     pub fn vm_deallocate(task: mach_port_t, address: usize, size: usize) -> kern_return_t;
     pub fn proc_pid_rusage(pid: i32, flavor: i32, buffer: *mut c_void) -> i32;
     pub fn getpid() -> i32;
+}
+
+// The session: on the console and unlocked (the lock-LED channel's R4-1).
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    pub fn CGSessionCopyCurrentDictionary() -> CFDictionaryRef;
 }
 
 // The autorelease pool. ⚠️ Needed because IOKit's HID implementation

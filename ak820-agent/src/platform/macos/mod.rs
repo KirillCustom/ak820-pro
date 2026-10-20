@@ -15,6 +15,7 @@ pub mod host;
 pub mod install;
 pub mod instance;
 pub mod launchd;
+pub mod lock_lights;
 pub mod media;
 pub mod process;
 pub mod radio_lock;

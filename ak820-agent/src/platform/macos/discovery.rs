@@ -16,12 +16,14 @@ use super::sys::*;
 const VID: i64 = crate::hid::VID as i64;
 const PID: i64 = crate::hid::PID as i64;
 const DONGLE_PID: i64 = crate::hid::DONGLE_PID as i64;
+/// The board's Bluetooth keyboard, as macOS lists it (the lock-LED channel).
+const BLE_PID: i64 = 0xFEFE;
 const RAW_USAGE_PAGE: i64 = crate::hid::USAGE_PAGE as i64;
 const RAW_USAGE: i64 = crate::hid::USAGE as i64;
 
 
 /// One HID service, as read from the registry.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Candidate {
     pub registry_id: u64,
     pub vid: Option<i64>,
@@ -122,6 +124,12 @@ pub fn list() -> Result<Vec<(Candidate, Io)>, String> {
 /// collections and its radio interface, nothing opened.
 pub fn list_dongle() -> Result<Vec<(Candidate, Io)>, String> {
     list_of(DONGLE_PID)
+}
+
+/// [`list`] for the board's Bluetooth keyboard (0C45:FEFE), nothing opened:
+/// the lock-LED channel's route (`lock_lights.rs`).
+pub fn list_ble() -> Result<Vec<(Candidate, Io)>, String> {
+    list_of(BLE_PID)
 }
 
 fn list_of(pid: i64) -> Result<Vec<(Candidate, Io)>, String> {

@@ -57,9 +57,12 @@ pub fn main() -> ExitCode {
         ["install", flags @ ..] => super::install::install(flags),
         ["uninstall", flags @ ..] => super::install::uninstall(flags),
         ["status"] => super::install::status(),
+        ["lockchan", "check"] => lockchan_check(),
+        ["lockchan", "send", artist, title] => lockchan_send(artist, title),
+        ["lockchan", "clear"] => lockchan_send("", ""),
         _ => {
-            eprintln!("usage: ak820 --version | list | info | health [--crash] [--stalls] [--rows] [--isr] [--json] [--raw] | lighting | selftest | clock [--raw] [--anyway] | probe [--seconds N] [--applescript] [--dylib PATH] | install [--in-place] [--clock] [--radio] [--dylib PATH] | uninstall [--keep-bash-off] [--keep-timekeeper-off] | status");
-            eprintln!("(install, uninstall and status change LaunchAgents and touch no board; every other command only reads the board)");
+            eprintln!("usage: ak820 --version | list | info | health [--crash] [--stalls] [--rows] [--isr] [--json] [--raw] | lighting | selftest | clock [--raw] [--anyway] | probe [--seconds N] [--applescript] [--dylib PATH] | install [--in-place] [--clock] [--radio] [--dylib PATH] | uninstall [--keep-bash-off] [--keep-timekeeper-off] | status | lockchan check | lockchan send ARTIST TITLE | lockchan clear");
+            eprintln!("(install, uninstall and status change LaunchAgents and touch no board; lockchan send and clear write the board's LED report over BLE, a development check; every other command only reads the board)");
             return ExitCode::from(2);
         }
     };
@@ -439,6 +442,75 @@ fn probe(flags: &[&str]) -> Result<(), String> {
         health.polls,
         health.failures,
         health.stale_for.map(|d| format!("{}s ago", d.as_secs())).unwrap_or_else(|| "never".into())
+    );
+    Ok(())
+}
+
+/// What the lock-LED channel would use, read only: Input Monitoring, the BLE
+/// keyboard's listing (nothing opened), the session, Caps, the idle time.
+fn lockchan_check() -> Result<(), String> {
+    use super::lock_lights as ll;
+    println!("input monitoring   {}", ll::input_monitoring().map(|()| "granted".to_string()).unwrap_or_else(|e| e));
+    let listed = super::discovery::list_ble()?;
+    for (c, _) in &listed {
+        println!(
+            "ble service        {:#x}: usage {:?}:{:?}, {:?}, {:?}",
+            c.registry_id, c.usage_page, c.usage, c.transport, c.product
+        );
+    }
+    let cands: Vec<_> = listed.iter().map(|(c, _)| c.clone()).collect();
+    println!("chosen             {:?}", ll::choose(&cands));
+    println!("session active     {}", ll::session_active());
+    println!("idle               {:?}", ll::idle());
+    Ok(())
+}
+
+/// One lock-LED frame over BLE through the daemon's own executor: the
+/// development check of the Mac's route before the sender is wired in.
+/// Empty artist and title send CLEAR. Takes the channel's owner lock, so it
+/// never interleaves with another sender.
+fn lockchan_send(artist: &str, title: &str) -> Result<(), String> {
+    use crate::lockchan::frame::{self, Abort, Control, Line, Payload, Time};
+    use std::time::Instant;
+
+    struct Wall;
+    impl Time for Wall {
+        fn now(&self) -> Instant {
+            Instant::now()
+        }
+        fn sleep_until(&self, t: Instant) -> bool {
+            std::thread::sleep(t.saturating_duration_since(Instant::now()));
+            true
+        }
+    }
+    struct Never;
+    impl Control for Never {
+        fn abort(&self) -> Option<Abort> {
+            None
+        }
+    }
+
+    let _owner = super::radio_lock::try_take_lockchan()?
+        .ok_or("another sender holds the lock-LED channel (the daemon, or another ak820 lockchan)")?;
+    let snapshot = crate::smtc::Snapshot {
+        artist: artist.into(),
+        title: title.into(),
+        icon: if title.is_empty() { crate::text::Icon::None } else { crate::text::Icon::Play },
+        ..Default::default()
+    };
+    let (kind, bytes) = crate::lockchan::content(&snapshot);
+    let mut lights = super::lock_lights::BleLights::open()?
+        .ok_or("the board's BLE keyboard is not listed (paired, connected, the slider on BT?)")?;
+    let mut line = Line::default();
+    let t0 = Instant::now();
+    let out = frame::run(&mut lights, &Wall, &Never, &mut line, || Some(Payload { kind, seq: 0, bytes: bytes.clone() }));
+    println!(
+        "{}: type {kind}, {} payload bytes: {out:?}, {} writes in {:.2} s{}",
+        lights.name,
+        bytes.len(),
+        line.writes,
+        t0.elapsed().as_secs_f64(),
+        if line.restore_pending { " (restore pending)" } else { "" }
     );
     Ok(())
 }

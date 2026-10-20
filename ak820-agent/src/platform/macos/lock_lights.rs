@@ -1,0 +1,346 @@
+//! The lock-LED channel's macOS half: the board's Bluetooth keyboard and its
+//! LED output report (`plans/LOCK-LED-CHANNEL-PLAN.md`, "The daemon's sender:
+//! design"; the route measured 10-18 with `hostagent/ledprobe/`: 24 of 24
+//! frames committed, P3 moving no light).
+//!
+//! - **The route:** an output report to the BLE keyboard (0C45:FEFE,
+//!   transport "Bluetooth Low Energy", usage 1:6), report 2, the buffer the
+//!   report ID then the LED byte, as the probe sent it. P3, bits 3-7: macOS's
+//!   own lock state never moves.
+//! - **Found without opening anything else:** the registry matched on VID/PID
+//!   ([`discovery::list_ble`]), never HID enumeration (the UPS incident).
+//! - **Input Monitoring:** macOS opens a keyboard only for a process it has
+//!   granted ListenEvent. Without it the channel is off and says why; nothing
+//!   here asks for it (a consent dialog is the user's to raise, never the
+//!   daemon's at night).
+//! - **The user's locks:** Caps from the HID system
+//!   (`IOHIDGetModifierLockState`), and only while this session is on the
+//!   console and unlocked (R4-1); Num and Scroll are 0, macOS keeps neither.
+//! - **One write at a time, with a deadline:** `IOHIDDeviceSetReportWithCallback`
+//!   scheduled on this thread's run loop, which runs until the completion.
+//!   One that does not retire in its deadline is [`WriteError::Stuck`] and
+//!   poisons the channel for the process's life (R3-3): its buffer, context
+//!   and device are leaked, never freed under IOKit.
+//!
+//! A [`BleLights`] belongs to the thread that opened it (its run loop): the
+//! sender's.
+#![allow(non_upper_case_globals)] // matching on IOKit's constants, as device.rs does
+
+use std::cell::Cell;
+use std::os::raw::c_void;
+use std::time::{Duration, Instant};
+
+use super::cf::{property, Cf, Io, Pool};
+use super::discovery::{self, Candidate};
+use super::sys::*;
+use crate::lockchan::frame::{LockLights, WriteError};
+use crate::lockchan::{Profile, CAPS};
+
+/// The BLE keyboard's LED output report (`ledprobe.log`, 10-18: "LED outputs
+/// (report 2): num caps scroll").
+const REPORT_ID: u8 = 2;
+/// IOKit's own deadline for one write, and our wait past it before calling the
+/// write stuck. The Mac's BLE writes took 41-322 ms (10-18).
+const WRITE_TIMEOUT: Duration = Duration::from_secs(1);
+const WRITE_GRACE: Duration = Duration::from_millis(250);
+const TRANSPORT: &str = "Bluetooth Low Energy";
+
+/// The board's keyboard among the BLE device's services: the keyboard
+/// collection (usage page 1, usage 6) over BLE. `Err` when more than one.
+pub fn choose(candidates: &[Candidate]) -> Result<Option<usize>, String> {
+    let ours: Vec<usize> = candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| {
+            c.usage_page == Some(1) && c.usage == Some(6) && c.transport.as_deref() == Some(TRANSPORT)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    match ours.as_slice() {
+        [] => Ok(None),
+        [one] => Ok(Some(*one)),
+        many => Err(format!("{} BLE keyboard collections listed for the board; refusing to guess", many.len())),
+    }
+}
+
+/// Whether this process may open a keyboard: TCC's ListenEvent.
+pub fn input_monitoring() -> Result<(), String> {
+    match unsafe { IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) } {
+        kIOHIDAccessTypeGranted => Ok(()),
+        kIOHIDAccessTypeDenied => Err("Input Monitoring is off for this program (System Settings, Privacy & \
+                                       Security, Input Monitoring)"
+            .into()),
+        _ => Err("Input Monitoring has not been granted to this program yet".into()),
+    }
+}
+
+/// This session on the console and its screen unlocked (R4-1): the locks
+/// the HID system reports are then this user's, and a frame reaches the
+/// keyboard in front of them.
+pub fn session_active() -> bool {
+    let Some(dict) = Cf::owned(unsafe { CGSessionCopyCurrentDictionary() }) else {
+        return false; // no GUI session: a daemon outside the user's login
+    };
+    let flag = |key: &str| -> Option<bool> {
+        let k = Cf::string(key);
+        let v = unsafe { CFDictionaryGetValue(dict.as_ptr(), k.as_ptr()) };
+        if v.is_null() {
+            return None;
+        }
+        unsafe { (CFGetTypeID(v) == CFBooleanGetTypeID()).then(|| CFBooleanGetValue(v) != 0) }
+    };
+    flag("kCGSSessionOnConsoleKey") == Some(true) && flag("CGSSessionScreenIsLocked") != Some(true)
+}
+
+/// The HID system's service, for the Caps state and the idle time.
+fn hid_system() -> Option<Io> {
+    let matching = unsafe { IOServiceMatching(c"IOHIDSystem".as_ptr()) };
+    if matching.is_null() {
+        return None;
+    }
+    // Consumes `matching`.
+    let s = unsafe { IOServiceGetMatchingService(0, matching as CFDictionaryRef) };
+    (s != 0).then(|| Io(s))
+}
+
+/// How long since the last input on this machine, any device (the HID
+/// system's `HIDIdleTime`, nanoseconds), for the sender's wake guess.
+pub fn idle() -> Option<Duration> {
+    let sys = hid_system()?;
+    let ns = property(sys.0, "HIDIdleTime")?.to_i64()?;
+    (ns >= 0).then(|| Duration::from_nanos(ns as u64))
+}
+
+/// The completion's slot, written by the callback on this thread's run loop.
+struct Done(Cell<Option<IOReturn>>);
+
+unsafe extern "C" fn on_written(
+    context: *mut c_void,
+    result: IOReturn,
+    _sender: *mut c_void,
+    _report_type: IOHIDReportType,
+    _report_id: u32,
+    _report: *mut u8,
+    _report_length: CFIndex,
+) {
+    let done = &*(context as *const Done);
+    done.0.set(Some(result));
+}
+
+pub struct BleLights {
+    dev: IOHIDDeviceRef,
+    rl: CFRunLoopRef,
+    hid: io_connect_t,
+    /// Boxed: IOKit holds pointers to both until a write retires.
+    done: Box<Done>,
+    buf: Box<[u8; 2]>,
+    poisoned: bool,
+    pub name: String,
+}
+
+impl BleLights {
+    /// The board's BLE keyboard, opened on this thread: `Ok(None)` when it is
+    /// not listed (not paired, not connected, the slider elsewhere).
+    pub fn open() -> Result<Option<BleLights>, String> {
+        input_monitoring()?;
+        let listed = discovery::list_ble()?;
+        let cands: Vec<Candidate> = listed.iter().map(|(c, _)| c.clone()).collect();
+        let Some(i) = choose(&cands)? else { return Ok(None) };
+        let (c, service) = &listed[i];
+        let name = format!("{} ({})", c.product.as_deref().unwrap_or("?"), TRANSPORT);
+        unsafe {
+            let dev = IOHIDDeviceCreate(kCFAllocatorDefault, service.0);
+            if dev.is_null() {
+                return Err(format!("{name}: IOHIDDeviceCreate returned NULL"));
+            }
+            let rc = IOHIDDeviceOpen(dev, kIOHIDOptionsTypeNone);
+            if rc != kIOReturnSuccess {
+                CFRelease(dev as CFTypeRef);
+                return Err(format!("{name}: open: {}", ioreturn_name(rc)));
+            }
+            let mut hid: io_connect_t = 0;
+            let kr = match hid_system() {
+                Some(sys) => IOServiceOpen(sys.0, mach_task_self_, kIOHIDParamConnectType, &mut hid),
+                None => -1,
+            };
+            if kr != 0 {
+                IOHIDDeviceClose(dev, kIOHIDOptionsTypeNone);
+                CFRelease(dev as CFTypeRef);
+                return Err(format!("the HID system's connection: {}", ioreturn_name(kr)));
+            }
+            let rl = CFRunLoopGetCurrent();
+            IOHIDDeviceScheduleWithRunLoop(dev, rl, kCFRunLoopDefaultMode);
+            Ok(Some(BleLights {
+                dev,
+                rl,
+                hid,
+                done: Box::new(Done(Cell::new(None))),
+                buf: Box::new([REPORT_ID, 0]),
+                poisoned: false,
+                name,
+            }))
+        }
+    }
+}
+
+impl LockLights for BleLights {
+    fn profile(&self) -> Profile {
+        Profile::P3
+    }
+    /// Zero: a write returns at its completion, and the Mac's BLE takes tens
+    /// of milliseconds a write.
+    fn spacing(&self) -> Duration {
+        Duration::ZERO
+    }
+    fn user(&mut self) -> Option<u8> {
+        if !session_active() {
+            return None;
+        }
+        let mut caps = false;
+        let kr = unsafe { IOHIDGetModifierLockState(self.hid, kIOHIDCapsLockState, &mut caps) };
+        (kr == 0).then(|| if caps { CAPS } else { 0 })
+    }
+    fn write(&mut self, leds: u8) -> Result<(), WriteError> {
+        if self.poisoned {
+            return Err(WriteError::Stuck);
+        }
+        // IOKit autoreleases into the calling thread's pool on every async
+        // write (`cf::Pool`); the pool covers the wait for the completion.
+        let _pool = Pool::new();
+        self.buf[1] = leds;
+        self.done.0.set(None);
+        let rc = unsafe {
+            IOHIDDeviceSetReportWithCallback(
+                self.dev,
+                kIOHIDReportTypeOutput,
+                REPORT_ID as CFIndex,
+                self.buf.as_ptr(),
+                self.buf.len() as CFIndex,
+                // ⚠️ Milliseconds, despite the type (IOHIDDevice.h; device.rs).
+                WRITE_TIMEOUT.as_secs_f64() * 1000.0,
+                Some(on_written),
+                &*self.done as *const Done as *mut c_void,
+            )
+        };
+        if rc != kIOReturnSuccess {
+            return Err(WriteError::Failed(format!("{}: write: {}", self.name, ioreturn_name(rc))));
+        }
+        let deadline = Instant::now() + WRITE_TIMEOUT + WRITE_GRACE;
+        loop {
+            if let Some(result) = self.done.0.get() {
+                return if result == kIOReturnSuccess {
+                    Ok(())
+                } else {
+                    Err(WriteError::Failed(format!("{}: write: {}", self.name, ioreturn_name(result))))
+                };
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                self.poisoned = true;
+                return Err(WriteError::Stuck);
+            }
+            let wait = (deadline - now).min(Duration::from_millis(50));
+            unsafe { CFRunLoopRunInMode(kCFRunLoopDefaultMode, wait.as_secs_f64(), 1) };
+        }
+    }
+}
+
+impl Drop for BleLights {
+    fn drop(&mut self) {
+        if self.poisoned {
+            // A write IOKit never retired may still use the buffer, the
+            // completion slot and the device: leak all three (R3-3).
+            std::mem::forget(std::mem::replace(&mut self.done, Box::new(Done(Cell::new(None)))));
+            std::mem::forget(std::mem::replace(&mut self.buf, Box::new([0; 2])));
+            return;
+        }
+        unsafe {
+            IOHIDDeviceUnscheduleFromRunLoop(self.dev, self.rl, kCFRunLoopDefaultMode);
+            IOHIDDeviceClose(self.dev, kIOHIDOptionsTypeNone);
+            CFRelease(self.dev as CFTypeRef);
+            IOServiceClose(self.hid);
+        }
+    }
+}
+
+/// The sender's platform on macOS.
+#[derive(Default)]
+pub struct Mac {
+    start: Option<Instant>,
+    last: Cell<Option<u32>>,
+}
+
+impl Mac {
+    pub fn new() -> Mac {
+        Mac { start: Some(Instant::now()), last: Cell::new(None) }
+    }
+}
+
+/// The last input's tick from "now" and the idle time: a jitter of a few ms
+/// between reads is not an input (the sender fires on any change of it), so
+/// an estimate within this of the last one keeps the last one.
+const TICK_SLACK_MS: u32 = 250;
+
+fn last_tick(prev: Option<u32>, now: u32, idle_ms: u32) -> u32 {
+    let est = now.wrapping_sub(idle_ms);
+    match prev {
+        Some(p) if (est.wrapping_sub(p) as i32).unsigned_abs() <= TICK_SLACK_MS => p,
+        _ => est,
+    }
+}
+
+impl crate::lockchan::sender::Platform for Mac {
+    type Lights = BleLights;
+    fn open(&mut self) -> Result<Option<BleLights>, String> {
+        BleLights::open()
+    }
+    fn lock(&mut self) -> Result<Option<Box<dyn std::any::Any + Send>>, String> {
+        Ok(super::radio_lock::try_take_lockchan()?.map(|l| Box::new(l) as Box<dyn std::any::Any + Send>))
+    }
+    fn input(&self) -> Option<(u32, u32)> {
+        let now = self.start?.elapsed().as_millis() as u32;
+        let idle = idle()?.as_millis().min(u32::MAX as u128) as u32;
+        let last = last_tick(self.last.get(), now, idle);
+        self.last.set(Some(last));
+        Some((last, now))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cand(page: i64, usage: i64, transport: &str) -> Candidate {
+        Candidate {
+            usage_page: Some(page),
+            usage: Some(usage),
+            transport: Some(transport.into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn only_the_ble_keyboard_collection_is_chosen() {
+        let c = [cand(12, 1, TRANSPORT), cand(1, 6, TRANSPORT), cand(1, 2, TRANSPORT)];
+        assert_eq!(choose(&c), Ok(Some(1)));
+        assert_eq!(choose(&[cand(1, 6, "USB")]), Ok(None), "the cable's keyboard is raw HID's, not ours");
+        assert_eq!(choose(&[]), Ok(None));
+        assert!(choose(&[cand(1, 6, TRANSPORT), cand(1, 6, TRANSPORT)]).is_err(), "two: refuse to guess");
+    }
+
+    #[test]
+    fn idle_jitter_is_not_an_input_and_a_real_input_is() {
+        // Idle 40 s at tick 100_000: last input at 60_000.
+        let a = last_tick(None, 100_000, 40_000);
+        assert_eq!(a, 60_000);
+        // A read later, rounding a ms either way: the same last input.
+        assert_eq!(last_tick(Some(a), 100_501, 40_500), a);
+        assert_eq!(last_tick(Some(a), 100_502, 40_503), a);
+        // A key: idle back near zero, the last input jumps forwards.
+        assert_eq!(last_tick(Some(a), 101_000, 20), 100_980);
+        // Across the tick's wrap.
+        let w = last_tick(None, 10, 40_000);
+        assert_eq!(w, 10u32.wrapping_sub(40_000));
+        assert_eq!(last_tick(Some(w), 12, 40_001), w);
+    }
+}

@@ -25,7 +25,20 @@ pub fn path() -> PathBuf {
 /// Take it without blocking: `Ok(Some)` held, `Ok(None)` another owner holds
 /// it, `Err` it could not be tried (the directory or file).
 pub fn try_take() -> Result<Option<RadioLock>, String> {
-    let p = path();
+    take(path())
+}
+
+/// The lock-LED channel's owner lock, the same kind beside it: one sender of
+/// frames per machine, the daemon or `ak820 lockchan` (the sender design, R3).
+pub fn lockchan_path() -> PathBuf {
+    PathBuf::from("/Users/Shared/ak820pro/lockchan.lock")
+}
+
+pub fn try_take_lockchan() -> Result<Option<RadioLock>, String> {
+    take(lockchan_path())
+}
+
+fn take(p: PathBuf) -> Result<Option<RadioLock>, String> {
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         // Every user's: reachable whatever the creator's umask, and sticky,
