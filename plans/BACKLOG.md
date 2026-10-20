@@ -22,6 +22,52 @@ The order agreed after the sleep experiments:
    - a final pass for anything personal (the public-repo rule: no family or
      household details).
 
+## ⚠️ Lock-light frames end the deep sleep (2026-10-20) -- must fix before `--lockchan` in daily use
+
+Found in the power-modes flash's BT soak (`845996c39c`,
+`history/power-modes-20261020/deep-bt*`). 17 of 20 cycles passed, and all
+three failures trace to the daemon's own lock-light frames. It was
+installed with `--lockchan`, and each cycle cuts the cable's data, so it
+took BT and sent frames (45 in all, the last during cycle 20).
+- **Cycle 5 ended its sleep as `strays: 1000`** (`DS_STRAYS_MAX`): the
+  sleep loop's WFI returned 1000 times with neither a wake source nor a
+  second. A frame's ~50 writes reach the board about three times each as
+  5A packets over UART2: of the order of 1000 edges.
+- **Cycles 14 and 19 counted a UART overrun**: most likely the same traffic
+  meeting the wake's masked stretches (the PCF's reads).
+- **In real use this breaks deep sleep on battery over BT:** the sender
+  refreshes the title every 60 s, so the board would wake at least once a
+  minute. Not seen on 2.4G: there the BLE keyboard is gone and no lock
+  lights are sent.
+
+**The likely path** ([`docs/sn32f299.md`](../docs/sn32f299.md), "Deep-sleep
+on this board"): UART2 stops in Deep-sleep, but URXD2 is P1.6, on P1's IRQ30.
+The knob's and CHRG's wake pins share that IRQ. An edge on P1.6 that
+latches `RIS`, or a UART2 IRQ left pending and enabled, would end every WFI.
+The loop masks `RIS` to the wake pins and clears only those, so the bit
+stays pending and the loop spins to 1000.
+
+**The first step is to measure:** a diagnostic build that records
+`NVIC->ISPR[0]` and the full `RIS` of P0-P2 when it leaves on strays, with
+frames sent on purpose during a bench sleep (`ak820 lockchan send` while
+`deep_cycles --board-only` holds the board asleep).
+
+**Then the fix, through codex:** take no wake from the link. Clear and
+ignore non-wake bits each pass, mask non-wake IRQs for the sleep and put
+them back after. Clear UART2's status at the wake, so a sleep's lost bytes
+are not counted as overruns. Frames sent to a sleeping board are lost by
+design: its screen is off, its text is cleared at the wake, and the sender's
+wake guess resends 4 s after the waking input.
+- **The sender keeps its cadence** (agreed with Gremlin). Host idle does not
+  mean the board is asleep: in Always on, or while JD listens without
+  typing, the board is awake, and without refreshes the title would expire
+  mid-track. Once the board fix is in, a refresh to a sleeping board costs
+  only BLE traffic. **Only the clock frame (type 4, being designed) is held
+  while input is idle past 60 s,** with one sent at the wake guess instead.
+- **Owed once fixed:** whether frames reaching a sleeping board raise its
+  draw at all (the module forwards them over UART regardless); the next BT
+  soak logs it.
+
 ## The agent in its own repo: a notarized Mac release, a signed Windows build (2026-10-20) -- pending, for later
 
 JD is fine with moving `ak820-agent/` to a separate repository and
