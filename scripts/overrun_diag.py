@@ -1,29 +1,39 @@
 #!/usr/bin/env python3
-"""The radio link's UART overruns, measured (plans/OVERRUN-CAPS-PLAN.md, step
-1): HC_DEVHOOK ops 20-24 on a dev build that carries overrun_diag.c.
+"""The radio link's UART overruns, measured (plans/OVERRUN-CAPS-PLAN.md,
+plans/UART-LATENCY-PLAN.md): HC_DEVHOOK ops 20-26, and the RX tap (15), on a
+dev build that carries overrun_diag.c.
 
     venv/bin/python scripts/overrun_diag.py status [--json OUT]
     venv/bin/python scripts/overrun_diag.py reset
-    venv/bin/python scripts/overrun_diag.py mode transaction|byte
+    venv/bin/python scripts/overrun_diag.py mode transaction|byte|unlocked
+    venv/bin/python scripts/overrun_diag.py prio 0|1
+    venv/bin/python scripts/overrun_diag.py mon on|off|zero
     venv/bin/python scripts/overrun_diag.py burst N [--lo MS] [--hi MS] | burst stop
-    venv/bin/python scripts/overrun_diag.py ab [--arms abcddcba] [--secs 90] [--n 1000] [--json OUT]
-    venv/bin/python scripts/overrun_diag.py sweep [--us 50,100,...] [--n 500] [--secs 30] [--json OUT]
+    venv/bin/python scripts/overrun_diag.py ab [--arms tb,ub,...] [--secs 180] [--n 2000] [--json OUT]
+    venv/bin/python scripts/overrun_diag.py sweep [--us 50,100,...] [--n 500] [--secs 60] [--json OUT]
 
 `status` prints the OE counts and their contexts, each PCF kind's spans, the
-burst, the OE ring and the deep sleep's last eight wakes. `ab` runs the A/B:
+burst, the OE ring, the gap monitor and its ring, the RX tap's count and the
+deep sleep's last eight wakes. `ab` runs arms, each named for its settings:
 
-    arm  lock span        burst
-    a    per transaction  none
-    b    per transaction  N reads
-    c    per byte         N reads
-    d    per byte         none
+    arm  lock         UART2  burst    monitor
+    tn   transaction  1      none     off
+    tb   transaction  1      N reads  off
+    un   unlocked     1      none     off
+    ub   unlocked     1      N reads  off
+    pn   unlocked     0      none     off      (the build's defaults)
+    pb   unlocked     0      N reads  off
+    mn   unlocked     0      none     on
+    mb   unlocked     0      N reads  on
 
-each for --secs (or until its burst is done, plus 10 s), under the 2.4G echo's
-load (mac_raw81_echo.py at --gap-ms 0), with the board's figures zeroed at
-each arm's start and read at its end. The cable's raw HID is opened only
-between the echo's runs (macOS's is exclusive, and the daemon's syncs need
-it). `sweep` measures the receiver's depth: per span, a burst of masked
-spans of that length (no I2C), the same load and accounting, per transaction.
+each for --secs under stage 2's load (mac_raw81_s2.py load: health reads
+back to back over the Mac's dongle), the settings set and read back, the
+board's figures and the RX tap zeroed at the arm's start and read at its
+end. The cable's raw HID is shared with the load's own reads through the
+retrying opener (macOS's is exclusive). `sweep` measures the receiver's
+depth: per span, a burst of masked spans of that length (no I2C), at the
+defaults. Afterwards the board is put back to its defaults: unlocked,
+UART2 at 0, the monitor off, the tap disarmed, no burst.
 Needs the Mac's dongle, the slider on 2.4G and the cable's data.
 """
 import argparse, json, os, selectors, subprocess, sys, tempfile, time
@@ -35,6 +45,9 @@ import deep_sleep as ds  # noqa: E402
 cm = ds.cm
 TICK_HZ = 187500
 KINDS = ["read 1 (4 B)", "read 7 (10 B)", "write 1 (3 B)", "write 8 (9 B)"]
+LOCKS = ["transaction", "byte", "unlocked"]
+SCOPES = ["ch582", "batt", "disp_hk", "pump", "rtc", "rtc_fast", "leds", "health", "eecfg", "edge",
+          "anim", "hk_other", "none"]
 WAKES = ["none", "key", "backstop", "strays", "blocked", "knob", "charge"]
 U16 = lambda b, o: int.from_bytes(b[o:o + 2], "little")
 U32 = lambda b, o: int.from_bytes(b[o:o + 4], "little")
@@ -51,7 +64,7 @@ def op(h, n, args=()):
 def summary(h, sub=0):
     b = op(h, 20, [sub])
     return {"oe_obs": U32(b, 0), "oe_drain": U32(b, 4), "rx_drop": U32(b, 8), "ring_seq": U16(b, 12),
-            "byte_mode": b[14], "usb_max_ms": ms(U16(b, 16)), "st_max_ms": ms(U16(b, 18)),
+            "lock": LOCKS[b[14]] if b[14] < 3 else b[14], "uart_prio": b[15], "usb_max_ms": ms(U16(b, 16)), "st_max_ms": ms(U16(b, 18)),
             "ctx_pcf": U16(b, 20), "ctx_flash": U16(b, 22), "ctx_none": U16(b, 24), "rx_off": U16(b, 26)}
 
 
@@ -63,7 +76,36 @@ def kinds(h):
                     "max_whole_ms": ms(U16(b, 8)), "spans_ge_1ms": U32(b, 10), "spans_ge_1_4ms": U32(b, 14),
                     "spans": U32(b, 18)})
     b = op(h, 22, [0xFF])
-    return out, {"ctx_sleep": U16(b, 0), "tick_hz": U32(b, 2), "now_secs": U32(b, 6), "ctx_probe": U16(b, 10)}
+    return out, {"ctx_sleep": U16(b, 0), "tick_hz": U32(b, 2), "now_secs": U32(b, 6), "ctx_probe": U16(b, 10),
+                "uart_max_ms": ms(U16(b, 12))}
+
+
+def mon(h, sub=0):
+    """The gap monitor (op 25): sub 1 on, 2 off, 3 zero. Its maximum counts
+    only gaps past the first threshold; with none, its context means nothing."""
+    b = op(h, 25, [sub])
+    return {"on": bool(b[0]), "max_ms": ms(U16(b, 2)), "n_128us": U32(b, 4), "n_197us": U32(b, 8),
+            "n_347us": U32(b, 12), "ticks": U32(b, 16),
+            "max_ctx": SCOPES[b[20]] if b[20] < len(SCOPES) else b[20], "max_act": b[21], "seq": U16(b, 22)}
+
+
+def mon_ring(h, seq):
+    """The monitor's gaps of 197 us and over (op 26), the newest 16."""
+    slots = {}
+    for page in range(8):
+        b = op(h, 26, [page])
+        for j in range(2):
+            e = b[10 * j:10 * j + 10]
+            slots[2 * page + j] = {"seq": U16(e, 0), "secs": U32(e, 2), "gap_ms": ms(U16(e, 6)),
+                                   "ctx": SCOPES[e[8]] if e[8] < len(SCOPES) else e[8], "act": e[9]}
+    return walk_back(slots, seq, 16)
+
+
+def rxtap(h, sub=0):
+    """Gremlin's RX tap (op 15): sub 1 arms it (count zeroed), 2 disarms; the
+    count is every byte the link's parser took since arming."""
+    b = op(h, 15, [sub])
+    return {"armed": bool(b[0]), "bytes": U32(b, 1)}
 
 
 def walk_back(slots, seq, cap):
@@ -90,7 +132,7 @@ def ring(h, seq):
             for j in range(2):
                 e = b[14 * j:14 * j + 14]
                 slots[2 * page + j] = {"seq": U16(e, 0), "secs": U32(e, 2), "act": e[6], "kind": e[7] & 3,
-                                       "in_drain": bool(e[7] & 0x40), "byte_mode": bool(e[7] & 0x80),
+                                       "in_drain": bool(e[7] & 0x40), "lock": (e[7] >> 4) & 3,
                                        "span_ms": ms(U16(e, 8)), "usb_max_ms": ms(U16(e, 10)),
                                        "st_max_ms": ms(U16(e, 12))}
         s_now = summary(h)
@@ -125,17 +167,27 @@ def wakes(h):
 def snapshot(h):
     r, s = ring(h, summary(h)["ring_seq"])     # the summary the ring was read against
     k, extra = kinds(h)
-    return {"summary": s, "kinds": k, "sleep": extra, "burst": burst(h), "ring": r, "wakes": wakes(h)}
+    m = mon(h)
+    return {"summary": s, "kinds": k, "sleep": extra, "burst": burst(h), "ring": r, "wakes": wakes(h),
+            "mon": m, "mon_ring": mon_ring(h, m["seq"]), "rxtap": rxtap(h)}
 
 
 def show(d):
     s = d["summary"]
     print(f"OE observed {s['oe_obs']} (+{s['oe_drain']} in the drain's re-reads), bytes refused {s['rx_drop']}; "
-          f"lock span {'per byte' if s['byte_mode'] else 'per transaction'}")
+          f"lock {s['lock']}, UART2 at {s['uart_prio']}; RX tap {d['rxtap']['bytes']} bytes"
+          f"{'' if d['rxtap']['armed'] else ' (disarmed)'}")
     print(f"  seen with: a PCF transaction {s['ctx_pcf']}, a flash write {s['ctx_flash']}, a sleep "
           f"{d['sleep']['ctx_sleep']}, the depth probe {d['sleep']['ctx_probe']}, none {s['ctx_none']}; "
           f"receiver-off intervals {s['rx_off']}")
-    print(f"  longest handlers: USB {s['usb_max_ms']} ms, system timer {s['st_max_ms']} ms")
+    print(f"  longest handlers: USB {s['usb_max_ms']} ms, system timer {s['st_max_ms']} ms, "
+          f"UART2 {d['sleep']['uart_max_ms']} ms")
+    m = d["mon"]
+    print(f"  gap monitor {'on' if m['on'] else 'off'}: {m['ticks']} ticks, gaps >= 128 us {m['n_128us']}, "
+          f">= 197 us {m['n_197us']}, >= 347 us {m['n_347us']}; longest {m['max_ms']} ms"
+          + (f" in {m['max_ctx']} (act {m['max_act']:#x})" if m["n_128us"] else ""))
+    for e in d["mon_ring"]:
+        print(f"    gap #{e['seq']} {e['gap_ms']} ms at board second {e['secs']}, in {e['ctx']} (act {e['act']:#x})")
     for k in d["kinds"]:
         if k["count"]:
             print(f"  PCF {k['kind']:14s} {k['count']:6d} ({k['fails']} failed); longest masked "
@@ -147,30 +199,35 @@ def show(d):
     now = d["sleep"]["now_secs"]
     for e in d["ring"]:
         print(f"  OE #{e['seq']} {now - e['secs']} s ago (board second {e['secs']}): act {e['act']:#x} kind {e['kind']}{' drain' if e['in_drain'] else ''}"
-              f"{' byte' if e['byte_mode'] else ''}; last span {e['span_ms']} ms, USB {e['usb_max_ms']}, "
+              f" {LOCKS[e['lock']] if e['lock'] < 3 else e['lock']}; last span {e['span_ms']} ms, USB {e['usb_max_ms']}, "
               f"timer {e['st_max_ms']}")
     for w in d["wakes"]:
         print(f"  sleep #{w['seq']}: woke on {w['reason']} after {w['counted_s']} counted s (flags {w['flags']:#x}); "
               f"P0 {w['p0']} P1 {w['p1']} P2 {w['p2']}, strays {w['strays']}, at {w['ms']} ms")
 
 
-ARMS = {"a": (False, False), "b": (False, True), "c": (True, True), "d": (True, False)}
-CHUNK = 1000        # echoes a run, ~17-20 s back to back
-MARGIN_S = 10.0     # load after the burst is seen finished
-READY_S = 60.0      # the child's counter read and dongle open (its opener retries for up to 30 s)
+ARMS = {  # name: (lock mode, UART2's priority, a burst, the monitor)
+    "tn": (0, 1, False, False), "tb": (0, 1, True, False),
+    "un": (2, 1, False, False), "ub": (2, 1, True, False),
+    "pn": (2, 0, False, False), "pb": (2, 0, True, False),
+    "mn": (2, 0, False, True), "mb": (2, 0, True, True),
+}
+DEFAULT_ARMS = "tb,ub,ub,tb,tn,un,un,tn,un,pn,pn,un,pb,mb,mb,pb,pn,mn,mn,pn"
+READY_S = 60.0      # the load's owner lock, dongle open and 3 s quiet
 
 
-class Echo:
-    """One echo run in a child, its load bounded by READY on stdout and the
-    run's own t_first/t_last, so the cable reads and the dongle's open around
-    it are never counted as load."""
+class Load:
+    """mac_raw81_s2.py load SECS in a child: health reads back to back over
+    the dongle, 200 at a time. Its first line ("session ...") comes just
+    before the first request, so it marks the load's start."""
 
-    def __init__(self, n):
+    def __init__(self, secs):
         self.out = tempfile.mktemp(suffix=".json")
-        self.n = n
-        self.p = subprocess.Popen([sys.executable, os.path.join(HERE, "mac_raw81_echo.py"), str(n),
-                                   "--gap-ms", "0", "--ready", "--json", self.out],
-                                  stdout=subprocess.PIPE, text=True)
+        self.secs = secs
+        self.p = subprocess.Popen([sys.executable, "-u", os.path.join(HERE, "mac_raw81_s2.py"), "load",
+                                   str(secs), "--json", self.out],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.lines = []
 
     def wait_ready(self):
         deadline = time.monotonic() + READY_S
@@ -178,25 +235,37 @@ class Echo:
         sel.register(self.p.stdout, selectors.EVENT_READ)
         while time.monotonic() < deadline:
             if not sel.select(timeout=max(0.0, deadline - time.monotonic())):
-                break                              # silent past the deadline
+                break
             ln = self.p.stdout.readline()
             if not ln:
                 break
-            if ln.strip() == "READY":
-                return
-        raise SystemExit("the echo never started sending")
+            self.lines.append(ln.rstrip())
+            if ln.startswith("session "):
+                return time.time()
+        raise SystemExit("the load never started: " + " | ".join(self.lines[-5:]))
 
     def finish(self):
         try:
-            self.p.communicate(timeout=self.n * 0.3 + READY_S)
+            rest, _ = self.p.communicate(timeout=self.secs + 120)
         except subprocess.TimeoutExpired:
-            raise SystemExit("an echo run hung")
-        if self.p.returncode != 0 or not os.path.exists(self.out):
-            raise SystemExit(f"the echo run failed (exit {self.p.returncode}): the arm's load is unknown")
+            raise SystemExit("the load hung")
+        self.lines += rest.splitlines()
+        if not os.path.exists(self.out):
+            raise SystemExit(f"the load failed (exit {self.p.returncode}): " + " | ".join(self.lines[-5:]))
         with open(self.out) as f:
             e = json.load(f)
-        return {"t_first": e["t_first"], "t_last": e["t_last"], "n": e["n"], "replied": e["replied"],
-                "lost": e["lost"], "lost_at": e["lost_at"], "lost_until": e["lost_until"], "rtt_ms": e["rtt_ms"]}
+        blocks = e.get("load", [])
+        tot = lambda f: sum(f(b) for b in blocks)
+        link = lambda k: tot(lambda b: b["stall_link_delta"].get(k) or 0)
+        return {"exit": self.p.returncode, "fails": e.get("fails", []), "requests": tot(lambda b: b["n"]),
+                "ok": tot(lambda b: b["results"].get("ok", 0)), "lost": tot(lambda b: b["results"].get("unknown", 0)),
+                "other": tot(lambda b: sum(v for k, v in b["results"].items() if k not in ("ok", "unknown"))),
+                "taint": tot(lambda b: b["board_delta"].get("taint", 0)),
+                "badsum": tot(lambda b: b["board_delta"].get("badsum", 0)),
+                "ge25": link("ge25"), "ge10": link("ge10"), "uart_overrun_link": link("uart_overrun"),
+                "giveups": link("giveups"), "replaced": link("replaced"), "queue_full": link("queue_full"),
+                "max_rtt_ms": e.get("max_rtt_ms"),
+                "losses": [l for b in blocks for l in b["losses"]], "blocks": blocks}
 
     def close(self):
         if self.p.poll() is None:
@@ -210,87 +279,86 @@ class Echo:
             os.unlink(self.out)
 
 
-def run_arm(name, a, mask_us=0):
-    """Load from start to end: echo runs back to back until --secs of wall time
-    have passed and, in a burst arm, MARGIN_S of load after the burst was seen
-    finished. The burst starts once the first run is sending. With mask_us,
-    the burst is the depth probe's masked spans instead of PCF reads."""
-    byte_mode, with_burst = ARMS[name]
+def settle(h, lock, prio, mon_on):
+    """The arm's settings, set and read back; its figures zeroed."""
+    burst(h, 2)                                    # nothing left from before
+    op(h, 20, [2, lock])
+    op(h, 20, [3, prio])
+    mon(h, 3)
+    mon(h, 1 if mon_on else 2)
+    rxtap(h, 1)
+    s = summary(h, 1)                              # zero the counts, ring and kinds
+    if s["lock"] != LOCKS[lock] or s["uart_prio"] != prio:
+        raise SystemExit(f"the board did not take lock {LOCKS[lock]}, UART2 {prio}: it reads {s['lock']}, {s['uart_prio']}")
+    return s
 
-    def prep(h):
-        burst(h, 2)                                # nothing left from before
-        summary(h, 3 if byte_mode else 2)
-        summary(h, 1)                              # zero the counts, ring and kinds
-    ds.with_dev(prep)
+
+def run_arm(name, a, mask_us=0):
+    """The load for --secs; in a burst arm, the burst started once the load
+    is sending. With mask_us, the burst is the depth probe's masked spans."""
+    lock, prio, with_burst, mon_on = ARMS[name]
+    ds.with_dev(lambda h: settle(h, lock, prio, mon_on))
     what = (f"{a.n} masked spans of {mask_us} us" if mask_us else f"a burst of {a.n}") if with_burst else "no burst"
-    cm.say(f"arm {name}: {'per byte' if byte_mode else 'per transaction'}, {what}, at least {a.secs:.0f} s of echo")
-    t_arm, t_arm_m = time.time(), time.monotonic()
-    runs, b0, done_at = [], None, None
-    echo = Echo(CHUNK)
+    cm.say(f"arm {name}: lock {LOCKS[lock]}, UART2 at {prio}, {what}, monitor {'on' if mon_on else 'off'}, "
+           f"{a.secs:.0f} s of load")
+    t_arm = time.time()
+    load, b0 = Load(a.secs), None
     try:
-        echo.wait_ready()
+        t_load = load.wait_ready()
         if with_burst:
             b0 = ds.with_dev(lambda h: burst(h, 3 if mask_us else 1, a.n, a.lo, a.hi, mask_us))
             b0["host_t"] = round(time.time(), 3)
-        while True:
-            runs.append(echo.finish())
-            echo.close()
-            if with_burst and done_at is None and not ds.with_dev(burst)["active"]:
-                done_at = runs[-1]["t_last"]       # finished somewhere in this run, at the latest at its end
-            loaded_after = sum(max(0.0, r["t_last"] - max(r["t_first"], done_at)) for r in runs) if done_at else 0
-            elapsed = time.monotonic() - t_arm_m
-            if elapsed >= a.secs and (not with_burst or (done_at and loaded_after >= MARGIN_S)):
-                break
-            if elapsed > a.secs + 900:
-                raise SystemExit(f"arm {name} ran 15 minutes past --secs: the burst never finished?")
-            echo = Echo(CHUNK)
-            echo.wait_ready()
+        L = load.finish()
     finally:
-        echo.close()
+        load.close()
     d = ds.with_dev(snapshot)
-    # Time with nothing in flight: between runs, and each loss's wait.
-    idle = [[r0["t_last"], r1["t_first"]] for r0, r1 in zip(runs, runs[1:])]
-    idle += [[t0, t1] for r in runs for t0, t1 in zip(r["lost_at"], r["lost_until"])]
-    arm = {"arm": name, "mask_us": mask_us, "byte_mode": byte_mode, "burst_asked": a.n if with_burst else 0,
-           "start": round(t_arm, 3), "end": round(time.time(), 3), "burst_start": b0,
-           "burst_done_by": done_at, "board": d, "echo_runs": runs,
-           "load_s": round(sum(r["t_last"] - r["t_first"] for r in runs), 2),
-           "echo_sent": sum(r["n"] for r in runs), "echo_lost": sum(r["lost"] for r in runs),
-           "idle_intervals": sorted(idle), "idle_s": round(sum(b - a_ for a_, b in idle), 2)}
-    s = d["summary"]
+    unfinished = with_burst and (d["burst"]["active"] or d["burst"]["left"])
+    if unfinished:
+        ds.with_dev(lambda h: burst(h, 2))
+    arm = {"arm": name, "lock": LOCKS[lock], "uart_prio": prio, "monitor": mon_on, "mask_us": mask_us,
+           "burst_asked": a.n if with_burst else 0, "burst_unfinished": bool(unfinished),
+           "start": round(t_arm, 3), "load_start": round(t_load, 3), "end": round(time.time(), 3),
+           "burst_start": b0, "board": d, "load": L}
+    s, m = d["summary"], d["mon"]
     cm.say(f"  OE {s['oe_obs']} (+{s['oe_drain']} in the drain), refused {s['rx_drop']}, with PCF {s['ctx_pcf']}, "
-           f"with the probe {d['sleep']['ctx_probe']}; "
-           f"burst {d['burst']['done']} done of {arm['burst_asked']}; echo lost {arm['echo_lost']} of "
-           f"{arm['echo_sent']} over {arm['load_s']} s of load, {arm['idle_s']} s with nothing in flight")
+           f"none {s['ctx_none']}; burst {d['burst']['done']} of {arm['burst_asked']}"
+           f"{' UNFINISHED' if unfinished else ''}; load {L['ok']} ok, {L['lost']} lost of {L['requests']}, "
+           f"ge25 {L['ge25']}, ge10 {L['ge10']}; tap {d['rxtap']['bytes']} B"
+           + (f"; gaps >= 128 us {m['n_128us']}, >= 347 us {m['n_347us']}, longest {m['max_ms']} ms" if mon_on else ""))
     return arm
+
+
+def restore_defaults():
+    """Whatever happened: the build's defaults back. Each step on its own, so
+    one failing does not skip the rest (nor hide the original error)."""
+    for what, fn in (("stop the burst", lambda h: burst(h, 2)), ("lock unlocked", lambda h: op(h, 20, [2, 2])),
+                     ("UART2 at 0", lambda h: op(h, 20, [3, 0])), ("monitor off", lambda h: mon(h, 2)),
+                     ("tap disarmed", lambda h: rxtap(h, 2))):
+        try:
+            ds.with_dev(fn)
+        except (Exception, SystemExit) as e:
+            cm.say(f"cleanup: could not {what}: {e}")
 
 
 def run_ab(a, masks=None):
     arms = []
     try:
-        for name, us in ([("b", us) for us in masks] if masks else [(n, 0) for n in a.arms]):
+        for name, us in ([("pb", us) for us in masks] if masks else [(n, 0) for n in a.arms.split(",")]):
             arms.append(run_arm(name, a, us))
     finally:
-        # Whatever happened: no burst left running, and the lock span back to
-        # per transaction, as the board boots. Each tried on its own, so one
-        # failing does not skip the other (nor hide the original error).
-        for what, fn in (("stop the burst", lambda h: burst(h, 2)), ("restore per transaction", lambda h: summary(h, 2))):
-            try:
-                ds.with_dev(fn)
-            except (Exception, SystemExit) as e:
-                cm.say(f"cleanup: could not {what}: {e}")
+        restore_defaults()
     return arms
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["status", "reset", "mode", "burst", "ab", "sweep"])
+    ap.add_argument("cmd", choices=["status", "reset", "mode", "prio", "mon", "burst", "ab", "sweep"])
     ap.add_argument("arg", nargs="?")
     ap.add_argument("--lo", type=int, default=40)
     ap.add_argument("--hi", type=int, default=80)
-    ap.add_argument("--arms", default="abcddcba")
-    ap.add_argument("--secs", type=float, default=90)
-    ap.add_argument("--n", type=int, default=1000)
+    ap.add_argument("--arms", default=DEFAULT_ARMS)
+    ap.add_argument("--secs", type=float, default=180)
+    ap.add_argument("--n", type=int, default=2000)
     ap.add_argument("--us", default="50,100,150,200,300,500,1000,1500",
                     help="sweep: the depth probe's masked spans, us")
     ap.add_argument("--json")
@@ -303,10 +371,20 @@ def main():
         ds.with_dev(lambda h: summary(h, 1))
         print("zeroed")
     elif a.cmd == "mode":
-        if a.arg not in ("transaction", "byte"):
-            sys.exit("mode: transaction or byte")
-        s = ds.with_dev(lambda h: summary(h, 3 if a.arg == "byte" else 2))
-        print("lock span:", "per byte" if s["byte_mode"] else "per transaction")
+        if a.arg not in LOCKS:
+            sys.exit("mode: " + ", ".join(LOCKS))
+        s = ds.with_dev(lambda h: summary(h) if op(h, 20, [2, LOCKS.index(a.arg)]) else None)
+        print("lock:", s["lock"])
+    elif a.cmd == "prio":
+        if a.arg not in ("0", "1"):
+            sys.exit("prio: 0 or 1")
+        s = ds.with_dev(lambda h: summary(h) if op(h, 20, [3, int(a.arg)]) else None)
+        print("UART2 at", s["uart_prio"])
+    elif a.cmd == "mon":
+        subs = {"on": 1, "off": 2, "zero": 3}
+        if a.arg not in subs:
+            sys.exit("mon: on, off or zero")
+        print(ds.with_dev(lambda h: mon(h, subs[a.arg])))
     elif a.cmd == "burst":
         if a.arg == "stop":
             res = ds.with_dev(lambda h: burst(h, 2))
@@ -317,8 +395,8 @@ def main():
             res = ds.with_dev(lambda h: burst(h, 1, n, a.lo, a.hi))
         print(res)
     elif a.cmd == "ab":
-        if any(c not in ARMS for c in a.arms):
-            sys.exit("--arms: letters from abcd")
+        if any(c not in ARMS for c in a.arms.split(",")):
+            sys.exit("--arms: comma-separated names from " + ", ".join(ARMS))
         res = {"args": vars(a), "at": time.strftime("%Y-%m-%d %H:%M:%S"), "arms": run_ab(a)}
     elif a.cmd == "sweep":
         masks = [int(x) for x in a.us.split(",")]
