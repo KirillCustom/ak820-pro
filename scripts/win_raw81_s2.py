@@ -33,8 +33,11 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "hostagent"))
 import raw81_proto as P   # noqa: E402
 
-STATE = os.path.join(os.environ.get("LOCALAPPDATA", HERE), "ak820pro", "raw81-session.json")
-LOCK = STATE + ".lock"
+# Machine-wide, so two users' owners cannot interleave (daemon plan R3-2); a
+# byte-range lock on byte 0 of a file kept empty, the same lock the daemon takes.
+LOCK = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "ak820pro", "raw81.lock")
+QUIET_S = 3.0           # before a new session: request + response TTL + response bound (R4-1)
+BUSY_GRACE_TRIES = 3    # until the session's first admission (R4-1)
 DEADLINE_S = 0.100
 RTT_TRIPWIRE_MS = 250.0
 ROTATE_SPAN = 16384
@@ -52,11 +55,14 @@ def cm_paths(pred):
 
 
 class Owner:
-    """The lock and the persisted session (R5-2)."""
+    """The lock and the session (daemon plan R3-2, R4-1): no persisted state.
+    Every new session waits QUIET_S on the monotonic clock with nothing sent,
+    so no request, reply or receipt of any earlier session can still arrive,
+    and its id is drawn at random from the safe set (reuse is harmless)."""
 
     def __init__(self):
-        os.makedirs(os.path.dirname(STATE), exist_ok=True)
-        self.lf = open(LOCK, "a+")
+        os.makedirs(os.path.dirname(LOCK), exist_ok=True)
+        self.lf = open(LOCK, "w")          # kept empty: the lock is on byte 0
         try:
             msvcrt.locking(self.lf.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError:
@@ -64,38 +70,26 @@ class Owner:
         self._open()
 
     def _open(self):
-        # Fail closed: an existing state file that cannot be read or parsed
-        # would otherwise restart allocation at 1 and drop the 1 s guard
-        # (codex, stage-2 implementation review, must-fix 2). Absent is fine.
-        st = {"session": 0, "opened": 0.0}
-        if os.path.exists(STATE):
-            try:
-                st = json.load(open(STATE))
-                assert 0 <= int(st["session"]) <= 255 and float(st["opened"]) >= 0
-            except Exception as e:
-                sys.exit(f"{STATE} is unreadable ({e}): refusing to allocate a session; delete it only "
-                         "if no raw81 owner has run in the last second")
-        wait = float(st["opened"]) + 1.0 - time.time()
-        if wait > 0:
-            time.sleep(wait)               # no reuse inside the 1 s lifetime
-        self.session = (int(st["session"]) % 255) + 1
-        self.opened = time.time()
-        tmp = STATE + ".tmp"               # persisted atomically, before any send
-        with open(tmp, "w") as f:
-            json.dump({"session": self.session, "opened": self.opened}, f)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, STATE)
-        self.seq = 0
-        self.issued = 0
+        time.sleep(QUIET_S)
+        import random
+        self.session = random.choice([s for s in range(1, 256) if P.safe_session(s)])
+        self.seq = random.randrange(65536)
+        self.issued = 0                    # seq positions consumed, skips included
+        self.admitted = False              # for the initial-admission BUSY grace
 
-    def next(self):
-        if self.issued >= ROTATE_SPAN:
-            time.sleep(1.1)                # the session idles 1 s, then a new one (R4-2)
-            self._open()
-        self.seq = (self.seq + 1) & 0xFFFF
-        self.issued += 1
-        return self.seq
+    def next_request(self, inner):
+        """(session, seq, payload): the next inert v2 request, rotating the
+        session before its span reaches ROTATE_SPAN positions."""
+        for _ in range(2):
+            got = P.safe_request(self.session, (self.seq + 1) & 0xFFFF, inner)
+            if got is not None:
+                used = (got[0] - self.seq) & 0xFFFF
+                if self.issued + used <= ROTATE_SPAN:
+                    self.issued += used
+                    self.seq = got[0]
+                    return self.session, got[0], got[1]
+            self._open()                   # span used up or search exhausted: rotate
+        raise RuntimeError("no inert request after a rotation")
 
 
 class Radio:
@@ -112,11 +106,15 @@ class Radio:
             pass
 
     def xact(self, inner, raw=None, session=None, seq=None):
-        """One transaction; returns (Transaction, rtt_ms). raw overrides the
-        32-byte request (for corrupted-envelope tests)."""
-        seq = self.owner.next() if seq is None else seq   # first: next() may rotate the session
-        session = self.owner.session if session is None else session
-        req = raw if raw is not None else P.envelope(session, seq, inner)
+        """One transaction; returns (Transaction, rtt_ms). raw, session and seq
+        override the request (for the NAK tests); otherwise it is the owner's
+        next inert v2 request."""
+        if raw is None and session is None and seq is None:
+            session, seq, req = self.owner.next_request(inner)
+        else:
+            session = self.owner.session if session is None else session
+            seq = self.owner.seq if seq is None else seq
+            req = raw if raw is not None else P.envelope(session, seq, inner)
         t = P.Transaction(session, seq, inner)
         self.drain()
         t0 = time.perf_counter()
@@ -133,17 +131,16 @@ class Radio:
             if rep and t.feed(rep):
                 break
         rtt = (time.perf_counter() - t0) * 1000
-        if t.result == "nak" and t.status == 4 and session == self.owner.session and not getattr(self, "_busy_retry", False):
-            # Our own fresh session refused busy: the board saw the previous
-            # session active less than 1 s ago (a restart straight after a long
-            # run; codex's latency review). Wait out the idle once and retry
-            # on a new seq.
-            self._busy_retry = True
+        if t.result == "ok" and session == self.owner.session:
+            self.owner.admitted = True
+        if (t.result == "nak" and t.status == 4 and session == self.owner.session
+                and not self.owner.admitted and getattr(self, "_grace", 0) < BUSY_GRACE_TRIES):
+            # R4-1's initial-admission grace: until this session's first
+            # admission, BUSY means an old request was admitted near the end of
+            # the quiet and restarted the board's idle. Wait it out and retry.
+            self._grace = getattr(self, "_grace", 0) + 1
             time.sleep(1.1)
-            try:
-                return self.xact(inner, raw=raw)
-            finally:
-                self._busy_retry = False
+            return self.xact(inner)
         if t.result in ("ok", "nak", "incomplete"):
             self.max_rtt = max(self.max_rtt, rtt)
         return t, rtt
@@ -183,7 +180,7 @@ def counters(h):
     c.update(zip(["busy", "qbytes", "drops", "dispatched", "sent91", "acks_in_window", "defer_overrun"],
                  [u(p1, i) for i in range(7)]))
     c.update(state=p2[4], session_live=p2[10], session=p2[11], last_seq=struct.unpack_from("<H", p2, 12)[0],
-             short_writes=struct.unpack_from("<I", p2, 14)[0])
+             short_writes=struct.unpack_from("<I", p2, 14)[0], resp_expired=struct.unpack_from("<I", p2, 18)[0])
     return c
 
 
@@ -249,8 +246,9 @@ def test_nak(r, h):
     t2, _ = r.xact(b"\x07\x13\x01", seq=s)                 # the last ADMITTED seq again
     check("repeated admitted seq -> NAK 3", t.result == "ok" and t2.result == "nak" and t2.status == 3,
           (t.result, t2.result, t2.status))
-    bad = bytearray(P.envelope(r.owner.session, r.owner.next(), b"\x07\x13\x01")); bad[10] ^= 0x55
-    t, _ = r.xact(b"\x07\x13\x01", raw=bytes(bad), seq=(bad[2] << 8) | bad[3])
+    s_, q_, good = r.owner.next_request(b"\x07\x13\x01")
+    bad = bytearray(good); bad[10] ^= 0x55                 # a masked inner byte: the CRC fails
+    t, _ = r.xact(b"\x07\x13\x01", raw=bytes(bad), session=s_, seq=q_)
     check("corrupted envelope -> NAK 1", t.result == "nak" and t.status == 1, (t.result, t.status))
     time.sleep(0.05)                                      # the quarantine ends on silence
     other = (r.owner.session % 255) + 1
@@ -292,7 +290,7 @@ def test_stream(r, h, n, log=None):
           res.get("ok", 0) + lost == n and lost <= explained + d.get("drops", 0), (res, d))
     check("stream: no incomplete pair and no NAK", not res.get("incomplete") and not res.get("nak"), res)
     check("stream: p95 under 30 ms", rtts and q(0.95) < 30, q(0.95))
-    for k in ("defer_overrun", "short_writes"):
+    for k in ("defer_overrun", "short_writes", "resp_expired"):
         check(f"stream: board {k} +0", d.get(k, 0) == 0, d.get(k))
     check("stream: no pass >= 25 ms", ds.get("ge25") in (0, None), ds.get("ge25"))
     for k in ("giveups", "replaced", "queue_full"):

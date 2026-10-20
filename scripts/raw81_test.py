@@ -326,6 +326,19 @@ def run(L):
     b.drain(wire81(env(3, health, session=9)))
     check("any session after a reset", b.verdicts[-1][0] == "OK", b.verdicts)
 
+    # 12d. After the idle, any request starts afresh (daemon plan R4-1): the
+    #      same id with a seq that would be stale inside the session is
+    #      accepted once the session has idled, but not before.
+    b = fresh(L)
+    b.drain(wire81(env(500, health, session=11))); b.advance(10)
+    b.drain(wire81(env(400, health, session=11)))
+    check("same id, older seq, live: stale", b.verdicts[-1][0] == "STALE", b.verdicts)
+    b.advance(1000)
+    b.drain(wire81(env(400, health, session=11)))
+    check("same id, older seq, after the idle: a new session", b.verdicts[-1][0] == "OK", b.verdicts)
+    b.drain(wire81(env(400, health, session=11)))
+    check("and it is live again: the repeat is stale", b.verdicts[-1][0] == "STALE", b.verdicts)
+
     # 13. Back to back, and a random soak with junk between requests.
     b = fresh(L)
     b.drain(b"".join(wire81(env(s, health)) for s in range(1, 6)))
