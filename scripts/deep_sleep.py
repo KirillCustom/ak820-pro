@@ -109,17 +109,32 @@ def need_bus(wait_s=30.0):
     time.sleep(2)
 
 
+_good_path = None   # the last path open_dev opened
+
+
 def open_dev(wait_s=30.0):
     """The board's raw HID, retried: on macOS it opens exclusively, and the
     now-playing daemon reopens it the moment USB comes back (the cycle run's
     seventh cycle, 20:14 10-18: "raw HID interface busy"). 30 s, not 8: the
     daemon's clock sync on enumeration held it 11 s (05:43:24-35 10-19) and
     stopped the 300-cycle soak at cycle 248."""
+    global _good_path
     deadline = time.time() + wait_s
     while True:
         try:
-            return cm.ak820text.open_device()
+            h = cm.ak820text.open_device()
+            _good_path = cm.ak820text._cached_path or _good_path
+            return h
         except SystemExit:
+            # One collision with another opener at the wrong moment clears
+            # ak820text's cached path and starts its enumeration backoff (60 s
+            # and up), though the board never moved: two scripts opening the
+            # cable by turns (overrun_diag.py and its load, 00:07 10-20) gave
+            # up here. So the last path that opened goes back, and the next
+            # try opens it directly. A board that re-enumerated has a new
+            # path; the old one just fails, as the cleared one would have.
+            if cm.ak820text._cached_path is None and _good_path is not None:
+                cm.ak820text._cached_path = _good_path
             if time.time() > deadline:
                 raise
             time.sleep(0.3)

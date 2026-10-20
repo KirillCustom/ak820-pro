@@ -6,8 +6,8 @@
 
 - The dongle's FF60/61 collection by its registry id from `hidutil list`
   (mac_raw81_echo.dongle_path), which opens nothing.
-- The machine-wide owner's lock: a POSIX record lock on byte 0 of
-  /Users/Shared/ak820pro/raw81.lock, the daemon's when it gains the radio.
+- The machine-wide owner's lock: an exclusive flock on
+  /Users/Shared/ak820pro/raw81.lock, the daemon's (platform/macos/radio_lock.rs).
 - The cable through deep_sleep's retrying opener, opened and closed around
   each transfer: macOS's raw HID is exclusive, and the daemon needs it.
 
@@ -34,9 +34,11 @@ LOCK = "/Users/Shared/ak820pro/raw81.lock"
 class Owner(w.Owner):
     def __init__(self):
         os.makedirs(os.path.dirname(LOCK), exist_ok=True)
-        self.lf = open(LOCK, "a")          # kept empty: the lock is on byte 0
+        # Read-only when it exists (all flock needs, and all a second user
+        # has on another's file); kept empty.
+        self.lf = open(LOCK, "r") if os.path.exists(LOCK) else open(LOCK, "a")
         try:
-            fcntl.lockf(self.lf, fcntl.LOCK_EX | fcntl.LOCK_NB, 1, 0)
+            fcntl.flock(self.lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             sys.exit("another raw81 owner holds the dongle on this machine")
         self._open()
