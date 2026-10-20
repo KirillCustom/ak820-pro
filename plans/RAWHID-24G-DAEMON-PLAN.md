@@ -429,6 +429,16 @@ never `lockf` or `fcntl`.** `mac_raw81_s2.py` does since `30e8605`, and the
 Rust then sees its lock as held. Windows is unaffected: `LockFileEx` and
 `msvcrt.locking` are one mechanism there.
 
+**The cable-out test, on the Mac (10-20, 01:06-01:08):** passes every
+check (`history/uart-latency-20261020/radio-cableout.{json,log}`; daemon
+`v0.1.1-628-g5a9bac1` installed `--clock --radio`; board `ce70c8da` dev).
+USB data off: qualified and `transport=radio` after 6.6 s (the quiet plus the
+next tick), held 60 s with the keepalive and no failure of any kind. USB data
+on: `radio=off` after 3.6 s, `transport=usb` the same tick, the band's text
+read back over op 18 equal to `media_last_text`, the board's op 17 counters
+still for 8 s. Left: a track change on the radio and the deep-sleep backoff
+(with JD), and the Windows cable-out by hand.
+
 **Codex's review of the Mac's half (10-20)**
 ([`review-codex-macos-radio-2026-10-20.md`](review-codex-macos-radio-2026-10-20.md),
 verbatim): the selection, the sizes, the seize handling, the two objects'

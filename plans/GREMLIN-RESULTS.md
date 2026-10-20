@@ -225,3 +225,38 @@ RTT median 26 ms, no pass >= 25 ms, no keyboard frame lost. Design, five plan
 revisions through codex, the implementation review and the numbers:
 `plans/RAWHID-24G-PLAN.md`, from "Stage 2: dispatch, as designed".
 Follow-up: ~1 in 4 transactions costs a 10 ms pass (latency, not loss).
+
+## 7. Envelope v2, the daemon over the dongle, and the cable-out test (10-19/20)
+
+**Firmware.** Envelope v2 (no request an older board can misread), R4-1 (a
+restarted host starts afresh; a response unsent after 250 ms is dropped), the
+long clock kept by a virtual timer (codex's must-fix: a stall could hold a
+response past the host's quiet), and two dev hooks for its regressions. Three
+codex passes, flashed on gremlin 23:33 10-19 (`0ae4cf8c`): `win_raw81_s2.py
+all` passes whole, stream 1000/1000 (`history/raw81-v2-gremlin-0ae4cf8c.json`).
+`ak820pro-jdlien` fast-forwarded to it, then to the Mac's UART-latency build
+on top (`ce70c8da`), which gremlin also passes (00:51 10-20,
+`history/raw81-v2-gremlin-ce70c8da.json`; passes >= 10 ms +39 against +11, a
+threshold count at slow passes of 10-12 ms, being followed up).
+
+**The daemon** (`ak820-agent`, `--radio`): now-playing over the dongle when the
+USB opener says the board is absent. Three codex passes (the implementation
+review held it twice on ownership: a stuck transfer's lock, the quiet's start,
+and boundary tests), 392 tests. Live on gremlin with the cable in
+(`--radio-only`): qualified 3 s after the lock, the readout every tick, the
+board counting 11 dispatched in 30 s and nothing lost.
+
+**The cable-out test ran on the Mac** (JD, 10-20: its bench drops USB data
+with no hands; `history/uart-latency-20261020/radio-cableout.{json,log}`,
+daemon `v0.1.1-628-g5a9bac1` installed `--clock --radio`):
+- cable in: `transport=usb`, `radio=off`;
+- USB data off (01:06:57): `radio=qualified`, `transport=radio` after 6.6 s
+  (the 3 s quiet, then the next tick); held 60 s, the keepalive 32 s later,
+  no failure, incomplete, silence or error;
+- USB data on (01:08:04): `radio=off` after 3.6 s, `transport=usb` the same
+  tick; the band read back over op 18 ("Lucy In Disguise" / "Passing
+  Mirrors", paused) matched `media_last_text`; the board's op 17 counters
+  still for 8 s after; stale, busy, taint, drops and expiries +0 throughout.
+
+Left for JD: a track change while on the radio, the deep-sleep backoff, and
+the same cable-out on gremlin (Windows) by hand.
