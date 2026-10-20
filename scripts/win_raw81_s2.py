@@ -114,8 +114,8 @@ class Radio:
     def xact(self, inner, raw=None, session=None, seq=None):
         """One transaction; returns (Transaction, rtt_ms). raw overrides the
         32-byte request (for corrupted-envelope tests)."""
+        seq = self.owner.next() if seq is None else seq   # first: next() may rotate the session
         session = self.owner.session if session is None else session
-        seq = self.owner.next() if seq is None else seq
         req = raw if raw is not None else P.envelope(session, seq, inner)
         t = P.Transaction(session, seq, inner)
         self.drain()
