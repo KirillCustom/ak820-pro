@@ -351,6 +351,25 @@ pub fn open_board() -> Result<Device, Error> {
     Err(most_telling(failures))
 }
 
+/// Find the 2.4G dongle's radio interface (`MI_03`) and open it.
+///
+/// Chosen by interface, never by trying candidates: the dongle's `MI_00` is
+/// its boot keyboard. The post-open identity check is the board's own (FF60/61,
+/// 33-byte reports), with the dongle's ids. A second dongle is `Ambiguous`
+/// ([`interfaces`]); none is `Absent`. Only the media cycle's radio path calls
+/// this ([`crate::raw81::link`]); the clock and health open the board.
+pub fn open_radio() -> Result<Device, Error> {
+    let radio: Vec<Interface> = interfaces(path::VID, path::DONGLE_PID)?
+        .into_iter()
+        .filter(|i| path::is_interface(i.path(), "mi_03"))
+        .collect();
+    match radio.as_slice() {
+        [] => Err(Error::Absent),
+        [one] => one.open(),
+        many => Err(Error::Ambiguous(many.iter().map(|i| i.path().to_string()).collect())),
+    }
+}
+
 /// Which failure to report when every candidate failed.
 ///
 /// ⚠️ Not the last one (the phase-0 audit's finding 6, deferred to phase 4

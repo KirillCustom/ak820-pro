@@ -28,6 +28,9 @@ use crate::hid::{self, HidTransport};
 use crate::logfile::Log;
 use crate::media::MediaSource;
 
+/// A held radio owner lock: released when dropped.
+pub type RadioGuard = Box<dyn std::any::Any>;
+
 /// What the daemon loop (`crate::agent`) needs from an operating system.
 ///
 /// Implemented by a zero-sized `Native` per platform, and by fakes in tests,
@@ -52,6 +55,22 @@ pub trait Platform {
     /// means absent. Joined with `|`, the strings are the clock seed's per-port
     /// controller id, as the Python timekeeper's `cid` is.
     fn listed() -> Vec<String>;
+
+    /// The 2.4G dongle's radio interface, opened for one media tick (raw81
+    /// stage 2; `plans/RAWHID-24G-DAEMON-PLAN.md`, D2). A separate opener from
+    /// [`Platform::open_board`], used only by the media cycle's radio path, so
+    /// the clock and health can never reach the radio. The default: no radio
+    /// on this platform yet (macOS: the Mac session's IOKit path).
+    fn open_radio() -> Result<Self::Device, hid::Error> {
+        Err(hid::Error::Absent)
+    }
+
+    /// The machine-wide radio owner lock (R3-2), taken without blocking:
+    /// `Ok(Some)` held until the guard is dropped, `Ok(None)` another owner
+    /// holds it. The default: no radio on this platform yet.
+    fn radio_lock() -> Result<Option<RadioGuard>, String> {
+        Err("the radio is not available on this platform yet".into())
+    }
 
     /// Start the media source on its own thread. `log` is the daemon's, for a
     /// source with something to say between polls (the macOS helper's

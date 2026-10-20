@@ -55,6 +55,8 @@ use crate::hid::{self, Drained, HidTransport};
 use crate::logfile::{self, Log};
 use crate::media::{self, MediaSource, Publisher};
 use crate::platform::Platform;
+use crate::radio::{self, Radio};
+use crate::raw81::link::SystemClock;
 use crate::proto::Channel;
 use crate::smtc::Snapshot;
 use crate::status::{self, ClockStatus, HealthStatus, Status};
@@ -188,6 +190,13 @@ pub struct Options {
     /// clock, which `ak820 install --clock` arranges by removing the Python
     /// timekeeper's task. Two clock writers corrupt each other's learners.
     pub clock: bool,
+    /// Carry now-playing over the 2.4G dongle while the cable is out
+    /// (`crate::radio`; off by default, the raw81 daemon plan's D7).
+    pub radio: bool,
+    /// Development: the media goes over the radio even with the board on
+    /// USB (the clock and health stay on USB), so the radio path can be
+    /// proven with the cable in. Implies `radio`.
+    pub radio_only: bool,
 }
 
 /// The foreign reports among what a request threw away — arrived while we
@@ -224,6 +233,13 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
     let worker = P::spawn_media(opts.interval, &log)?;
     let mut publisher = Publisher::new();
     let mut watch = Watch::new();
+    let mut radio = (opts.radio || opts.radio_only).then(|| {
+        if opts.radio_only {
+            log.line("radio: --radio-only (development): the media goes over the radio even with the cable in");
+        }
+        log.line("radio: now-playing over the 2.4G dongle while the board is not on USB (--radio)");
+        Radio::new(std::process::id() as u64)
+    });
     let mut st = Status {
         version,
         started: logfile::stamp(&P::host()),
@@ -277,14 +293,57 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
             }
             let snapshot = if health.last_poll_ok { snapshot } else { Snapshot::default() };
             if !watch.holding(now) {
-                let plan = publisher.plan(&snapshot, now);
                 let mut discarded = Vec::new();
-                let outcome = cycle::<P>(&plan, &snapshot, now, &mut publisher, &log, &mut st, &mut discarded);
+                // Only the opener's own `Absent` hands the tick to the radio
+                // (the raw81 daemon plan, R2-5): a failure after a successful
+                // open is a USB failure, retried on USB next tick.
+                let opened = if opts.radio_only { Err(hid::Error::Absent) } else { P::open_board() };
+                let (outcome, opener_absent) = match opened {
+                    Ok(dev) => {
+                        if let Some(r) = radio.as_mut() {
+                            if r.state() != radio::State::Off {
+                                r.usb_present(&mut &log);
+                            }
+                        }
+                        // Back from the radio: the panel's text is refreshed
+                        // whole, not at the keepalive (R2-7).
+                        if st.transport == "radio" {
+                            publisher.refresh();
+                        }
+                        st.transport = "usb".into();
+                        let plan = publisher.plan(&snapshot, now);
+                        (cycle::<P>(&dev, &plan, &snapshot, now, &mut publisher, &log, &mut st, &mut discarded), false)
+                    }
+                    Err(e) => {
+                        let absent = matches!(e, hid::Error::Absent);
+                        (Err(e), absent)
+                    }
+                };
                 st.foreign_reports += foreign(&discarded);
-                if let Some(line) = watch.observe(outcome.as_ref().map(|_| ()), now) {
-                    log.line(&line);
+                if !opts.radio_only {
+                    if let Some(line) = watch.observe(outcome.as_ref().map(|_| ()), now) {
+                        log.line(&line);
+                    }
+                }
+                if opener_absent {
+                    st.transport = "none".into();
+                    if let Some(r) = radio.as_mut() {
+                        r.tick(
+                            &SystemClock,
+                            P::radio_lock,
+                            P::open_radio,
+                            &mut publisher,
+                            &snapshot,
+                            || logfile::stamp(&P::host()),
+                            &mut &log,
+                        );
+                        if r.active() {
+                            st.transport = "radio".into();
+                        }
+                    }
                 }
             }
+            st.radio = radio.as_ref().map(|r| r.status.clone());
             st.smtc_polls = health.polls;
             st.smtc_failures = health.failures;
             st.smtc_last_error = health.last_error;
@@ -362,7 +421,9 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
 /// attempted whether or not the first succeeded, as the Python's two `try`
 /// blocks are independent (finding 9). A `Stuck` handle ends the cycle at
 /// once; nothing else does.
+#[allow(clippy::too_many_arguments)]
 fn cycle<P: Platform>(
+    dev: &P::Device,
     plan: &media::Plan,
     snapshot: &Snapshot,
     now: Instant,
@@ -371,10 +432,9 @@ fn cycle<P: Platform>(
     st: &mut Status,
     discarded: &mut Vec<Drained>,
 ) -> Result<(), hid::Error> {
-    let dev = P::open_board()?;
     let mut failure: Option<hid::Error> = None;
     if let Some(text) = &plan.text {
-        match send(&dev, text, discarded) {
+        match send(dev, text, discarded) {
             Ok(()) => {
                 publisher.text_pushed(snapshot, now);
                 st.media_last_push = Some(logfile::stamp(&P::host()));

@@ -110,6 +110,14 @@ impl Publisher {
         self.keepalive_at = Some(now);
     }
 
+    /// Make the text due on the next plan whatever the keepalive says: the
+    /// transport changed, or the radio's session is new (the raw81 daemon
+    /// plan, R2-7), and the panel may not show what was last pushed.
+    /// `changed` is unaffected, so a refresh is not logged as a new track.
+    pub fn refresh(&mut self) {
+        self.keepalive_at = None;
+    }
+
     /// What the panel is believed to show, if anything has been pushed.
     pub fn shown(&self) -> Option<&Snapshot> {
         self.last.as_ref()

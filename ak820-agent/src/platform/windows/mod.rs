@@ -13,6 +13,7 @@ pub mod host;
 pub mod instance;
 pub mod path;
 pub mod process;
+pub mod radio_lock;
 pub mod smtc;
 pub mod task;
 
@@ -57,6 +58,14 @@ impl crate::platform::Platform for Native {
             .iter()
             .map(|i| i.path().to_string())
             .collect()
+    }
+
+    fn open_radio() -> Result<device::Device, hid::Error> {
+        device::open_radio()
+    }
+
+    fn radio_lock() -> Result<Option<crate::platform::RadioGuard>, String> {
+        radio_lock::try_take().map(|held| held.map(|l| Box::new(l) as crate::platform::RadioGuard))
     }
 
     fn spawn_media(interval: Duration, _log: &crate::logfile::Log) -> Result<smtc::MediaWorker, String> {

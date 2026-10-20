@@ -22,7 +22,7 @@
 /// `crate::hid`. Same ids in bootloader-adjacent tooling, so the usage page
 /// check after opening is what actually distinguishes the raw-HID interface
 /// from the keyboard's other collections. Verified on this board: `MI_01`.
-pub use crate::hid::{PID, USAGE, USAGE_PAGE, VID};
+pub use crate::hid::{DONGLE_PID, PID, USAGE, USAGE_PAGE, VID};
 
 /// Split the Configuration Manager's `REG_MULTI_SZ`-shaped answer into paths.
 ///
@@ -125,6 +125,14 @@ pub fn is_raw_hid_hint(path: &str) -> bool {
     // Field-restricted for the same reason `matches_device` is: `&mi_01`
     // appearing in an instance id says nothing about the interface.
     hardware_id(path).is_some_and(|h| h.split('&').any(|f| f == "mi_01"))
+}
+
+/// Is this the given USB interface (`mi_03`), from the hardware-id field?
+///
+/// The dongle's radio interface is chosen by this, not hinted: the dongle's
+/// `MI_00` is its boot keyboard, which is not to be opened for writing at all.
+pub fn is_interface(path: &str, mi: &str) -> bool {
+    hardware_id(path).is_some_and(|h| h.split('&').any(|f| f == mi))
 }
 
 /// Candidate paths that name the same interface more than once.
@@ -232,6 +240,35 @@ mod tests {
     /// device this module exists to never open -- with our ids sitting in the
     /// device-instance field, where they say nothing about what the device is.
     /// The delimiter-checked whole-path search that preceded this accepted it.
+    /// The 2.4G dongle's nine paths, measured on gremlin 2026-10-19. Exactly
+    /// one is the radio's raw-HID interface; `MI_00` is its boot keyboard
+    /// and `MI_01` is not ours either.
+    #[test]
+    fn the_dongle_has_one_radio_interface() {
+        let listed: Vec<String> = [
+            r"\\?\HID#VID_0C45&PID_FDFD&MI_02&Col04#e&c20e8e0&0&0003#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+            r"\\?\HID#VID_0C45&PID_FDFD&MI_04#e&215b7a6b&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+            r"\\?\HID#VID_0C45&PID_FDFD&MI_02&Col05#e&c20e8e0&0&0004#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+            r"\\?\HID#VID_0C45&PID_FDFD&MI_03#e&348b96a9&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+            r"\\?\HID#VID_0C45&PID_FDFD&MI_02&Col03#e&c20e8e0&0&0002#{4d1e55b2-f16f-11cf-88cb-001111000030}\KBD",
+            r"\\?\HID#VID_0C45&PID_FDFD&MI_02&Col01#e&c20e8e0&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+            r"\\?\HID#VID_0C45&PID_FDFD&MI_00#e&3281215c&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}\KBD",
+            r"\\?\HID#VID_0C45&PID_FDFD&MI_02&Col02#e&c20e8e0&0&0001#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+            r"\\?\HID#VID_0C45&PID_FDFD&MI_01#e&1f51051e&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+            REAL,
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let dongle = candidates(&listed, VID, DONGLE_PID);
+        assert_eq!(dongle.len(), 9, "the board's own path is not the dongle's");
+        let radio: Vec<&str> = dongle.into_iter().filter(|p| is_interface(p, "mi_03")).collect();
+        assert_eq!(radio, [listed[3].as_str()]);
+        // And the board's opener never lists the dongle.
+        assert_eq!(candidates(&listed, VID, PID), [REAL]);
+        assert!(!is_interface(REAL, "mi_03"));
+    }
+
     #[test]
     fn rejects_our_ids_planted_in_the_instance_field() {
         let planted =

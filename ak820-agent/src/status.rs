@@ -37,6 +37,26 @@ pub struct Status {
     /// The firmware's own health counters, read every few minutes: whether
     /// the board is stalling, from the board's point of view.
     pub health: Option<HealthStatus>,
+    /// What carried the last media tick: `usb`, `radio`, or `none`. Kept
+    /// apart from `board`, which is USB presence alone (raw81 daemon plan,
+    /// R2-7).
+    pub transport: String,
+    /// The 2.4G radio's side, with `--radio`.
+    pub radio: Option<RadioStatus>,
+}
+
+/// The radio's state for the status file (`crate::radio`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RadioStatus {
+    /// `off`, `absent`, `contended`, `quiet`, `qualified`, `silent`, `busy`,
+    /// `refused`, `unresponsive`, `abandoned`, `lock error`.
+    pub state: String,
+    pub session: Option<u8>,
+    pub sessions: u64,
+    pub pushes: u64,
+    pub failures: u64,
+    pub last_push: Option<String>,
+    pub last_error: Option<String>,
 }
 
 /// Health pages 1 and 2, the counters that decide "is the firmware even
@@ -154,6 +174,24 @@ pub fn render(s: &Status) -> String {
             put("health_watchdog_record", &v);
         }
     }
+    if !s.transport.is_empty() {
+        put("transport", &s.transport);
+    }
+    if let Some(r) = &s.radio {
+        put("radio", &r.state);
+        if let Some(v) = r.session {
+            put("radio_session", &v.to_string());
+        }
+        put("radio_sessions", &r.sessions.to_string());
+        put("radio_pushes", &r.pushes.to_string());
+        put("radio_failures", &r.failures.to_string());
+        if let Some(v) = &r.last_push {
+            put("radio_last_push", v);
+        }
+        if let Some(v) = &r.last_error {
+            put("radio_last_error", v);
+        }
+    }
     match &s.clock {
         None => put("clock", "python timekeeper (not this daemon)"),
         Some(c) => {
@@ -224,7 +262,27 @@ mod tests {
             foreign_reports: 0,
             clock: None,
             health: None,
+            transport: String::new(),
+            radio: None,
         }
+    }
+
+    #[test]
+    fn the_radio_renders_its_own_keys_and_the_transport() {
+        let mut s = sample();
+        assert!(!render(&s).contains("radio"), "absent without --radio");
+        s.transport = "radio".into();
+        s.radio = Some(RadioStatus {
+            state: "qualified".into(),
+            session: Some(0x42),
+            sessions: 2,
+            pushes: 7,
+            failures: 1,
+            last_push: Some("2026-10-19 23:40:00".into()),
+            last_error: None,
+        });
+        let text = render(&s);
+        assert!(text.contains("transport=radio\nradio=qualified\nradio_session=66\nradio_sessions=2\nradio_pushes=7\nradio_failures=1\nradio_last_push=2026-10-19 23:40:00\n"), "{text}");
     }
 
     #[test]

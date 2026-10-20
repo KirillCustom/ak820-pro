@@ -15,6 +15,7 @@ pub mod logfile;
 pub mod media;
 pub mod platform;
 pub mod proto;
+pub mod radio;
 pub mod raw81;
 pub mod smtc;
 pub mod status;

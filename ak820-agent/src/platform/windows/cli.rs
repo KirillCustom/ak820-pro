@@ -73,9 +73,10 @@ fn usage() {
         "ak820 -- AJAZZ AK820 Pro host tool -- reads the board, never writes it\n\
          \n\
          \x20 ak820 install --clock        register the daemon as a per-user task and start it: the\n\
-         \x20   [--in-place]               track on the LCD, and with --clock the clock too (leave --clock\n\
+         \x20   [--in-place] [--radio]     track on the LCD, and with --clock the clock too (leave --clock\n\
          \x20                              off only to keep the repo's Python timekeeper; it replaces the\n\
-         \x20                              Python now-playing task either way)\n\
+         \x20                              Python now-playing task either way); --radio carries the track\n\
+         \x20                              over the 2.4G dongle while the cable is out (stage-2 dev builds)\n\
          \x20 ak820 uninstall              stop and remove the daemon's task\n\
          \x20 ak820 status                 the tasks, and what the daemon last did\n\
          \x20 ak820 --version\n\
@@ -442,13 +443,15 @@ fn install(flags: &[&str]) -> Result<(), String> {
 
     let mut in_place = false;
     let mut clock = false;
+    let mut radio = false;
     for flag in flags {
         match *flag {
             "--in-place" => in_place = true,
             "--clock" => clock = true,
+            "--radio" => radio = true,
             other => {
                 return Err(format!(
-                    "install: unknown flag {other}; the flags are --in-place and --clock"
+                    "install: unknown flag {other}; the flags are --in-place, --clock and --radio"
                 ))
             }
         }
@@ -539,9 +542,10 @@ fn install(flags: &[&str]) -> Result<(), String> {
     let user = format!("{}\\{}", env_var("USERDOMAIN")?, env_var("USERNAME")?);
     let log = dir.join("ak820-agent.log");
     let arguments = format!(
-        "--log \"{}\"{}",
+        "--log \"{}\"{}{}",
         log.display(),
-        if clock { " --clock" } else { "" }
+        if clock { " --clock" } else { "" },
+        if radio { " --radio" } else { "" }
     );
     let xml = task::task_xml(&task::Definition {
         description: task::AGENT_DESCRIPTION,

@@ -44,6 +44,8 @@ pub fn main() {
         status: state_dir().join("ak820-agent.status"),
         once: false,
         clock: false,
+        radio: false,
+        radio_only: false,
     };
 
     let args: Vec<String> = std::env::args().skip(1).collect();

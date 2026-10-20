@@ -24,6 +24,10 @@ use exchange::{Outstanding, Queue, Reply, Wire};
 /// The board's USB identity: SONiX vendor, the QMK build's product id.
 pub const VID: u16 = 0x0C45;
 pub const PID: u16 = 0x8009;
+/// The 2.4G dongle (same vendor). Its `MI_03` carries the same raw-HID usage
+/// and report size as the board's, and stage 2 tunnels text through it
+/// (`crate::raw81`).
+pub const DONGLE_PID: u16 = 0xFDFD;
 /// The raw-HID collection's usage page and usage.
 pub const USAGE_PAGE: u16 = 0xFF60;
 pub const USAGE: u16 = 0x61;

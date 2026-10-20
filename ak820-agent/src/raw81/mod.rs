@@ -30,6 +30,10 @@
 //! [7..8] CRC-16 of the reply (status 0)  [9..10] CRC-16 of [0..8]  [11..31] 0
 //! ```
 
+#[cfg(test)]
+pub(crate) mod fake;
+pub mod link;
+
 /// The receipt's first byte: never a first byte any reply on this board
 /// starts with (those are `0x07`, or VIA's `0xFF` unhandled).
 pub const MAGIC: u8 = 0xC7;

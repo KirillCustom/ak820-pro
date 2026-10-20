@@ -15,8 +15,12 @@
 //! the clock until it is.
 //!
 //! ```text
-//! ak820-agent [--log PATH] [--status PATH] [--interval SECS] [--once] [--clock]
+//! ak820-agent [--log PATH] [--status PATH] [--interval SECS] [--once] [--clock] [--radio]
 //! ```
+//!
+//! `--radio` carries now-playing over the 2.4G dongle while the board is not
+//! on USB (`crate::radio`); `--radio-only`, for development, does so even
+//! with the cable in.
 //!
 //! `--clock` runs the clock loop as well. `ak820 install --clock` is the only
 //! thing that should pass it, because it also removes the Python timekeeper's
@@ -41,6 +45,8 @@ pub fn main() {
         status: dir.join("ak820-agent.status"),
         once: false,
         clock: false,
+        radio: false,
+        radio_only: false,
     };
 
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -78,6 +84,14 @@ pub fn main() {
             }
             "--clock" => {
                 opts.clock = true;
+                i += 1;
+            }
+            "--radio" => {
+                opts.radio = true;
+                i += 1;
+            }
+            "--radio-only" => {
+                opts.radio_only = true;
                 i += 1;
             }
             other => bail(&opts.log, &format!("unknown argument {other:?}"), 2),
