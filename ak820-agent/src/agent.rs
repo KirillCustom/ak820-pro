@@ -1112,10 +1112,6 @@ mod tests {
     }
 }
 
-/// The media tick's transport choice and the radio's ownership, at their
-/// real boundaries (codex's daemon review, must-fix 3; the raw81 daemon plan,
-/// R2-6, R3-3, R4-3): the USB opener's every result, the radio on a fake
-/// dongle and a fake clock, and a lock guard whose release is observable.
 #[cfg(test)]
 mod expedite_tests {
     use super::*;
@@ -1145,6 +1141,10 @@ mod expedite_tests {
     }
 }
 
+/// The media tick's transport choice and the radio's ownership, at their
+/// real boundaries (codex's daemon review, must-fix 3; the raw81 daemon plan,
+/// R2-6, R3-3, R4-3): the USB opener's every result, the radio on a fake
+/// dongle and a fake clock, and a lock guard whose release is observable.
 #[cfg(test)]
 mod media_tick_tests {
     use super::*;
