@@ -1120,7 +1120,7 @@ compile time). And a fast `timer_read32`, which Gremlin proposed.
 stacking, so a fraction of a millisecond a pass decides how many cross
 10 ms. None reaches 25 ms.
 
-## Request RTT under radio load: higher in the first minutes after a boot? (2026-10-20)
+## Request RTT under radio load: what the UART-latency build still adds (2026-10-20)
 
 Stage 2's 1000-stream RTT median read 25.1-25.6 ms on `ce70c8da41` at ~1 h
 up, and 27.0-27.5 ms on `b2a07e0d37` within 10 min of a boot (twice, the
@@ -1137,7 +1137,7 @@ first suspect. **But Gremlin's board separates by build, not uptime**
 So the fix took back about half there. The ~1 ms and ~+10 left against
 0ae4 are likely the always-on dev UART hooks. The test is a dev build with only
 the UART enter/exit hooks compiled out: a daily build answers no raw81
-request, so the 1000-stream cannot run on it. This Mac's board runs the other way (ce70 25.1-25.6 at
-1 h right after the A/B; b2a0 27.0-27.5 fresh). `ge10-b2a0-1h-*.json`, at
-~1 h up, tests whether that is uptime here; see that folder's README.
+request, so the 1000-stream cannot run on it. This Mac's board reads b2a0 at ~27 ms at every uptime
+(1 to 56 min, and across a reboot), so not uptime. Its one 25 ms ce70
+reading came straight after the hour-long A/B and stays unexplained.
 

@@ -93,6 +93,7 @@ which folds to 1,875 at compile time
 | b2a0 | 1 min after boot | +69, +62 | 27.0, 27.1 ms |
 | b2a0 | 9.5 min after boot | +58, +77 | 27.0, 27.3 ms |
 | b2a0 | 1 min after a second boot | +73, +77 | 27.5, 27.0 ms |
+| b2a0 | 56 min after that boot | +86, +64 | 26.9, 27.4 ms |
 
 **What it says:**
 - **The fix removes a real 0.15 ms a pass,** but ge10 moves within noise.
@@ -100,10 +101,20 @@ which folds to 1,875 at compile time
   34-byte frame drained at wire speed: Gremlin's profile) + ~4 ms of QMK
   core outside the scopes + one housekeeping slot. So ge10 counts passes
   just over a threshold. None reaches 25 ms.
-- **The RTT moved with uptime, not with the build,** in every run so far.
-  The fix cannot add time. A same-build reboot did not change the RTT. The
-  daemon's swap did not either: the 01:04 run used the old daemon. The
-  ~1 h rerun (`ge10-b2a0-1h-*.json`) tests this (below).
+- **The RTT here is not uptime.** b2a0 reads ~27 ms at 1, 9.5 and 56 min
+  up and across a reboot (`ge10-b2a0-1h-*.json`). ce70's one 25 ms reading
+  came straight after the hour-long A/B, and stays unexplained.
+- **Gremlin's board is the clean comparison:** one quiet desk, separating
+  by build (`../raw81-v2-gremlin-*.json`):
+
+  | build | median RTT | ge10 per 1000 |
+  |---|---|---|
+  | 0ae4 | 25.0 ms | +11 |
+  | ce70 | 26.9 ms, flat over 27 min | +35 to +39 |
+  | b2a0 | 25.9 ms | +17 to +24 |
+
+  So the fix took back about half of what ce70 added. The likely rest is
+  the always-on dev UART hooks (`plans/BACKLOG.md`).
 
 ## The release matrix, on `b2a07e0d37`
 
