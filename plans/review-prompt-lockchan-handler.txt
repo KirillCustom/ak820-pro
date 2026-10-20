@@ -1,0 +1,10 @@
+Review firmware commit 524d5b6e in qmk_firmware-ak820pro (branch gremlin/lockchan-media, parent b2a07e0d37): `git -C qmk_firmware-ak820pro show 524d5b6e`. It is the lock-LED channel's board handler, to the contract in plans/LOCK-LED-CHANNEL-PLAN.md R2-9 (the frozen type 1/2 table) and R3-2 (the lease), which you reviewed as a design. Also scripts/lockchan_media_test.c (the validator's host test; it passes with mingw gcc).
+
+This is a flash gate for gremlin's dev board. Check:
+1. lockchan_media_parse against every row of R2-9: lengths, the n0 arithmetic, icon 0-3 only, printable ASCII, type 2 empty, unknown types; nothing written on reject.
+2. The apply in ch582f_ajazz.c (lockchan_media_commit): validate, then the lease, then the display; the setters' semantics (display.c display_set_text_line, display_clear_text, display_set_playback) — is "both lines and the icon, playback off" achieved; is anything partially mutated; is calling these from the 5A parser's context (main loop, ch582_task) safe and bounded; does anything count as user activity for the idle ladder.
+3. The lease: hid_protocol.c's text_command wrapper stamps only accepted commands (data[0] != RTC_UNHANDLED after the switch); does raw81's dispatch actually reach text_command; any path that sets text without passing it; timer_read32 wrap in hid_rawhid_media_within.
+4. op 17 sub 7 and its validation; subs 0-5 unchanged.
+5. That daily builds are unaffected (the receiver and handler under AK820_DEV_HOOKS; lockchan_media.c compiled in all builds but unused there — any warning or size concern).
+6. Anything that could hang, fault, lose a keypress or show something wrong.
+Classify findings must-fix / should-fix / note, with file:line.

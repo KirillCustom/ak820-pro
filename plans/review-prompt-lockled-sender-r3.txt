@@ -1,0 +1,5 @@
+Verify revision 3. In plans/LOCK-LED-CHANNEL-PLAN.md, read the sender design, revision 2 and its table, then "Codex's verification of revision 2 (10-20) and revision 3" (its table and R3-1 to R3-8). Your two previous reviews are plans/review-codex-lockled-sender-2026-10-20.md and plans/review-codex-lockled-sender-r2-2026-10-20.md; the same sources apply, plus plans/GREMLIN-RESULTS.md section 9 (GetKeyState freshness, measured) and ak820-agent/src/platform/windows/radio_lock.rs.
+
+For each of your nine r2 findings: is revision 3 adequate? Then anything it introduces. In particular R3-2's lease and handover wait (is 12 s after the daemon's last raw-HID push enough; what if USB raw HID is present but the daemon's push failed; does the daemon's own radio count as a raw-HID push), R3-3's numbers, R3-4's OpenInputDesktop test, R3-6's deadlines against the receiver's actual code, R3-1's restore_pending.
+
+Classify findings must-fix / should-fix / note, with file:line. Then state plainly: can the sender and the transport integration be implemented to this specification (with any remaining should-fixes handled in the implementation)?

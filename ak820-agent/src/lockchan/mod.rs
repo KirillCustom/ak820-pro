@@ -180,9 +180,60 @@ pub fn encode(payload: &[u8], kind: u8, seq: u8, p: Profile, user: u8) -> Result
     Ok(out)
 }
 
+/// Frame types, version 0 (the plan's R2-9, frozen for the first release).
+pub const TYPE_NOW_PLAYING: u8 = 1;
+pub const TYPE_CLEAR: u8 = 2;
+
+/// What the panel should show, as a frame's type and payload. This pair is
+/// the channel's content identity (codex, sender design, 16): two snapshots
+/// that fold and fit to the same bytes are the same content.
+///
+/// Type 1 is `[icon][n0][line 0][line 1]`, the lines exactly what raw HID's
+/// `SET_LINE`s carry (folded to ASCII and fitted, 19 and 21); type 2 (idle) is
+/// empty. Any byte the board would refuse becomes `?`, as the firmware's own
+/// setter would draw it, so a frame is never rejected whole for one glyph.
+pub fn content(snapshot: &crate::smtc::Snapshot) -> (u8, Vec<u8>) {
+    use crate::text::{fit, Line};
+    let Some((row0, row1, icon)) = snapshot.lines() else {
+        return (TYPE_CLEAR, Vec::new());
+    };
+    let clean = |s: String| -> Vec<u8> {
+        s.bytes().map(|b| if (0x20..=0x7E).contains(&b) { b } else { b'?' }).collect()
+    };
+    let l0 = clean(fit(row0, Line::WithIcon.budget()));
+    let l1 = clean(fit(row1, Line::FullWidth.budget()));
+    let mut p = vec![icon.id(), l0.len() as u8];
+    p.extend(l0);
+    p.extend(l1);
+    (TYPE_NOW_PLAYING, p)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn content_is_both_fitted_lines_or_clear() {
+        use crate::smtc::Snapshot;
+        use crate::text::Icon;
+        assert_eq!(content(&Snapshot::default()), (TYPE_CLEAR, vec![]));
+        let s = Snapshot {
+            artist: "Cosmic Cadet".into(),
+            title: "Europa - The Adventure Continues".into(),
+            icon: Icon::Play,
+            ..Snapshot::default()
+        };
+        let (t, p) = content(&s);
+        assert_eq!(t, TYPE_NOW_PLAYING);
+        assert_eq!(p[0], Icon::Play.id());
+        let n0 = p[1] as usize;
+        assert!(n0 <= 19 && p.len() - 2 - n0 <= 21 && p.len() <= 42);
+        assert!(p[2..].iter().all(|b| (0x20..=0x7E).contains(b)));
+        // The same bytes raw HID's SET_LINEs carry.
+        let (row0, row1, _) = s.lines().unwrap();
+        assert_eq!(&p[2..2 + n0], crate::text::fit(row0, 19).as_bytes());
+        assert_eq!(&p[2 + n0..], crate::text::fit(row1, 21).as_bytes());
+    }
 
     #[test]
     fn crcs_match_their_check_values() {
