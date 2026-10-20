@@ -390,7 +390,8 @@ stream 1000/1000 (p95 28.9 ms, no pass >= 25 ms).
 - Windows: `open_radio` takes the dongle's `MI_03` by interface (its `MI_00`
   is a keyboard, and it has an `MI_01` too), with the board's identity
   check; `radio_lock` is `LockFileEx` on byte 0 of
-  `%ProgramData%k820proaw81.lock`, the script's lock. macOS: the trait's
+  `%ProgramData%k820pro
+aw81.lock`, the script's lock. macOS: the trait's
   defaults (no radio) until the Mac session's IOKit opener and flock.
 - `--radio` (daemon and `ak820 install`); `--radio-only` for development.
 
@@ -404,6 +405,29 @@ daemon held it; the lock was free once the daemon was killed.
 **Still to do:** codex's review of the daemon; the cable-out test (JD pulls
 the cable with a track playing: the band shows it within a tick, the cable
 back hands over to USB); the Mac's half.
+
+**The Mac's half (`b2b85f3`, 10-20, the Mac session):**
+- **`open_radio`:** the dongle's FF60/61 collection (0C45:FDFD), chosen from
+  registry properties with nothing opened. It is `Absent` only when none is
+  listed; a listed one seized by a hidapi peer is `Open` (busy), as the
+  board's is; two dongles are `Ambiguous`. The identity check is the
+  board's (IOKit's sizes exclude the report id: 32). It has its own
+  long-lived IOKit object beside the board's (S2's registration leak: one
+  object per arrival, so neither may evict the other). The open writes
+  nothing.
+- **`radio_lock`:** an exclusive `flock` (std's `File::try_lock`) on
+  `/Users/Shared/ak820pro/raw81.lock`, opened read-only when it exists.
+- `--radio` and `--radio-only` in the daemon; `install --radio` in the
+  plist. `cargo test` on the Mac: 432, the shared radio, link and
+  `media_tick` tests among them.
+
+⚠️ **On macOS, `flock` and POSIX record locks (`lockf`, `fcntl(F_SETLK)`)
+never see each other** (measured 10-20): the Rust lock's test passed, taking
+and retaking the lock, while `mac_raw81_s2.py` held a `lockf` on byte 0 of
+the same file. **Every Mac tool that takes the radio lock must use `flock`,
+never `lockf` or `fcntl`.** `mac_raw81_s2.py` does since `30e8605`, and the
+Rust then sees its lock as held. Windows is unaffected: `LockFileEx` and
+`msvcrt.locking` are one mechanism there.
 
 ### Codex's implementation review (10-20) and its dispositions
 
