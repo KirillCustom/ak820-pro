@@ -283,3 +283,16 @@ while he sleeps. No hands available.
 7. **History write-ups and a report to JD.** Then `ak820pro-jdlien` and
    `deps.lock` with Gremlin, then R5.
 
+## Codex's implementation review (00:40 10-20): dispositions
+
+[`review-codex-uart-latency-impl-2026-10-20.md`](review-codex-uart-latency-impl-2026-10-20.md),
+verbatim. It found the lock round trip, every exit's relock, the three
+modes, the CT16B1 hold and UART2's priority sound.
+
+| # | finding | disposition |
+|---|---|---|
+| 1 | must: the legacy synchronous set is not admitted; raw HID drains up to four queued commands a pass, so stuck-bus sets could stack ~30 ms; an earlier handler's transaction does not defer the pass's display work; no elapsed-pass check on the ordinary path | **Taken:** `rtc_set_time()` refuses after another PCF transaction this pass (the host retries, as it already does during a recovery), so one per pass; `rtc_fast_task` defers the pass's display work when an earlier handler used the bus, and its ordinary transactions wait out a pass already 10 ms in. |
+| 2 | should: op 20 read `data[5]` before its length check | **Taken.** |
+| 3 | should: `ANIM_TOG` could start the animation from the Fn+D page | **Taken:** it cannot start one from there; stopping one is always allowed. |
+| 4 | should: the masked spans in unlocked mode are partial; the monitor's maximum is threshold-crossing only, its thresholds round to 128/197/347 us, and "none" is `ACCT_UNACCOUNTED` (12) | **Taken** in the comments and wire descriptions; the host tool reads them so. |
+
