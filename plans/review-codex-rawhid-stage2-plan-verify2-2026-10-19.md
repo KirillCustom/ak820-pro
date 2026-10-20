@@ -1,0 +1,40 @@
+**Stage 2 is not ready to build unchanged, even as a dev experiment.** R3 improves the design substantially, but drain recovery and session freshness remain blockers.
+
+This was read-only inspection; nothing was modified, built or tested. The pure module and host scripts changed during inspection; implementation observations below refer to the latest versions read.
+
+| Prior item | R3 verdict |
+|---|---|
+| **Finding 1 / must-fix 1: drain and ACK ordering** | **Partial.** Deferring the pump fixes cap-hit ordering, but the timing proof and incomplete-prefix recovery remain deficient. [R3-1](/C:/Users/jdlien/code/ak820-pro/plans/RAWHID-24G-PLAN.md:473), [drain](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:1498). |
+| **Finding 6 / must-fix 3: freshness** | **Partial.** Wider sequences, ownership and admission-only advancement help; session establishment/reuse remains unsafe. [R3-2](/C:/Users/jdlien/code/ak820-pro/plans/RAWHID-24G-PLAN.md:486), [session checks](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/raw81.c:122). |
+| **Must-fix 2: receipt contract** | **Partial.** Receipt integrity and fail-safe ordering are specified, but validation and the host implementation disagree with the contract. [R3-3](/C:/Users/jdlien/code/ak820-pro/plans/RAWHID-24G-PLAN.md:511), [host matcher](/C:/Users/jdlien/code/ak820-pro/scripts/raw81_proto.py:77). |
+| **Must-fix 4: ACK-window gate** | **Closed at design level.** Default hold plus separately gated removal and host-observed keys addresses it. [R3-4](/C:/Users/jdlien/code/ak820-pro/plans/RAWHID-24G-PLAN.md:531), [existing hold](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:937). |
+| **Should-fix 5: whole response transaction** | **Closed with the locking/ordering conditions below.** [R3-5](/C:/Users/jdlien/code/ak820-pro/plans/RAWHID-24G-PLAN.md:537), [queue semantics](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/lib/chibios/os/hal/include/hal_queues.h:240). |
+| **Finding 8 / should-fix 6: acceptance** | **Partial.** Readback, drop expectations, nested-drain testing and receipt latency are addressed; remaining cases are below. [R3-6](/C:/Users/jdlien/code/ak820-pro/plans/RAWHID-24G-PLAN.md:545), [current test model](/C:/Users/jdlien/code/ak820-pro/scripts/raw81_test.py:80). |
+| **Finding 10: integrity/timing qualifications** | **Partial.** Receipt CRC is fixed; timing guarantees and the earlier deletion-probability claim are not. [receipt CRC](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/raw81.c:175), [earlier claim](/C:/Users/jdlien/code/ak820-pro/plans/RAWHID-24G-PLAN.md:212). |
+
+1. **Must-fix — R3-1 needs bounded recovery, not the asserted timing proof.**  
+   At 115200, 8N1, the rate is **11.52 bytes/ms**. Conditional on a **whole service interval** below 4 ms, the nominal margin is `64 − 46.08 = 17.92` bytes, giving roughly eight passes, **32 ms**. But the profiler measures only `ch582_task()` duration, is runtime-gated, and enforces no deadline. Other main-loop work occurs between drains; battery handlers and blocking ACK writes remain. Thus “never observed ≥4 ms” establishes neither worst-case execution time nor drain cadence. At intervals ≥5.56 ms, the asserted shrink disappears. [UART configuration](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:426), [profiler](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:828), [other loop work](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/quantum/keyboard.c:711).
+
+   Worse, a truncated `61` or `61 0D` can defer pumping indefinitely: ordinary idle silence **does not clear the window**, only quarantine exit does. Specify prefix expiry and safe resynchronization, plus an overload/service-bound failure policy that preserves ACK-before-pump without starving keyboard TX. [Empty-queue handling](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:1526).
+
+2. **Must-fix — R3-2 still lacks a justified session lifetime/reuse rule.**  
+   A 15–24 ms observed RTT does **not** establish a one-second maximum lifetime through closed firmware and host queues. After one second without admission, an old foreign-session request can become the new session; reset/link invalidation admits old traffic immediately.
+
+   Restarting within one second with a *different* session correctly yields busy; busy must not refresh the idle timer. But a random byte can equal the previous session—**1/255** under uniform selection—bypassing busy and potentially reusing an identity. The named lock prevents concurrent local owners, not restart reuse.
+
+   `65535 → 0` arithmetic is correct. **65,536** increments repeat an identity; **32,768** is the half-range limit. Old `0` becomes fresh again at `last=32769`. Rotation must constrain sequence span, including retries, and guarantee a genuinely new/non-reused session. Define establishment/retirement across restart/reset rather than treating RTT as proof.
+
+   Admission-only advancement is now correctly separated, but integration must admit the **reserved request’s identity**: current `raw81_admit()` reads mutable collector fields that a later dropped frame can overwrite before deferred dispatch. [Commit/admit API](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/raw81.c:110).
+
+3. **Must-fix — reconcile R3-3 and the host state machine.**  
+   The planned outcomes are sound: reply→matching receipt succeeds; receipt-first closes incomplete; either missing half times out/incompletes; duplicates after closure cannot revive it; duplicate replies retain only the latest candidate. A foreign/corrupt receipt falls under “anything else”: close unknown and discard the candidate.
+
+   The latest implementation instead **ignores foreign/corrupt receipts while retaining the candidate**, strips any report-ID byte, accepts every nonzero status as NAK, and lacks command-specific reply validation. Timeout closes logically but retains the candidate object; the caller must enforce the 100 ms deadline and discard state on reconnect. Make those rules explicit and consistent, including CRC mismatch versus missing candidate. [Implementation](/C:/Users/jdlien/code/ak820-pro/scripts/raw81_proto.py:49).
+
+4. **Should-fix — make R3-5’s synchronization and timing explicit.**  
+   `oqGetEmptyI() >= 68` is the correct free-space test. Check under lock, then **unlock before ordinary `sdWrite()`**, which locks internally. With the current main-loop-only writers, earlier ACK writes precede the pair, A-frames receive priority before admission, and neither writer interleaves between consecutive pair submissions; the ISR only drains output. Preserve that single-writer invariant and check complete submission. [Blocking write implementation](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/lib/chibios/os/hal/src/hal_queues.c:655), [ACK writer](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:1150).
+
+   **68 bytes still require 5.90 ms on wire**, plus existing queued bytes. Define whether the 15 ms guard starts at enqueue or actual transmission completion.
+
+5. **Should-fix / note — finish acceptance and qualify claims.**  
+   Add truncated-prefix recovery, exceeded service interval, same-session restart collision, half-range/rotation, duplicate/foreign receipts and deferred-admission identity tests. Windows end-to-end key coverage remains unspecified; label key preservation as Mac-only if that is the intended scope. Text-state readback is now a valid planned solution to the existing private storage. [Stored text](/C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/graphics/display.c:2183). Keep real reset coverage explicitly outstanding, and remove the unsupported general `2^-16` deletion claim.

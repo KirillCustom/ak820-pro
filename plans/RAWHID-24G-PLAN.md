@@ -556,3 +556,87 @@ with a request pending: no dispatch), and latency measured to the receipt.
 The Mac's sleep test is accepted as an interruption test, as codex framed
 it: requests time out while the board sleeps and succeed fresh after a wake;
 a real power cycle or reset stays recorded as not covered.
+
+## Stage 2, revision 4: after codex's verify of revision 3 (10-19)
+
+[Verify](review-codex-rawhid-stage2-plan-verify2-2026-10-19.md), verbatim:
+the ACK window gate and the response transaction closed; three must-fixes
+(the drain's recovery, sessions, the host's state machine) and two
+should-fixes. Revision 4 replaces revision 3 where they differ.
+
+**R4-1. Defer the timeout judgment, not the pump (must-fix 1).** The hazard
+is one path only: the pump judging the in-flight frame *timed out* (and
+retransmitting it, or closing the 91 window) while that frame's ACK sits
+unread. Starting a new frame happens only with nothing in flight, which means
+the previous ACK was already consumed, so it needs no gate. So in dev builds
+the pump runs every pass as before, and only its timeout branch (and the 91
+window's close) waits while either (a) the drain ended at the 64-byte cap
+with bytes still queued, or (b) the window's newest bytes are an ACK prefix
+(`61` or `61 0D`) younger than `RAW81_SILENCE_MS`. A prefix older than that
+is expired: on measured silence the window is cleared (today only a
+quarantine's end clears it). **Overload policy:** the deferral is capped at
+50 ms past the timeout; beyond it the pump judges anyway and a counter
+(`ack_defer_overrun`) records it. So keyboard TX is never starved; in the
+worst case it is 50 ms late, counted; and no timing proof is needed. The
+revision-3 drain-rate arithmetic is withdrawn as a guarantee.
+
+**R4-2. Sessions that are never reused, and an explicit lifetime assumption
+(must-fix 2).**
+- The host's session id is persisted per machine (a small state file beside
+  the host tool's lock), incremented on every open, skipping 0: a restart
+  never reuses the previous id, and only every 255th open revisits one.
+- The host rotates its session (a fresh id after a 1 s idle) before its
+  sequence span reaches **16,384** requests, a quarter of the 16-bit space,
+  so no identity is repeated within a session and "old 0 fresh at 32769"
+  cannot arise. Retries take new seqs and count toward the span.
+- **Stated assumption, not proof:** no request is delivered more than 1 s
+  after it was sent (the dongle forwards within milliseconds and stores
+  nothing; every RTT measured so far is 15-24 ms). Every acceptance run
+  records its maximum observed RTT and fails if it exceeds 250 ms, so the
+  assumption is watched, not just asserted. Under it, the 1 s session change
+  and a reset or link change admitting a new session are safe; outside it,
+  the receipt's identity still stops the host from accepting a wrong answer.
+- `BUSY` does not refresh the idle timer (only an admission does).
+- `raw81_admit(rx, session, seq, now)` takes the **reserved request's**
+  identity, copied into the request slot at commit, never the collector's
+  fields, which a later frame may overwrite before the deferred dispatch.
+
+**R4-3. The host's state machine, made consistent (must-fix 3).** Per open
+transaction, on each 32-byte report (a 33-byte report with a leading 0x00
+report id is stripped; any other length is ignored):
+- a report starting `0xC7`: if its own CRC fails, the transaction closes
+  **unknown** (a corrupted receipt may be ours); if valid but for another
+  session or seq, it is ignored (a stale one; with one owner per dongle
+  nothing else sends); if ours: status 0 with a candidate whose CRC matches
+  is **ok**, status 0 otherwise **incomplete**, status 1-4 **nak**, any other
+  status **unknown**;
+- any other report: the reply must be shaped like the command's (its first
+  three bytes the request's inner `[0..2]`, or `0xFF` then `[1..2]` for an
+  unhandled answer); if so it becomes the candidate (the latest wins), if not
+  it is ignored;
+- the caller enforces the 100 ms deadline: on it the transaction closes
+  **unknown** and its candidate is discarded; on a reconnect every open
+  transaction closes unknown.
+`raw81_proto.py`'s `Transaction` implements exactly this, with a test per rule.
+
+**R4-4. The pair's admission (should-fix 4).** Under the lock,
+`oqGetEmptyI() >= 68`; unlock; two `sdWrite`s of 34, each checked for its
+full count. The board's single-writer rule holds (every UART writer is in the
+main loop: the ACK writes, the A-frames, the pair), and is noted in the code.
+The 15 ms window starts at the pair's enqueue and lasts 15 ms plus the pair's
+wire time (68 bytes, 5.9 ms) plus whatever was already queued
+(`oqGetFullI` at enqueue, ~87 us a byte): the window covers the time the
+module could ACK after actually receiving the pair.
+
+**R4-5. Acceptance additions; claims qualified (should-fix 5).** Added: a
+truncated ACK prefix that never completes (the pump's timeout resumes after
+silence), a service interval beyond the cap (the counter moves, keys still
+go), a same-id restart (impossible by R4-2; tested by forcing it: busy, then
+the 1 s rule), the span rotation, duplicate and foreign receipts, the
+deferred-admission identity. **Key preservation end to end is measured on
+the Mac only** (its relay rig); on Windows the evidence is the board's
+counters (no A1 give-up, replacement or queue-full) and no pass >= 25 ms.
+Real reset coverage stays outstanding. The earlier "2^-16 against
+deletion" figure is withdrawn: the CRC-16 bounds *random* corruption at that
+rate; for the structured deletions an overrun makes, the host suite's
+deletion-at-every-position cases are the evidence, not a probability.
