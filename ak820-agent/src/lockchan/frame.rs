@@ -19,6 +19,13 @@ pub trait LockLights {
     fn profile(&self) -> Profile;
     /// The least time from one write's completion to the next write.
     fn spacing(&self) -> Duration;
+    /// The wireless clock's latency correction, signed milliseconds: how long
+    /// after a write's completion the board sees it (negative where the
+    /// platform reports completion after the board has the byte). `None`, the
+    /// default, until measured on the platform: no clock frames are sent.
+    fn clock_latency_ms(&self) -> Option<i32> {
+        None
+    }
     /// The most a data write may take, from the previous write's completion
     /// to its own (R3-6): the receiver's [`RECEIVER_GAP`], less a
     /// margin for how far a completion can trail the board's arrival on this

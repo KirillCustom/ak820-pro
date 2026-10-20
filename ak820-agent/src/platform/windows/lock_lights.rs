@@ -338,6 +338,12 @@ impl LockLights for BleLights {
     fn spacing(&self) -> Duration {
         SPACING
     }
+    /// The median of 40 frames over BLE (`history/lockchan-clock-jitter-
+    /// 20261020/`, min 7, p90 54 ms): provisional, the production executor
+    /// to be measured too (codex's clock review, 12).
+    fn clock_latency_ms(&self) -> Option<i32> {
+        Some(38)
+    }
     fn user(&mut self) -> Option<u8> {
         user_locks()
     }

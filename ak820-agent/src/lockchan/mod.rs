@@ -219,6 +219,41 @@ pub fn content(snapshot: &crate::smtc::Snapshot) -> (u8, Vec<u8>) {
 /// board before it rejects the frame whole and keeps its text. A play/pause or
 /// a seek sends only this, ~6 bytes against the title's ~20-40.
 pub const TYPE_TRANSPORT: u8 = 3;
+
+/// Type 4, the wireless clock (the plan's "The wireless clock"): raw HID's
+/// `RTC_SET_TIME_MS` body after its header, meaning "at this frame's anchor,
+/// true local time was this". Flags 0, the bias unknown (no learner).
+pub const TYPE_CLOCK: u8 = 4;
+
+/// Type 4's payload for a local time and its milliseconds, or `None` outside
+/// what the board accepts (2026-2098, the PCF's year % 100).
+pub fn clock_payload(t: &crate::clock::host::LocalTime, ms: u32) -> Option<Vec<u8>> {
+    if !(2026..=2098).contains(&t.year) {
+        return None;
+    }
+    let ms = ms.min(crate::clock::set::MAX_MS) as u16;
+    let bias = crate::clock::set::UNKNOWN_BIAS.to_le_bytes();
+    Some(vec![
+        (t.year - 2000) as u8,
+        t.month,
+        t.day,
+        t.weekday,
+        t.hour,
+        t.minute,
+        t.second,
+        ms as u8,
+        (ms >> 8) as u8,
+        0,
+        bias[0],
+        bias[1],
+    ])
+}
+
+/// The local time at a Unix instant in milliseconds, through the host's own
+/// `localtime` (the USB clock's, so the zone and DST match it).
+pub fn local_at(host: &impl crate::clock::host::Host, unix_ms: i64) -> (crate::clock::host::LocalTime, u32) {
+    (host.local(unix_ms.div_euclid(1000)), unix_ms.rem_euclid(1000) as u32)
+}
 /// A position this far from where the last one sent should be by now is a
 /// seek: a change to send, not a tick (the policy's).
 pub const SEEK_SLACK_S: u32 = 3;
@@ -297,6 +332,22 @@ pub fn is_seek(sent_pos_s: u32, elapsed: std::time::Duration, now_pos_s: u32, du
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_clock_payload_is_raw_hids_ms_body() {
+        use crate::clock::host::{utc_local, LocalTime};
+        let t = utc_local(1_792_500_000); // 2026-10-19
+        let p = clock_payload(&t, 1234).unwrap();
+        assert_eq!(p.len(), 12);
+        assert_eq!(&p[..7], &[26, t.month, t.day, t.weekday, t.hour, t.minute, t.second]);
+        assert_eq!(u16::from_le_bytes([p[7], p[8]]), 999, "ms clamped");
+        assert_eq!(p[9], 0, "flags");
+        assert_eq!(i16::from_le_bytes([p[10], p[11]]), 0x7FFF, "the bias unknown");
+        let early = LocalTime { year: 2025, ..t };
+        assert!(clock_payload(&early, 0).is_none());
+        let late = LocalTime { year: 2099, ..t };
+        assert!(clock_payload(&late, 0).is_none());
+    }
 
     #[test]
     fn the_transport_is_six_bytes_the_icon_state_position_and_duration() {
