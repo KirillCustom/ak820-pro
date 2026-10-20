@@ -1,0 +1,41 @@
+**Nothing in `a2578da177` blocks the planned dev flash.** The original timeout-stacking blocker is closed. Dispositions 1–3 close their runtime findings; disposition 4 is only partially complete. I found no remaining must-fix in these fixes.
+
+1. **Note/pass — the legacy-set refusal closes the stacked-timeout path.**
+
+   `rtc_set_time()` now refuses before changing generations, either clock, or sync state when this pass already used PCF I2C. Every attempted transfer increments `pcf_xfers`, including failures, and the mark resets at the pass boundary. Consequently, successive queued legacy sets cannot accumulate multiple 10 ms timeouts. [rtc.c:1169](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:1169), [rtc.c:232](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:232), [sleep.c:874](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/sleep.c:874).
+
+   Refusal propagates through `rtc_apply_bytes()` and changes reply byte **[0] to `0xFF`**, in both VIA and non-VIA dispatch. It is not the millisecond protocol’s retry status. [hid_protocol.c:59](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/hid_protocol.c:59), [hid_protocol.c:1310](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/hid_protocol.c:1310), [hid_protocol.c:1341](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/hid_protocol.c:1341).
+
+2. **Should-fix — “the host retries” is inaccurate, but does not block this flash.**
+
+   `ak820ctl` prints “command not handled by firmware” on that `0xFF`; its legacy command exits **1 without retrying**. With `--no-wait`, it reads no reply and reports an unconfirmed send. Correct the firmware comment and disposition accordingly. [ak820ctl.c:73](/Users/jdlien/code/ak820-pro/time-util-ak820pro/ak820ctl.c:73), [ak820ctl.c:176](/Users/jdlien/code/ak820-pro/time-util-ak820pro/ak820ctl.c:176), [plan:294](/Users/jdlien/code/ak820-pro/plans/UART-LATENCY-PLAN.md:294).
+
+   **I found no current tool depending on two successful legacy sets in one pass.** The C legacy command sends one set per invocation. The daemon uses `RTC_SET_TIME_MS` (`0x03`), whose separate implementation queues PCF work; its one retry handles that protocol’s `0xFE`. The new legacy refusal does not affect it. [ak820ctl.c:170](/Users/jdlien/code/ak820-pro/time-util-ak820pro/ak820ctl.c:170), [transaction.rs:204](/Users/jdlien/code/ak820-pro/ak820-agent/src/clock/transaction.rs:204), [transaction.rs:384](/Users/jdlien/code/ak820-pro/ak820-agent/src/clock/transaction.rs:384), [rtc.c:1285](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:1285).
+
+3. **Note/pass — display deferral and the late-pass cutoff preserve the state machines.**
+
+   The earlier-transfer branch now sets `display_defer_pass()` before returning. The display pump checks that flag before debug painting or restoration, and display housekeeping also observes it. Ordinary fast-task work returns once the pass reaches 10 ms; this is a deferral, not a blocking wait or cancellation. [rtc.c:2013](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:2013), [display.c:2859](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/graphics/display.c:2859), [display.c:3262](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/graphics/display.c:3262).
+
+   **Release timing:** `PS_RELEASE_WRITE` takes a fresh timestamp when eventually admitted. It waits before `T_rel − 1 ms`, restarts through `PS_STOP_WRITE` after `T_rel + 10 ms`, and records the successful write’s completion error. Deferral can increase lateness/restarts, but does not blindly execute an expired release. [rtc.c:1420](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:1420).
+
+   **Bracket:** skipped passes can widen the sampling interval or miss the increment. The existing `boundary + 400 ms` expiry still exits without adaptation; an observed edge uses actual timestamps. There is no new bracket-width bound, so precision still requires measurement. [rtc.c:1444](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:1444).
+
+   **Acquisition:** cancellation and the 1.5 s timeout run before admission. The 900 ms full-read age check, seconds matching, confirmation read, and 990 ms final elapsed limit remain intact. Deferral can cause reacquisition or abortion rather than applying an expired sample. [rtc.c:1987](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:1987), [rtc.c:1549](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:1549), [rtc.c:1576](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:1576).
+
+   **Deep-sleep recovery:** its branch remains above the new ordinary cutoff, retaining its own admission, 5 ms timeout and display deferral. The gauge separation and whole-recovery timeout remain unchanged. [rtc.c:1998](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:1998), [sleep.c:665](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/sleep.c:665), [sleep.c:621](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/sleep.c:621).
+
+4. **Note/pass — op 20 and `ANIM_TOG` are closed.**
+
+   Op 20 checks `length < 32` before reading either argument or invoking setters. [hid_protocol.c:1180](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/hid_protocol.c:1180).
+
+   The sole `anim_toggle()` caller now rejects starting from either debug page while allowing an active animation to stop. The reverse transition already rejects entering debug while animation owns the panel. [ak820pro.c:371](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/ak820pro.c:371), [display.c:1142](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/graphics/display.c:1142).
+
+5. **Should-fix — diagnostic descriptions/tooling remain partially unfinished.**
+
+   The corrected monitor description matches implementation: maximum only for qualifying gaps; thresholds **24/37/65 ticks = 128/197⅓/346⅔ µs**; between-scope context **12**. With no qualifying sample, the maximum is zero and its context remains the initialized/reset zero, so that context must be ignored. [overrun_diag.c:204](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/overrun_diag.c:204), [overrun_diag.c:225](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/overrun_diag.c:225), [overrun_diag.c:345](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/overrun_diag.c:345).
+
+   The opening mask comment now acknowledges a partial span, but the closing comment still says **“from the relock”** although timing starts after IRQ restoration. Publication work also remains outside the measured spans. [rtc.c:258](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:258), [rtc.c:271](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/rtc/rtc.c:271), [overrun_diag.c:64](/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/overrun_diag.c:64).
+
+   The disposition’s claim that the host tool reads the corrected protocol is premature: `overrun_diag.py` still uses the old boolean mode commands/decoder, lacks monitor readout, and restores transaction locking. **Fix this before accepting A/B measurements.** [overrun_diag.py:51](/Users/jdlien/code/ak820-pro/scripts/overrun_diag.py:51), [overrun_diag.py:222](/Users/jdlien/code/ak820-pro/scripts/overrun_diag.py:222), [overrun_diag.py:277](/Users/jdlien/code/ak820-pro/scripts/overrun_diag.py:277).
+
+**Note:** the complete-pass `<25 ms` release gate still needs hardware validation; the admission cutoff is not itself that guarantee. Review was read-only against HEAD `a2578da177`; `git diff --check` passed. No build or hardware tests were run.

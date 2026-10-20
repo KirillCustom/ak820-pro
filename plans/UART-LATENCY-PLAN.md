@@ -296,3 +296,17 @@ modes, the CT16B1 hold and UART2's priority sound.
 | 3 | should: `ANIM_TOG` could start the animation from the Fn+D page | **Taken:** it cannot start one from there; stopping one is always allowed. |
 | 4 | should: the masked spans in unlocked mode are partial; the monitor's maximum is threshold-crossing only, its thresholds round to 128/197/347 us, and "none" is `ACCT_UNACCOUNTED` (12) | **Taken** in the comments and wire descriptions; the host tool reads them so. |
 
+
+### Codex's verify of those fixes (01:10 10-20)
+
+[`review-codex-uart-latency-impl-verify-2026-10-20.md`](review-codex-uart-latency-impl-verify-2026-10-20.md),
+verbatim: **nothing blocks the dev flash.** Findings 1-4 close at runtime,
+including the release write, the bracket, the acquisition and the deep
+sleep's recovery under the new deferral.
+
+| # | finding | disposition |
+|---|---|---|
+| 1 | should: "the host retries" is wrong. The refusal answers `0xFF`, which `ak820ctl`'s legacy set reports as unhandled and exits 1 on; no current tool sends two legacy sets in one pass, and the daemon's `0x03` set is unaffected | **Taken** in the comment (`ce70c8da41`). Row 1 above is corrected by this. |
+| 2 | should: the closing masked stretch starts after the row IRQ's restore, not "from the relock" | **Taken** (`ce70c8da41`). |
+| 3 | should: `overrun_diag.py` still speaks the old op 20 and has no monitor readout; fix it before accepting A/B numbers | **Taken** before the A/B: the tool is updated first (row 4 above claimed it early). |
+| 4 | note: the complete-pass < 25 ms gate needs hardware; admission is not that guarantee | Stands: the release matrix measures it. |
