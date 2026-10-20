@@ -1,0 +1,1 @@
+error: another sender holds the lock-LED channel (the daemon, or another ak820 lockchan)

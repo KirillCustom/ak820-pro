@@ -58,10 +58,14 @@ pub fn main() -> ExitCode {
         ["uninstall", flags @ ..] => super::install::uninstall(flags),
         ["status"] => super::install::status(),
         ["lockchan", "check"] => lockchan_check(),
-        ["lockchan", "send", artist, title] => lockchan_send(artist, title),
-        ["lockchan", "clear"] => lockchan_send("", ""),
+        ["lockchan", "send", artist, title] => lockchan_send(artist, title, 1),
+        ["lockchan", "send", "--repeat", n, artist, title] => match n.parse::<u32>() {
+            Ok(n) if (1..=500).contains(&n) => lockchan_send(artist, title, n),
+            _ => Err("--repeat takes 1-500".into()),
+        },
+        ["lockchan", "clear"] => lockchan_send("", "", 1),
         _ => {
-            eprintln!("usage: ak820 --version | list | info | health [--crash] [--stalls] [--rows] [--isr] [--json] [--raw] | lighting | selftest | clock [--raw] [--anyway] | probe [--seconds N] [--applescript] [--dylib PATH] | install [--in-place] [--clock] [--radio] [--lockchan] [--dylib PATH] | uninstall [--keep-bash-off] [--keep-timekeeper-off] | status | lockchan check | lockchan send ARTIST TITLE | lockchan clear");
+            eprintln!("usage: ak820 --version | list | info | health [--crash] [--stalls] [--rows] [--isr] [--json] [--raw] | lighting | selftest | clock [--raw] [--anyway] | probe [--seconds N] [--applescript] [--dylib PATH] | install [--in-place] [--clock] [--radio] [--lockchan] [--dylib PATH] | uninstall [--keep-bash-off] [--keep-timekeeper-off] | status | lockchan check | lockchan send [--repeat N] ARTIST TITLE | lockchan clear");
             eprintln!("(install, uninstall and status change LaunchAgents and touch no board; lockchan send and clear write the board's LED report over BLE, a development check; every other command only reads the board)");
             return ExitCode::from(2);
         }
@@ -466,11 +470,13 @@ fn lockchan_check() -> Result<(), String> {
     Ok(())
 }
 
-/// One lock-LED frame over BLE through the daemon's own executor: the
-/// development check of the Mac's route before the sender is wired in.
-/// Empty artist and title send CLEAR. Takes the channel's owner lock, so it
-/// never interleaves with another sender.
-fn lockchan_send(artist: &str, title: &str) -> Result<(), String> {
+/// Lock-LED frames over BLE through the daemon's own executor: the
+/// development check of the Mac's route. Empty artist and title send CLEAR.
+/// Takes the channel's owner lock for the whole run, so it never interleaves
+/// with another sender, and a daemon beside it stays off the channel (the
+/// interference study, 10-20: `--repeat N` frames, each titled with its
+/// number, one line each and a tally).
+fn lockchan_send(artist: &str, title: &str, repeat: u32) -> Result<(), String> {
     use crate::lockchan::frame::{self, Abort, Control, Line, Payload, Time};
     use std::time::Instant;
 
@@ -499,10 +505,38 @@ fn lockchan_send(artist: &str, title: &str) -> Result<(), String> {
         icon: if title.is_empty() { crate::text::Icon::None } else { crate::text::Icon::Play },
         ..Default::default()
     };
-    let (kind, bytes) = crate::lockchan::content(&snapshot);
     let mut lights = super::lock_lights::BleLights::open()?
         .ok_or("the board's BLE keyboard is not listed (paired, connected, the slider on BT?)")?;
     let mut line = Line::default();
+    let mut sent = 0;
+    for i in 1..repeat {
+        let snap = crate::smtc::Snapshot { title: format!("{title} {i}"), ..snapshot.clone() };
+        let (kind, bytes) = crate::lockchan::content(&snap);
+        lights.slowest = std::time::Duration::ZERO;
+        lights.over_100ms = 0;
+        let t0 = Instant::now();
+        let out = frame::run(&mut lights, &Wall, &Never, &mut line, || Some(Payload { kind, seq: i as u8, bytes: bytes.clone() }));
+        println!(
+            "{i:3}: {out:?}, {} writes in {:.2} s, slowest {} ms, {} over 100 ms",
+            line.writes,
+            t0.elapsed().as_secs_f64(),
+            lights.slowest.as_millis(),
+            lights.over_100ms
+        );
+        line.writes = 0;
+        if out == frame::Outcome::Poisoned {
+            std::mem::forget(lights);
+            std::mem::forget(_owner);
+            return Err("a write did not retire: the channel is poisoned".into());
+        }
+        sent += (out == frame::Outcome::Sent) as u32;
+    }
+    if repeat > 1 {
+        println!("{sent} of {} sent before the last", repeat - 1);
+    }
+    let (kind, bytes) = crate::lockchan::content(&snapshot);
+    lights.slowest = std::time::Duration::ZERO;
+    lights.over_100ms = 0;
     let t0 = Instant::now();
     let out = frame::run(&mut lights, &Wall, &Never, &mut line, || Some(Payload { kind, seq: 0, bytes: bytes.clone() }));
     println!(

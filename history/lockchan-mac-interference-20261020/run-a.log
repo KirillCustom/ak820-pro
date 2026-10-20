@@ -1,0 +1,22 @@
+  1: Abandoned(Deadline), 10 writes in 2.51 s, slowest 359 ms, 3 over 100 ms
+  2: Sent, 56 writes in 2.94 s, slowest 234 ms, 2 over 100 ms
+  3: Sent, 56 writes in 3.03 s, slowest 292 ms, 2 over 100 ms
+  4: Sent, 56 writes in 3.18 s, slowest 278 ms, 2 over 100 ms
+  5: Sent, 56 writes in 2.91 s, slowest 168 ms, 1 over 100 ms
+  6: Abandoned(Deadline), 25 writes in 2.94 s, slowest 369 ms, 3 over 100 ms
+  7: Abandoned(Deadline), 56 writes in 4.35 s, slowest 343 ms, 5 over 100 ms
+  8: Abandoned(Deadline), 3 writes in 1.67 s, slowest 371 ms, 1 over 100 ms
+  9: Sent, 56 writes in 3.49 s, slowest 297 ms, 3 over 100 ms
+ 10: Sent, 58 writes in 3.09 s, slowest 249 ms, 2 over 100 ms
+ 11: Sent, 58 writes in 2.97 s, slowest 162 ms, 2 over 100 ms
+ 12: Sent, 58 writes in 3.38 s, slowest 188 ms, 2 over 100 ms
+ 13: Sent, 58 writes in 3.12 s, slowest 322 ms, 2 over 100 ms
+ 14: Abandoned(Deadline), 56 writes in 3.95 s, slowest 370 ms, 3 over 100 ms
+ 15: Sent, 58 writes in 3.19 s, slowest 281 ms, 2 over 100 ms
+ 16: Sent, 58 writes in 3.36 s, slowest 142 ms, 2 over 100 ms
+ 17: Sent, 58 writes in 3.00 s, slowest 211 ms, 2 over 100 ms
+ 18: Sent, 58 writes in 3.02 s, slowest 219 ms, 2 over 100 ms
+ 19: Sent, 58 writes in 3.09 s, slowest 189 ms, 2 over 100 ms
+14 of 19 sent before the last
+AK820 5.1-1 (Bluetooth Low Energy): type 1, 21 payload bytes: Abandoned(Deadline), 37 writes in 3.37 s, slowest 379 ms, 3 over 100 ms
+error: the frame did not go: Abandoned(Deadline)

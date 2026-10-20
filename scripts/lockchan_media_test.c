@@ -1,5 +1,6 @@
 /* Host test of the lock-LED handler's validator (lockchan_media.c), every row
- * of plans/LOCK-LED-CHANNEL-PLAN.md's R2-9 table. Build and run:
+ * of plans/LOCK-LED-CHANNEL-PLAN.md's R2-9 table, and the playback bytes
+ * (10-20, "Play times") with lockchan_media_position. Build and run:
  *
  *   gcc -std=c11 -Wall -Wextra -I qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro \
  *       scripts/lockchan_media_test.c \
@@ -95,6 +96,64 @@ int main(void) {
         memset(full, 'a', sizeof full);
         full[0] = 0; full[1] = 19; full[41] = (uint8_t)c;
         if (rejects(frame(1, full, 42)) == ok) { printf("FAIL: byte 0x%02x last of 42\n", c); fails++; }
+    }
+
+    /* Playback: icon bit 7 and 5 trailing bytes [state][pos][dur], big endian. */
+    {
+        uint8_t p[] = {0x81, 3, 'A', 'r', 't', 'T', 'i', 't', 'l', 'e', 1, 0x01, 0x2C, 0x0E, 0x10};
+        CHECK(lockchan_media_parse(&(lockchan_frame_t){0}, &m) == false);
+        lockchan_frame_t g = frame(1, p, sizeof p);
+        CHECK(lockchan_media_parse(&g, &m));
+        CHECK(m.icon == 1 && m.playback && m.state == 1 && m.pos == 300 && m.dur == 3600);
+        CHECK(m.n0 == 3 && m.n1 == 5 && memcmp(m.l1, "Title", 5) == 0);
+        /* Paused is a valid state: the board then shows the clock. */
+        p[10] = 0;
+        g = frame(1, p, sizeof p);
+        CHECK(lockchan_media_parse(&g, &m) && m.playback && m.state == 0);
+        /* Any other state rejects. */
+        p[10] = 2;
+        CHECK(rejects(frame(1, p, sizeof p)));
+        /* The tail is not text: any bytes there are fine. */
+        uint8_t q[] = {0x80, 0, 1, 0xFF, 0x00, 0xFF, 0x00};
+        g = frame(1, q, sizeof q);
+        CHECK(lockchan_media_parse(&g, &m) && m.n0 == 0 && m.n1 == 0 && m.pos == 0xFF00 && m.dur == 0xFF00);
+        /* Bit 7 without room for the tail. */
+        CHECK(rejects(frame(1, q, 6)));
+        CHECK(rejects(frame(1, q, 2)));
+        /* Bit 7 with another icon bit. */
+        q[0] = 0x84;
+        CHECK(rejects(frame(1, q, sizeof q)));
+        /* Without bit 7, no playback, as before. */
+        g = now_playing(2, "a", "b");
+        CHECK(lockchan_media_parse(&g, &m) && !m.playback && m.pos == 0);
+    }
+    /* The limits with playback: 19 + 21 + 5 = 47 bytes, and 48 rejects. */
+    {
+        uint8_t p[48];
+        memset(p, 'a', sizeof p);
+        p[0] = 0x83; p[1] = 19;
+        p[42] = 1; p[43] = 0; p[44] = 9; p[45] = 0; p[46] = 99;
+        lockchan_frame_t g = frame(1, p, 47);
+        CHECK(lockchan_media_parse(&g, &m) && m.n0 == 19 && m.n1 == 21 && m.pos == 9 && m.dur == 99);
+        p[47] = 'a';
+        CHECK(rejects(frame(1, p, 48)));
+        /* A line too long once the tail is counted: line 1 at 22. */
+        p[1] = 18;
+        CHECK(rejects(frame(1, p, 47)));
+    }
+    /* The position at the commit: the frame's plus anchor to commit, rounded. */
+    {
+        lockchan_media_t pm = {.pos = 100, .dur = 3600};
+        CHECK(lockchan_media_position(&pm, 1000, 1000) == 100);
+        CHECK(lockchan_media_position(&pm, 1000, 1499) == 100);
+        CHECK(lockchan_media_position(&pm, 1000, 1500) == 101);
+        CHECK(lockchan_media_position(&pm, 1000, 3600) == 103);
+        pm.pos = 3599;
+        CHECK(lockchan_media_position(&pm, 0, 5000) == 3600);       /* never past the duration */
+        pm.dur = 0; pm.pos = 0xFFFE;
+        CHECK(lockchan_media_position(&pm, 0, 5000) == 0xFFFF);     /* a stream: saturates */
+        pm.pos = 10; pm.dur = 0;
+        CHECK(lockchan_media_position(&pm, 0xFFFFF000u, 0x00000400u) == 15);   /* the timer wraps */
     }
 
     /* Over 42 even when each line would fit by n0 alone. */
