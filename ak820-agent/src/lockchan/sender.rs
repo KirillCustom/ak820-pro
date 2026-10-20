@@ -740,8 +740,8 @@ impl<P: Platform> Core<P> {
                         let pos = m.pb.map(|pb| pos_at_instant(pb, pos_at, at));
                         // A seek since the last pick: its own revision here
                         // too, not only at a step (type-3 verify, 1).
-                        if let (Some(pos), Some(last)) = (pos, last_pos) {
-                            if pos != last.0 && seeked(&m, pos_at, last, at) {
+                        if let (Some(_), Some(last)) = (pos, last_pos) {
+                            if seeked(&m, pos_at, last, at) {
                                 new_rev.set(new_rev.get().wrapping_add(1));
                             }
                         }
@@ -1627,6 +1627,84 @@ mod tests {
         // then the 60 s refresh).
         let n = transports(&r, Icon::Play, 300, 70).iter().filter(|p| (50..=60).contains(*p)).count();
         assert!(n >= 2, "{n} transports for seek B");
+    }
+
+    #[test]
+    fn a_seek_back_to_the_last_picked_number_is_still_a_seek() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 100, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        // The source keeps reporting a steady playback until the transport's
+        // 60 s refresh; during that refresh's warm-up it seeks back to exactly
+        // the number the last transport picked (codex, type-3 verify 2, 1:
+        // numeric equality skipped the elapsed-time check, and the pick then
+        // made it the baseline, so the step saw nothing either).
+        let (last, at) = r.core.sent_pos.expect("a transport was picked");
+        let mut t = r.t.now();
+        while t < at + Duration::from_secs(55) {
+            t += Duration::from_secs(1);
+            r.t.0.set(r.t.now().max(t));
+            let pos = last + t.saturating_duration_since(at).as_secs() as u32;
+            r.h.set(playing("Alpha", Icon::Play, pos, 300), t, t);
+            run_until(&mut r, t);
+        }
+        // The refresh is the title, then its transport: the hook fires on the
+        // transport's first warm-up write, after the step before it saw no seek.
+        let n0 = r.kb.borrow().writes.len();
+        let text = playing("Alpha", Icon::Play, 0, 0).text;
+        let text_len = crate::lockchan::encode(&text.1, text.0, 0, Profile::P0, 0).unwrap().len();
+        let at_tr = n0 + 2 + text_len;
+        let (h, tt) = (r.h.clone(), r.t.clone());
+        r.kb.borrow_mut().hook = Some(Box::new(move |i| {
+            if i == at_tr {
+                h.set(playing("Alpha", Icon::Play, last, 300), tt.now(), tt.now());
+            }
+        }));
+        let t1 = r.t.now();
+        run_until(&mut r, t1 + Duration::from_secs(20));
+        // The seek back went, and its change repeat 2 s later.
+        let w: Vec<u8> = r.kb.borrow().writes[n0..].iter().map(|w| w.1).collect();
+        let hits = (last..=last + 8)
+            .filter(|pos| {
+                let (k, b) = crate::lockchan::transport(Icon::Play, Some(Playback { pos_s: *pos, dur_s: 300 }), *pos);
+                (0..=255u8).any(|seq| {
+                    let e = crate::lockchan::encode(&b, k, seq, Profile::P0, 0).unwrap();
+                    w.windows(e.len()).any(|x| x == &e[..])
+                })
+            })
+            .count();
+        let all: Vec<u32> = (0..400u32).filter(|pos| { let (k, b) = crate::lockchan::transport(Icon::Play, Some(Playback { pos_s: *pos, dur_s: 300 }), *pos); (0..=255u8).any(|seq| { let e = crate::lockchan::encode(&b, k, seq, Profile::P0, 0).unwrap(); w.windows(e.len()).any(|x| x == &e[..]) }) }).collect();
+        let titles = sent(&r, &playing("Alpha", Icon::Play, 0, 0).text, 0);
+        assert!(hits >= 2, "{hits} transports for the seek back to {last}; all after: {all:?}; title seen {titles}; frames {}", r.h.status().frames);
+    }
+
+    #[test]
+    fn a_seek_on_the_final_write_withholds_the_credit() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 100, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        let frames0 = r.h.status().frames;
+        // A seek starts a transport; its last write's completion sees
+        // another seek: written whole, but not credited.
+        let t1 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 200, 300), t1, t1);
+        // Learn the transport's length from a dry encode: warm-up 2 + frame.
+        let (k, b) = crate::lockchan::transport(Icon::Play, Some(Playback { pos_s: 200, dur_s: 300 }), 200);
+        let len = crate::lockchan::encode(&b, k, 0, Profile::P0, 0).unwrap().len();
+        let n0 = r.kb.borrow().writes.len();
+        let (h, t) = (r.h.clone(), r.t.clone());
+        r.kb.borrow_mut().hook = Some(Box::new(move |i| {
+            if i == n0 + 2 + len - 1 {
+                h.set(playing("Alpha", Icon::Play, 30, 300), t.now(), t.now());
+            }
+        }));
+        r.core.step(&r.h, &*r.t);
+        assert_eq!(r.kb.borrow().writes.len(), n0 + 2 + len, "the whole frame went");
+        assert_eq!(r.h.status().frames, frames0, "but was not credited");
     }
 
     #[test]
