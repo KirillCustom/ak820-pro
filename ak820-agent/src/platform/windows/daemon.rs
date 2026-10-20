@@ -111,6 +111,10 @@ pub fn main() {
         bail(&opts.log, "--lockchan needs --interval of 5 s or less (the board's raw-HID lease is 10 s)", 2);
     }
 
+    if let Some(e) = instance::StopEvent::create() {
+        let _ = super::STOP.set(e);
+    }
+
     // Ownership is enforced, not intended: one of us, and not the Python
     // now-playing agent either, whose mutex name this also takes.
     let _held: Instance = match Instance::claim(&[instance::AGENT, instance::NOWPLAYING]) {

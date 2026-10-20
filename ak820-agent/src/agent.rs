@@ -344,6 +344,10 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
     let mut expedited: Option<Snapshot> = None;
 
     loop {
+        if P::stop_requested() {
+            log.line("stop requested: exiting (the lock lights restored first, if owed)");
+            return Ok(());
+        }
         let now = Instant::now();
         let mut worked = false;
 

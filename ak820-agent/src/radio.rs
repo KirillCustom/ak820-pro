@@ -566,6 +566,35 @@ mod tests {
     }
 
     #[test]
+    fn before_media_runs_before_the_first_media_request_and_failures_stamp_the_attempt() {
+        let c = FakeClock::new();
+        // Probe ok, line 0 ok, line 1 incomplete: the media failed after
+        // reaching the board, maybe.
+        let script = [Board::Answer { ms: 20 }, Board::Answer { ms: 20 }, Board::ReceiptOnly];
+        let mut g = Rig::new(&c, &script);
+        let calls = std::rc::Rc::new(Cell::new(0usize));
+        let seen = std::rc::Rc::new(Cell::new(usize::MAX));
+        {
+            let (calls, seen) = (calls.clone(), seen.clone());
+            let got = g.f.got.as_ptr();
+            g.r.before_media = Some(Box::new(move || {
+                calls.set(calls.get() + 1);
+                // What had gone out when it ran: the probe only.
+                seen.set(unsafe { (*got).len() });
+            }));
+        }
+        g.tick(&snap());
+        assert_eq!(calls.get(), 0, "nothing before the quiet ends");
+        assert!(g.r.last_media_attempt.is_none());
+        c.advance(QUIET);
+        g.tick(&snap());
+        assert_eq!(calls.get(), 1);
+        assert_eq!(seen.get(), 1, "after the probe, before any media request");
+        assert_eq!(g.r.status.pushes, 0, "the push failed");
+        assert!(g.r.last_media_attempt.is_some(), "a failed media request still stamps the attempt");
+    }
+
+    #[test]
     fn a_failed_text_push_is_retried_next_tick() {
         let c = FakeClock::new();
         // Probe ok, line 0 ok, line 1 incomplete: the publisher does not move.

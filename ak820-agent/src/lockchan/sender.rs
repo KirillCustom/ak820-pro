@@ -179,6 +179,16 @@ impl Default for Handle {
     }
 }
 
+/// The content the slot asks for, made CLEAR once its observation is stale,
+/// and when that happens.
+fn current_of(slot: &Slot, now: Instant) -> (Option<Content>, Option<Instant>) {
+    let Some(c) = slot.content.clone() else { return (None, None) };
+    match slot.observed {
+        Some(o) if now.saturating_duration_since(o) < STALE_AFTER => (Some(c), Some(o + STALE_AFTER)),
+        _ => (Some((super::TYPE_CLEAR, Vec::new())), None),
+    }
+}
+
 /// The thread's state: everything [`Core::step`] carries between calls.
 pub struct Core<P: Platform> {
     platform: P,
@@ -259,14 +269,8 @@ impl<P: Platform> Core<P> {
         }
     }
 
-    /// The content the slot asks for, made CLEAR once its observation is
-    /// stale, and when that happens.
     fn current(slot: &Slot, now: Instant) -> (Option<Content>, Option<Instant>) {
-        let Some(c) = slot.content.clone() else { return (None, None) };
-        match slot.observed {
-            Some(o) if now.saturating_duration_since(o) <= STALE_AFTER => (Some(c), Some(o + STALE_AFTER)),
-            _ => (Some((super::TYPE_CLEAR, Vec::new())), None),
-        }
+        current_of(slot, now)
     }
 
     /// The wake guess: armed after IDLE_ARM of input idleness, fired on any
@@ -303,7 +307,7 @@ impl<P: Platform> Core<P> {
 
     /// The lights, opened if they are not: `Err(next)` when the step must
     /// wait or exit instead.
-    fn ensure_open(&mut self, h: &Handle, now: Instant) -> Result<(), Next> {
+    fn ensure_open(&mut self, h: &Handle, now: Instant, for_restore: bool) -> Result<(), Next> {
         if self.lights.is_some() {
             return Ok(());
         }
@@ -331,8 +335,14 @@ impl<P: Platform> Core<P> {
                     st.failures += 1;
                     st.last_error = Some(e);
                 });
-                self.policy.failed(self.policy.generation(), now);
-                let t = self.policy.due().unwrap_or(now + RELIST);
+                // A restore keeps its own one-second schedule, never the
+                // payload's backoff or handover (verify, 5).
+                let t = if for_restore {
+                    now + TICK
+                } else {
+                    self.policy.failed(self.policy.generation(), now);
+                    self.policy.due().unwrap_or(now + RELIST)
+                };
                 self.next_open = Some(t);
                 Err(Next::WaitUntil(t))
             }
@@ -362,7 +372,16 @@ impl<P: Platform> Core<P> {
             (s.granted, s.owner_gen, s.stop, stale_at)
         };
         if stop {
-            self.release();
+            // One bounded restore if one is owed and the lights are open,
+            // its waits through the stop flag (verify, 1).
+            if self.line.restore_pending {
+                if let Some(l) = self.lights.as_mut() {
+                    if let Err(Outcome::Poisoned) = frame::restore_only(l, time, &Always(h), &mut self.line, true) {
+                        return self.poison(h);
+                    }
+                }
+            }
+            self.release_all();
             return Next::Exit;
         }
         if granted && owner != self.owner_seen {
@@ -375,11 +394,11 @@ impl<P: Platform> Core<P> {
         // A pending restore goes first, granted or not, every TICK, until it
         // is confirmed (R3-1; implementation review, 1).
         if self.line.restore_pending {
-            if let Err(next) = self.ensure_open(h, now) {
+            if let Err(next) = self.ensure_open(h, now, true) {
                 return next;
             }
             let lights = self.lights.as_mut().expect("opened");
-            match frame::restore_only(lights, time, &Always(h), &mut self.line) {
+            match frame::restore_only(lights, time, &Always(h), &mut self.line, false) {
                 Ok(true) => {}
                 Ok(false) => {
                     self.publish_counts(h, "restore pending");
@@ -387,7 +406,12 @@ impl<P: Platform> Core<P> {
                 }
                 Err(Outcome::Poisoned) => return self.poison(h),
                 Err(Outcome::Abandoned(Why::Abort(Abort::Stop))) => {
-                    self.release();
+                    // Stopped mid-restore: once more, through the flag.
+                    let lights = self.lights.as_mut().expect("opened");
+                    if let Err(Outcome::Poisoned) = frame::restore_only(lights, time, &Always(h), &mut self.line, true) {
+                        return self.poison(h);
+                    }
+                    self.release_all();
                     return Next::Exit;
                 }
                 Err(_) => {
@@ -450,7 +474,7 @@ impl<P: Platform> Core<P> {
                 }
             }
         }
-        if let Err(next) = self.ensure_open(h, now) {
+        if let Err(next) = self.ensure_open(h, now, false) {
             return next;
         }
 
@@ -471,24 +495,39 @@ impl<P: Platform> Core<P> {
         // its epoch is what the frame then guards (R4-5; review, 10).
         let picked: Cell<Option<u64>> = Cell::new(None);
         let ctl_epoch: Cell<Option<u64>> = Cell::new(None);
+        let picked_content: std::cell::RefCell<Option<Content>> = std::cell::RefCell::new(None);
         let out = {
             /// Before the pick only stop and ownership matter; after it, the
-            /// picked content's epoch too.
-            struct Picking<'a> {
+            /// picked content's epoch and its freshness too: a title that goes
+            /// stale mid-frame is superseded by its CLEAR (verify, 3).
+            struct Picking<'a, T: Time> {
                 h: &'a Handle,
                 owner: u64,
                 epoch: &'a Cell<Option<u64>>,
+                content: &'a std::cell::RefCell<Option<Content>>,
+                time: &'a T,
             }
-            impl Control for Picking<'_> {
+            impl<T: Time> Control for Picking<'_, T> {
                 fn abort(&self) -> Option<Abort> {
-                    let ctl = Ctl { h: self.h, owner: self.owner, epoch: self.epoch.get().unwrap_or(0) };
-                    match ctl.abort() {
-                        Some(Abort::Superseded) if self.epoch.get().is_none() => None,
-                        other => other,
+                    let Some(epoch) = self.epoch.get() else {
+                        let ctl = Ctl { h: self.h, owner: self.owner, epoch: 0 };
+                        return match ctl.abort() {
+                            Some(Abort::Superseded) => None,
+                            other => other,
+                        };
+                    };
+                    let ctl = Ctl { h: self.h, owner: self.owner, epoch };
+                    if let Some(a) = ctl.abort() {
+                        return Some(a);
                     }
+                    let now_content = {
+                        let s = self.h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
+                        current_of(&s, self.time.now()).0
+                    };
+                    (now_content != *self.content.borrow()).then_some(Abort::Superseded)
                 }
             }
-            let ctl = Picking { h, owner, epoch: &ctl_epoch };
+            let ctl = Picking { h, owner, epoch: &ctl_epoch, content: &picked_content, time };
             let lights = self.lights.as_mut().expect("opened above");
             let policy = &mut self.policy;
             let line = &mut self.line;
@@ -499,19 +538,26 @@ impl<P: Platform> Core<P> {
                     (s.epoch, c)
                 };
                 let c = c?;
+                let c_for_check = c.clone();
                 policy.set(c, time.now());
                 let gen = policy.generation();
                 let content = policy.content(gen)?.clone();
                 picked.set(Some(gen));
                 ctl_epoch.set(Some(epoch));
+                *picked_content.borrow_mut() = Some(c_for_check.clone());
                 Some(Payload { kind: content.0, seq, bytes: content.1 })
             })
         };
         let done = time.now();
         let gen = picked.get().unwrap_or(self.policy.generation());
+        // Credited only if the owner, the content epoch and the content's
+        // freshness are all still the frame's (verify, 4).
         let still_owner = {
             let s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
-            s.granted && s.owner_gen == owner
+            s.granted
+                && s.owner_gen == owner
+                && ctl_epoch.get() == Some(s.epoch)
+                && current_of(&s, done).0 == *picked_content.borrow()
         };
         match out {
             Outcome::Sent if still_owner => {
@@ -560,6 +606,11 @@ impl<P: Platform> Core<P> {
         if self.line.restore_pending {
             return; // the lights and the lock stay until the restore is done
         }
+        self.release_all();
+    }
+
+    /// At exit: whatever is owed, the thread is ending.
+    fn release_all(&mut self) {
         self.lights = None;
         self.guard = None;
     }
@@ -852,9 +903,67 @@ mod tests {
             }
         }));
         run_until(&mut r, t0 + Duration::from_secs(20));
-        // The first Alpha was cut off at write 20; Alpha then went whole.
+        // The first Alpha was cut off at write 20 (the old byte comparison
+        // saw no change and finished it): the next write is the restore,
+        // after the recovery wait. Alpha then went whole.
+        let w = r.kb.borrow().writes.clone();
+        assert!(w[21].0 - w[20].0 >= frame::RECOVERY, "write 21 is the restore, {:?} after", w[21].0 - w[20].0);
         assert!(sent(&r, &title("Alpha"), 0));
         assert!(r.h.status().frames >= 1);
+    }
+
+    #[test]
+    fn a_title_going_stale_mid_frame_is_cut_off_for_its_clear() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        // Observed 28 s ago: fresh when picked (~1 s in), stale ~1 s into the
+        // frame, which runs ~3.5 s.
+        r.h.set(title("A rather long title to take time"), t0 - STALE_AFTER + Duration::from_secs(2));
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(10));
+        assert!(!sent(&r, &title("A rather long title to take time"), 0), "never committed whole");
+        assert!(sent(&r, &(super::super::TYPE_CLEAR, vec![]), 0));
+    }
+
+    #[test]
+    fn a_stop_with_a_restore_owed_restores_once_through_the_flag() {
+        let mut r = rig();
+        let t0 = granted(&mut r, title("Alpha"));
+        let (h, kb) = (r.h.clone(), r.kb.clone());
+        r.kb.borrow_mut().hook = Some(Box::new(move |i| {
+            if i == 20 {
+                h.revoke();
+                kb.borrow_mut().unknown = true;
+            }
+        }));
+        run_until(&mut r, t0 + Duration::from_secs(5));
+        assert!(r.core.line.restore_pending);
+        let n = r.kb.borrow().writes.len();
+        r.kb.borrow_mut().unknown = false;
+        r.h.stop();
+        assert_eq!(r.core.step(&r.h, &*r.t), Next::Exit);
+        assert_eq!(r.kb.borrow().writes.len(), n + 1, "the one restore at the stop");
+        assert!(!r.core.line.restore_pending);
+    }
+
+    #[test]
+    fn poison_keeps_the_guard_alive() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        struct Counted(Arc<AtomicUsize>);
+        impl Drop for Counted {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let drops = Arc::new(AtomicUsize::new(0));
+        let mut r = rig();
+        granted(&mut r, title("Alpha"));
+        r.core.guard = Some(Box::new(Counted(drops.clone())));
+        r.kb.borrow_mut().stuck = true;
+        assert_eq!(r.core.step(&r.h, &*r.t), Next::Exit);
+        drop(r);
+        assert_eq!(drops.load(Ordering::SeqCst), 0, "forgotten, never dropped");
     }
 
     #[test]

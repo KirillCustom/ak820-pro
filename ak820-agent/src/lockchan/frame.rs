@@ -183,6 +183,11 @@ impl<L: LockLights, T: Time, C: Control> Run<'_, L, T, C> {
     /// True when a read after a write agrees with it.
     fn restore(&mut self) -> Result<bool, Why> {
         for _ in 0..RESTORE_TRIES {
+            // The spacing first, then the locks read: what is written is
+            // what they are now, not before the wait (verify, 2).
+            if let Some(p) = self.line.last_completion {
+                self.wait(p + self.lights.spacing())?;
+            }
             let Some(u) = self.lights.user() else { return Ok(false) };
             self.write(u, None, None)?;
             if self.lights.user() == Some(u) {
@@ -250,8 +255,16 @@ pub fn run<L: LockLights, T: Time, C: Control>(
 /// A restore alone, for `restore_pending` while no frame is due or the
 /// channel is revoked (R3-1; implementation review, 1): the recovery wait,
 /// then the repairs. True when confirmed.
-pub fn restore_only<L: LockLights, T: Time, C: Control>(lights: &mut L, time: &T, control: &C, line: &mut Line) -> Result<bool, Outcome> {
-    let mut r = Run { lights, time, control, line, stopping: false };
+pub fn restore_only<L: LockLights, T: Time, C: Control>(
+    lights: &mut L,
+    time: &T,
+    control: &C,
+    line: &mut Line,
+    stopping: bool,
+) -> Result<bool, Outcome> {
+    // Stopping: the waits go through the stop flag, the one bounded attempt
+    // a shutdown makes (verify, 1).
+    let mut r = Run { lights, time, control, line, stopping };
     match r.recovery_wait().and_then(|_| r.restore()) {
         Ok(ok) => {
             r.line.restore_pending = !ok;
@@ -569,8 +582,12 @@ mod tests {
         let out = run(&mut k, &t, &go(), &mut Line::default(), payload);
         assert_eq!(out, Outcome::Abandoned(Why::UserChanged));
         let w = &k.k.writes;
-        let before: Vec<_> = w.iter().filter(|x| x.0 <= changed_at + Duration::from_millis(17)).collect();
-        assert_eq!(w.len(), before.len() + 1, "only the restore after the change");
+        // Every write submitted after the change is the restore: none of the
+        // frame's (verify: the old code wrote one more, 8 ms after it).
+        let after: Vec<_> = w.iter().filter(|x| x.0 > changed_at).collect();
+        assert_eq!(after.len(), 1, "only the restore after the change: {:?}", after);
+        let last_of_frame = w.iter().filter(|x| x.0 <= changed_at).last().unwrap().0;
+        assert!(after[0].0 - last_of_frame >= RECOVERY);
         assert_eq!(w.last().unwrap().1, 0x06);
     }
 

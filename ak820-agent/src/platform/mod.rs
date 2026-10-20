@@ -77,6 +77,13 @@ pub trait Platform {
         Err("the radio is not available on this platform yet".into())
     }
 
+    /// Has something asked this daemon to stop (Windows: `ak820 install` or
+    /// `uninstall` signalling its stop event)? The loop then returns, which
+    /// stops the lock-LED sender with its one bounded restore. Default: never.
+    fn stop_requested() -> bool {
+        false
+    }
+
     /// Start the lock-LED channel's sender thread (`crate::lockchan::sender`)
     /// with this platform's keyboard, owner lock and input tick, if it has
     /// one: now-playing over Bluetooth, where there is no raw HID. The

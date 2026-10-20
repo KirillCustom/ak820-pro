@@ -18,6 +18,9 @@ pub mod radio_lock;
 pub mod smtc;
 pub mod task;
 
+/// The daemon's stop event, created by `daemon::main` before the loop.
+pub static STOP: std::sync::OnceLock<instance::StopEvent> = std::sync::OnceLock::new();
+
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -67,6 +70,10 @@ impl crate::platform::Platform for Native {
 
     fn radio_lock() -> Result<Option<crate::platform::RadioGuard>, String> {
         radio_lock::try_take().map(|held| held.map(|l| Box::new(l) as crate::platform::RadioGuard))
+    }
+
+    fn stop_requested() -> bool {
+        STOP.get().is_some_and(|e| e.requested())
     }
 
     fn spawn_lockchan() -> Option<Result<crate::lockchan::sender::Handle, String>> {

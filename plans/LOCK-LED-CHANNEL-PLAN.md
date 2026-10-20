@@ -1054,3 +1054,22 @@ in a row before a failure). **The Caps race, measured on the Mac, is ~3
 writes wide:** after a real Caps tap the board can show the old Caps for
 ~1.5 s, until the restore; it has never committed a wrong frame. A stated
 limit.
+
+### Codex's verify of the implementation fixes (10-20) and what changed
+
+[Verbatim](review-codex-lockchan-impl-verify-2026-10-20.md), prompt
+[`review-prompt-lockchan-impl-verify.txt`](review-prompt-lockchan-impl-verify.txt),
+on `60a7b43`. Two must-fixes, three should-fixes, all agreed and done. It
+also, rightly, refuted the claim above that the tests "bite on each" fix:
+several passed against the old code. The new ones below were each checked
+by planting the old behaviour back and seeing the test fail (A, B, A and the
+mid-frame staleness so far; the rest by construction, noted).
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | No usable stop: the loop only returns for `--once`; a stop with a restore owed skipped it | **Fixed.** A named stop event (`Global\ak820pro-agent-stop`): `ak820 install` and `uninstall` signal it, give the daemon 5 s, then end the task; the loop returns on it and the sender's stop runs one restore through the flag, owed or mid-restore. Test: a stop with a restore owed writes it (fails on the old code by construction) |
+| 2 | A repair read the locks before its spacing wait | **Fixed:** the wait, then the read, then the write (on inspection; no test isolates the 16 ms) |
+| 3 | The epoch change lost in-flight staleness | **Fixed:** the frame's control compares the slot's effective content (staleness applied) with the picked one; `< STALE_AFTER`. Test: a title going stale mid-frame is cut off for its CLEAR (**bites**) |
+| 4 | A completion credited without checking the picked epoch | **Fixed:** credited only with the owner, the epoch and the effective content unchanged |
+| 5 | A restore's reopen inherited the payload's backoff | **Fixed:** its own 1 s schedule |
+| tests | Several did not detect the old defects | The mid-wait test now counts every write after the change; A, B, A asserts the cut-off and the restore (**bites**); the poison test counts the guard's drops; the radio's `before_media` runs after the probe and before any media request, and a failed media request stamps the attempt |

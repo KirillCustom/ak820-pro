@@ -518,7 +518,7 @@ fn install(flags: &[&str]) -> Result<(), String> {
     // wait until it has actually gone, which the scheduler and its mutex
     // both tell us.
     if previous.is_some() {
-        task::stop(task::FOLDER, task::AGENT)?;
+        stop_agent()?;
         task::wait_stopped(task::FOLDER, task::AGENT, Duration::from_secs(10))?;
         wait_released(instance::AGENT, Duration::from_secs(10))?;
     }
@@ -713,13 +713,25 @@ fn wait_released(name: &str, timeout: std::time::Duration) -> Result<(), String>
 }
 
 /// Stop and unregister the daemon's task. Binaries and logs stay.
+/// Ask the daemon to stop and give it 5 s (its lock-LED sender restores the
+/// user's lights, 3 s at most), then end the task regardless.
+fn stop_agent() -> Result<(), String> {
+    use super::{instance, task};
+    if instance::signal_stop()
+        && task::wait_stopped(task::FOLDER, task::AGENT, std::time::Duration::from_secs(5)).is_ok()
+    {
+        return Ok(());
+    }
+    task::stop(task::FOLDER, task::AGENT)
+}
+
 fn uninstall() -> Result<(), String> {
     use super::task;
     if task::info(task::FOLDER, task::AGENT)?.is_none() {
         println!("{}\\{} is not registered", task::FOLDER, task::AGENT);
     } else {
         let owned_clock = task::agent_owns_clock()?;
-        task::stop(task::FOLDER, task::AGENT)?;
+        stop_agent()?;
         task::delete(task::FOLDER, task::AGENT)?;
         println!("stopped and removed {}\\{}", task::FOLDER, task::AGENT);
         if owned_clock {

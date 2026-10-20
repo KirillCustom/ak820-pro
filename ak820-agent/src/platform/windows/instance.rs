@@ -85,3 +85,54 @@ mod tests {
         drop(holder);
     }
 }
+
+/// The daemon's stop request: a named manual-reset event in the same
+/// `Global\` namespace. `ak820 install` and `uninstall` signal it and give the
+/// daemon a few seconds to put the lock lights back and exit before they end
+/// its task (codex, lock-LED implementation verify, 1). Task Scheduler's own
+/// "End" still kills the process outright.
+pub const STOP: &str = "ak820pro-agent-stop";
+
+pub struct StopEvent(windows::Win32::Foundation::HANDLE);
+
+// A kernel handle, waited on from the daemon's loop only.
+unsafe impl Send for StopEvent {}
+unsafe impl Sync for StopEvent {}
+
+fn global(name: &str) -> Vec<u16> {
+    format!("Global\\{name}").encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+impl StopEvent {
+    /// The daemon's side: create it, not signalled.
+    pub fn create() -> Option<StopEvent> {
+        use windows::Win32::System::Threading::CreateEventW;
+        let wide = global(STOP);
+        unsafe { CreateEventW(None, true, false, PCWSTR(wide.as_ptr())) }.ok().map(StopEvent)
+    }
+
+    pub fn requested(&self) -> bool {
+        use windows::Win32::Foundation::WAIT_OBJECT_0;
+        use windows::Win32::System::Threading::WaitForSingleObject;
+        unsafe { WaitForSingleObject(self.0, 0) == WAIT_OBJECT_0 }
+    }
+}
+
+impl Drop for StopEvent {
+    fn drop(&mut self) {
+        unsafe { CloseHandle(self.0).ok() };
+    }
+}
+
+/// The CLI's side: signal a running daemon to stop. False when there is no
+/// daemon to ask (no event), or it could not be signalled.
+pub fn signal_stop() -> bool {
+    use windows::Win32::System::Threading::{OpenEventW, SetEvent, EVENT_MODIFY_STATE};
+    let wide = global(STOP);
+    let Ok(h) = (unsafe { OpenEventW(EVENT_MODIFY_STATE, false, PCWSTR(wide.as_ptr())) }) else {
+        return false;
+    };
+    let ok = unsafe { SetEvent(h) }.is_ok();
+    unsafe { CloseHandle(h).ok() };
+    ok
+}
