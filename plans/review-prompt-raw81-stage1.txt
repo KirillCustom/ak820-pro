@@ -1,0 +1,16 @@
+You are reviewing a firmware delta before it is flashed to a keyboard (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2). Read only files inside the repository you were started in (the ak820-pro checkout); do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
+
+The board runs gremlin/rx-tap at 4ee56290 (de5450e487 plus a dev-only RX tap, both reviewed by you). The delta is one commit on top, on branch gremlin/raw81:
+  git -C qmk_firmware-ak820pro diff 4ee56290 5dbca738
+Files: qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c and .h, hid_protocol.c.
+
+It implements stage 1 of plans/RAWHID-24G-PLAN.md exactly as re-specified in that plan's last section, "Codex's plan review and stage 1 as specified", after your plan review (plans/review-codex-rawhid-24g-plan-2026-10-19.md). Stage 1 is dev-only (AK820_DEV_HOOKS): an `81` collector beside the parser's 3-byte window and a `91` echo from a one-slot buffer, with counters on HC_DEVHOOK op 17. It dispatches nothing. The daily build was checked: no new symbols, and the same text/data/bss sizes as de5450e487's daily (the one shared change is uart_err_poll(), factored out of ch582_task()).
+
+Check, citing file:line:
+1. That the code does what the plan's stage-1 section says, rule by rule: the boundary decided before consumption (and `r81_boundary = matched` after the window), the silence rule at an empty read, the lifetime and UART-taint aborts (at the drain's start and again before a commit), quarantine and its exit, the collection in every mode with the echo gated on 2.4G-linked at commit and again at send.
+2. Your plan review's must-fix 1 and 2 cases against this code: `5C 25 | 81`, `5A 27 | 81`, P3's `5A 81 ..` split across drains, `61 0D 0A | 81 ..`, an overrun mid-collection, a collection cut short, back-to-back 81s, an 81 arriving while the window holds a pending `5x`.
+3. The TX side: the reply slot sent only with the queue empty and nothing in flight; the ACK window holding the A-frame pump; the ACK attribution in ch582_tx_ack(); ch582_tx_idle() and its callers in sleep.c; ch582_tx_drain()'s recursion (the bootloader path) through this code.
+4. Anything that changes behaviour when no 81 ever arrives: the window, the lock channel's feed, rx_malformed counting, the 5A trace, keyboard frames' timing. And 16-bit timer wrap in the new timestamps.
+5. Anything that could cost a keystroke or stall the main loop.
+
+Rank findings must-fix / should-fix / note; be brief. If nothing blocks flashing this dev build for the stage-1 echo measurements, say so plainly.
