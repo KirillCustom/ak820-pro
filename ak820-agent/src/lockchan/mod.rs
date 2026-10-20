@@ -13,6 +13,8 @@
 //! `0x02`, Scroll `0x04`). Every write keeps its Caps, and the frame ends back
 //! on it.
 
+pub mod frame;
+
 /// Which LED bits carry data (the plan's "Profiles").
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Profile {
