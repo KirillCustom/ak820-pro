@@ -111,8 +111,14 @@ pub fn main() {
         bail(&opts.log, "--lockchan needs --interval of 5 s or less (the board's raw-HID lease is 10 s)", 2);
     }
 
-    if let Some(e) = instance::StopEvent::create() {
-        let _ = super::STOP.set(e);
+    // Without it there is no orderly stop, and --lockchan's promise to put
+    // the user's lights back on a stop could not be kept (codex, verify 2).
+    match instance::StopEvent::create() {
+        Ok(e) => {
+            let _ = super::STOP.set(e);
+        }
+        Err(e) if opts.lockchan => bail(&opts.log, &format!("not starting with --lockchan: {e}"), 2),
+        Err(e) => crate::logfile::Log::at(&opts.log).line(&format!("[warn] {e}: install and uninstall will end the task outright")),
     }
 
     // Ownership is enforced, not intended: one of us, and not the Python

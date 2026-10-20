@@ -664,6 +664,11 @@ pub fn spawn<P: Platform + Send + 'static>(platform: P) -> Result<Handle, String
             loop {
                 let next = core.step(&theirs, &time);
                 let s = theirs.0.slot.lock().unwrap_or_else(|e| e.into_inner());
+                // A stop that came between the step and this lock: step again
+                // at once, which exits (codex, verify 2).
+                if s.stop && next != Next::Exit {
+                    continue;
+                }
                 match next {
                     Next::Exit => break,
                     Next::Wait => {

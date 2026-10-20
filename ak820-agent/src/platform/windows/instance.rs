@@ -105,10 +105,12 @@ fn global(name: &str) -> Vec<u16> {
 
 impl StopEvent {
     /// The daemon's side: create it, not signalled.
-    pub fn create() -> Option<StopEvent> {
+    pub fn create() -> Result<StopEvent, String> {
         use windows::Win32::System::Threading::CreateEventW;
         let wide = global(STOP);
-        unsafe { CreateEventW(None, true, false, PCWSTR(wide.as_ptr())) }.ok().map(StopEvent)
+        unsafe { CreateEventW(None, true, false, PCWSTR(wide.as_ptr())) }
+            .map(StopEvent)
+            .map_err(|e| format!("creating the stop event: {e}"))
     }
 
     pub fn requested(&self) -> bool {
