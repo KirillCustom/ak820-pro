@@ -436,3 +436,153 @@ acknowledgement path before any error correction.
 **Codex's estimates** (warm link, calculated, not measured): a 30-character
 text in ~3.3 s on the three-light profile, ~2.7 s on four lights with
 checkpoints; ~0.4 s more for the quiet interval and a cold-link wake.
+
+## The daemon's sender: design (Gremlin, 10-20, for codex)
+
+Resume item 4, briefed by JD through the Mac session 10-20: the shared half
+(encoder, payload, policy) and the Windows sender are Gremlin's; the macOS
+sender (P3 through `IOHIDDeviceSetReport`, `hostagent/ledprobe/`) and the Caps
+check (item 3) are the Mac's, after its deep-sleep series.
+
+**What decides it, measured** (`GREMLIN-RESULTS.md` sections 3 and 8):
+Windows reaches the board with `IOCTL_KEYBOARD_SET_INDICATORS` on the
+keyboard-class interface over **both** radios (the dongle's `MI_00`, the BLE
+keyboard's `Col01`), P0 only, 6/6 frames at 10 ms a change and the cliff at
+6-7 ms on both. Over 2.4G the daemon already carries now-playing on raw HID
+(`radio.rs`), so on Windows the channel is for **BT only**; on the Mac, BT
+only as well.
+
+### 1. What a frame carries: a firmware change is needed
+
+The receiver decodes and counts frames; **nothing on the board shows them**
+(the wire format's "Not yet"). So the sender is half the job: the board must
+act on a committed frame, which is a firmware change (a handler beside
+`lockchan_feed`'s commit in `ch582f_ajazz.c`, calling the same display entry
+points as the raw-HID text channel). Proposed contract, version 0's `type`
+field:
+
+- **Type 1, now playing:** `[icon][n0][line 0: n0 bytes][line 1: the rest]`.
+  The lines are what the raw-HID `SET_LINE`s carry (already folded to ASCII
+  and fitted, 19 + 21 at most), so 1 + 1 + 40 = 42 bytes at most, inside the
+  48. The board applies both lines as one update. `icon`'s bit 7 flags 5
+  trailing bytes of playback `[state, pos_hi, pos_lo, dur_hi, dur_lo]` (47
+  bytes at most), position taken at the preamble's last write and advanced
+  by the board's own anchor-to-commit time, so a 3 s frame does not show the
+  time 3 s behind. Reserved in v1 (section 4, the readout).
+- **Type 2, clear:** no payload; the band back to the clock (`CLEAR`).
+- Text stays 7-bit ASCII, unpacked (the wire format's "Text stays 7-bit");
+  packing is a later saving of ~12%.
+- **Only while the radio is the host and the cable is not**: the board feeds
+  the receiver only outside USB mode already.
+
+The firmware half is small (a switch on `type`, bounds checks, the display
+calls) but it touches the display's entry points, so it is coordinated with
+the Mac session and goes through codex with the sender.
+
+### 2. The encoder (`src/lockchan/`)
+
+A port of `scripts/lockchan.py`: profiles, CRC-8/CRC-16, blocks, `writes()`,
+`encode()`. **Parity is generated, as the text folding is**: a script
+(`scripts/gen_lockchan_vectors.py`) runs the Python encoder over fixed seeds
+(every profile, payload lengths 0-48, every type and a spread of seqs, user
+lock states with Caps on and off) and writes `tests/lockchan_parity.rs`; the
+Rust must reproduce every write sequence byte for byte. Python stays the
+oracle: `lockchan_test.py` already proves it against the C receiver.
+
+### 3. The platform trait
+
+```rust
+pub trait LockLights {
+    /// Windows P0; macOS P3.
+    fn profile(&self) -> Profile;
+    /// Windows 16 ms; macOS: zero (each write blocks until its completion).
+    fn spacing(&self) -> Duration;
+    /// The user's real Num/Caps/Scroll as HID bits, read fresh.
+    fn user(&self) -> u8;
+    /// One LED byte to the board; returns once the platform has accepted it.
+    fn write(&mut self, leds: u8) -> Result<(), LockError>;
+    /// How long since the last user input on this machine, if knowable
+    /// (Windows `GetLastInputInfo`), for the wake resend.
+    fn input_idle(&self) -> Option<Duration>;
+}
+```
+
+Opening is the platform's (Windows: the Configuration Manager's
+`GUID_DEVINTERFACE_KEYBOARD` list, device id
+`{00001812-...}_dev_vid&010c45_pid&fefe_...&col01`, access 0; never HID
+enumeration; absent means no channel). A handle error closes it; the next
+frame reopens.
+
+### 4. The sender (`src/lockchan/sender.rs`, platform-neutral)
+
+**A thread of its own.** A frame is 2.5-4.5 s of writes at 16 ms; the
+daemon's loop must not wait on it. The loop hands the sender the **latest
+content** (a slot it overwrites: coalescing by construction); the sender
+takes whatever is newest when a frame starts and never queues.
+
+**One frame, in order:**
+1. **Warm-up wait:** more than the receiver's 500 ms gap plus 100 ms margin
+   since the previous write's **completion**, idle time already past
+   counting (codex 2i, note 3). Then the warm-up, one change and back
+   (Windows: Num, as `ledchannel_test.py` does), then the 150 ms quiet plus
+   150 ms margin.
+2. **The writes,** spaced by `spacing()` measured from each write's
+   completion, never from its start.
+3. **Before each write, the user's locks again.** Any change of Num, Caps or
+   Scroll from the frame's baseline (the user pressed one, or another
+   keyboard did) abandons the frame: no more writes. Windows sends its own
+   LED report for the user's press, so the board is left on the user's real
+   state. The receiver aborts on Caps and fails the CRC on the rest; it
+   never commits wrong (none in 60 frames measured, including 28 broken at
+   too-close spacing).
+4. **The trailer** returns the lights to the user's baseline (the encoder's).
+5. A write error abandons the frame and closes the handle.
+
+**The policy (when a frame goes):**
+- **On change** of what the panel should show (`text_differs`, the icon
+  included), at once, and **once more 2 s after it completes** (codex row
+  12; losses come in bursts, so spaced).
+- **A refresh every 60 s** while something is shown, which keeps the board's
+  3 min text expiry from lapsing on its own. **The longest a stale title can
+  stay on the board: one refresh period plus one frame, ~65 s**, if every
+  frame in between is lost. Without loss: one frame, ~3-5 s after the change.
+- **The playback readout is off over BT in v1.** The board's readout expires
+  after 20 s; keeping it alive would take a frame every ~15 s (the channel
+  ~30% busy) for a timer that is coarse anyway. Type 1 goes without the
+  playback bit; the band keeps the clock. Revisit after a soak.
+- **After a deep sleep:** frames sent while the board sleeps are lost
+  (UART2's receiver is off), and the wake expires host content (`display.c`,
+  "A deep sleep's wake"), so the board shows the clock, never a stale title.
+  The resend: when this machine's input goes from idle (more than 30 s, the
+  shortest rung, Lights out's) to active, send the current content at once.
+  `GetLastInputInfo` is system-wide (any keyboard, any mouse), a proxy for
+  "the board just woke", and a wrong guess costs one frame. The 60 s refresh
+  bounds the miss when it fails (a board woken by a key that goes nowhere).
+- **Nothing to show:** one type 2 on the change, and its 2 s repeat, then
+  silence.
+- **The cable and 2.4G:** the channel runs only when the daemon's USB opener
+  says Absent **and** the radio is not qualified, so no two transports carry
+  the same content at once. Wiring that into `agent.rs`'s transport choice
+  (USB, then radio, then lock lights) is announced to the Mac session first.
+
+### 5. Limits stated, not designed away
+
+- The read-then-write race on the user's locks (codex row 1): a press
+  between our read and our write is caught at the next read, one write
+  late; the frame fails its CRC, never commits wrong.
+- During a P0 frame Num and Scroll change on the board (not in Windows);
+  the board's Scroll indicator is held while a P0 frame is in progress
+  (`lockchan_holds_scroll`) and shows the settled state after. What Num's
+  flicker shows on the board, if anything, is a check for the soak.
+- `GetLastInputInfo` wakes are a guess (above).
+- No acknowledgement: the 2 s repeat and the refresh are the only recovery.
+
+### 6. Order of work
+
+1. Codex on this design, and the type 1 contract agreed with the Mac session.
+2. The encoder and its generated parity test.
+3. The sender and its policy, test-first on a fake `LockLights` and a fake
+   clock (the raw81 daemon's pattern).
+4. The Windows `LockLights`.
+5. The firmware's type 1/2 handler, codex, flash on Gremlin.
+6. Wiring into `agent.rs`, announced; a frame-level soak over BT on Gremlin.
