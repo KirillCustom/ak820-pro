@@ -8,6 +8,7 @@ bench is described in [test-bench.md](test-bench.md).
 
 **Where the numbers come from.** One keyboard (JD's), one pack (made
 2025-12), a room at 21-24 °C. Each figure is marked:
+
 - **measured**: on the bench, against a current logger wired into the pack's
   lead;
 - **modelled**: worked out from measured parts, but not yet checked as a
@@ -49,8 +50,8 @@ The rest of the short version:
   (measured once).
 - **A full charge takes 9-10 hours** (measured).
 
-⚠️ **The standby figures assume deep sleep works.** On the newest dev builds
-it does not over 2.4G ("Known issues", below).
+⚠️ **The standby figures assume deep sleep works.** On the pinned dev build
+`b2a07e0d37` it does not ("Known issues", below).
 
 ## The battery
 
@@ -92,6 +93,7 @@ turns out to be a linear voltmeter, good to ~10 mV against a meter.
 
 All at full white (value 255, saturation 0) with the screen at level 5 of 23,
 on Bluetooth, and with JD typing as usual:
+
 - **51.55 h** (09-28 to 10-01, run 1, in full-white equivalent):
   [`history/battery-2026-09-28-drain/`](../history/battery-2026-09-28-drain/).
 - **50.56 h**, then **5 h 01 min** of lights-off typing to the end (10-02 to
@@ -110,15 +112,15 @@ Untethered, the logged drain would have run ~51.5 h.
 Each figure is that state's measured draw over the measured 15,579 mWh, run to
 the RGB cut, with no USB data attached:
 
-| state | draw | per hour | runtime |
-|---|---|---|---|
-| Everything at max: full white, screen full, 2.4G | 340 mW | 2.2% | ~46 h |
-| Full white, screen at level 5 | 300 mW | 1.9% | ~52 h |
-| White at value 128 | 154 mW | 1.0% | ~4 days |
-| White at value 64 | 129 mW | 0.8% | ~5 days |
-| LEDs off, screen at level 5 | 111 mW | 0.7% | ~6 days |
-| Every light off, awake | 107 mW | 0.7% | ~6 days |
-| Asleep | 13.4 mW | 0.09% | ~49 days |
+| state                                            | draw    | per hour | runtime  |
+| ------------------------------------------------ | ------- | -------- | -------- |
+| Everything at max: full white, screen full, 2.4G | 340 mW  | 2.2%     | ~46 h    |
+| Full white, screen at level 5                    | 300 mW  | 1.9%     | ~52 h    |
+| White at value 128                               | 154 mW  | 1.0%     | ~4 days  |
+| White at value 64                                | 129 mW  | 0.8%     | ~5 days  |
+| LEDs off, screen at level 5                      | 111 mW  | 0.7%     | ~6 days  |
+| Every light off, awake                           | 107 mW  | 0.7%     | ~6 days  |
+| Asleep                                           | 13.4 mW | 0.09%    | ~49 days |
 
 "Everything at max" adds 2.4G's ~5 mW, which is one reading of the board with
 its lights off ("Where the power goes", below). 2.4G with the lights on has
@@ -131,6 +133,7 @@ hours).** The minutes the board spends dimming before each sleep add well
 under 1% a day.
 
 The office worst case, 8 h of nonstop typing a day and asleep the other 16:
+
 - **full white, screen dim:** ~16.8% a day, **~6 days**. A five-day week plus
   a weekend asleep uses ~88%: a charge a week;
 - **everything at max:** ~18.8% a day, ~5.3 days;
@@ -144,6 +147,7 @@ The office worst case, 8 h of nonstop typing a day and asleep the other 16:
 From two days of JD's logged typing (10-15 to 10-18: a key in 11.5% of the
 5-minute intervals, about 2¾ h a day; six of the nine idle stretches lasted
 2 h or more), at full white with the screen at level 5:
+
 - **Always on:** ~300 mW on average, ~2.2 days.
 - **Balanced** (the default): ~49 mW, **~13 days**.
 - **Power saver:** ~47 mW, ~14 days.
@@ -222,6 +226,7 @@ mW**: 189 mW at drive 255, 43 at 48 (value 128), 17 at 12 (value 64).
 
 **A worked example:** white at value 128, the screen at level 8, the default
 mode, 4 h of typing a day:
+
 - **awake:** 106.9 + 6.5 (backlight, 8 of 48) + 42.7 (LEDs) = 156 mW, × 4 h
   = 624 mWh;
 - **the ladder before each sleep,** say three a day: ~7 min at ~125 mW each,
@@ -234,12 +239,12 @@ mode, 4 h of typing a day:
 `Fn`+`B` cycles four modes, shown on battery as a bulb on the battery row.
 They apply on battery only; on USB the board stays fully on.
 
-| | Always on | Balanced | Power saver | Lights out |
-|---|---|---|---|---|
-| LEDs dimmed (value capped at 64) | never | 1 min idle | 30 s | -- |
-| LEDs off, screen capped at level 4 | never | 5 min | 2 min | always |
-| screen backlight off | never | 7 min | 3 min | always |
-| deep sleep | never | 7 min | 3 min | 30 s |
+|                                    | Always on | Balanced   | Power saver | Lights out |
+| ---------------------------------- | --------- | ---------- | ----------- | ---------- |
+| LEDs dimmed (value capped at 64)   | never     | 1 min idle | 30 s        | --         |
+| LEDs off, screen capped at level 4 | never     | 5 min      | 2 min       | always     |
+| screen backlight off               | never     | 7 min      | 3 min       | always     |
+| deep sleep                         | never     | 7 min      | 3 min       | 30 s       |
 
 - **Balanced is the default.**
 - **Below 15%, the lighting follows Power saver's stages in every mode**
@@ -320,10 +325,16 @@ and the power modes", and [hardware.md](hardware.md), "Deep sleep".
 
 ## Known issues
 
-- ⚠️ **Deep sleep over 2.4G fails on the newest dev builds** (`b2a07e0d37`,
-  found 10-20). Each sleep ends after about a second, and the board sleeps
-  again ~3 s later, so idle draw would be ~75 mW rather than ~13 (an
-  estimate). At JD's use that roughly halves Balanced's runtime.
+- ⚠️ **Deep sleep fails on the pinned dev build `b2a07e0d37`** (found
+  10-20). Each sleep ends after about a second, and the board sleeps again
+  ~3 s later, so idle draw would be ~75 mW rather than ~13 (an estimate). At
+  JD's use that roughly halves Balanced's runtime.
+  - **It follows where the code sits in flash, not the radio.** The same
+    code moved (`981631b925`, and the diagnostic builds since) sleeps
+    normally over 2.4G. It was found over 2.4G; BT was not tried on that
+    build.
+  - **Until the cause is known, any rebuild can land on a failing layout,**
+    so each build's sleep has to be checked.
   - It is being chased in
     [`plans/DEEP-SLEEP-REGRESSION-2026-10-20.md`](../plans/DEEP-SLEEP-REGRESSION-2026-10-20.md).
   - The sleep figures in this document come from the builds before it
@@ -362,6 +373,7 @@ one way only, so charging work stays on the INA228.
 
   Which one dominates decides the next step for long absences, for example
   dropping the link overnight (a guessed 0.1-3 mA).
+
 - **The radio's other states.** Only "linked and idle" is measured, not:
   - advertising;
   - reconnecting;
@@ -448,6 +460,7 @@ one way only, so charging work stays on the INA228.
     restored after.
 
   The two passes agree within 0.03-0.6 mA.
+
 - **The maps:**
   - **the first map, R1, 10-15:** ten states;
     [`history/power-bench-2026-10-15/current-map-20261015-2210/`](../history/power-bench-2026-10-15/current-map-20261015-2210/README.md);
@@ -469,6 +482,7 @@ one way only, so charging work stays on the INA228.
   - then the relay on and a charge to full.
 
   The guard restores power if the trial stops making progress.
+
 - **The drains before 10-15 had no logger.** The board's own readings timed
   each cut, and run 2's end was timed from a phone's time-lapse of the
   screen.
