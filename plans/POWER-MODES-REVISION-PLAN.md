@@ -502,14 +502,17 @@ Also later:
 ## Implementation (10-20)
 
 On two branches, both named `power-modes-revision`, built in worktrees so
-the main clone's checkout is untouched:
-- **Firmware: `0e322097f4`** on `ak820pro-jdlien` at `8b06e4dcc4` (the deep
-  sleep's fix had landed, so no rebase). `power.c`, `power.h`,
-  `rgb_matrix_kb.inc`. Dev, daily and fpb compile with no warnings.
-- **Host side: `b0c2ee3`** on this repo. It is not on `main` because
-  `run.sh` runs against the main clone's `power.c`, the one on the board, and
-  the new ladder cases fail there until the firmware merges. Both merge
-  together.
+the main clone's checkout is untouched (neither pushed):
+- **Firmware: `0e322097f4`, then `5df4e0e3b7`** (comments only, codex's
+  review) on `ak820pro-jdlien` at `8b06e4dcc4` (the deep sleep's fix had
+  landed, so no rebase). `power.c`, `power.h`, `rgb_matrix_kb.inc`,
+  `rules.mk`'s comment. Dev, daily and fpb compile with no warnings, and the
+  dev build's `ds_deep_wfi` is in SRAM (`0x200014ec`).
+- **Host side: `c89e06b`, `67ae9e8` (the docs) and `dbc33d6` (codex's
+  fixes)** on this repo, rebased onto `main` at `37ac5ca`. It is not on
+  `main` because `run.sh` runs against the main clone's `power.c`, the one on
+  the board, and the new ladder cases fail there until the firmware merges.
+  Both merge together.
 
 What it holds, against the plan:
 - **The simulator:**
@@ -545,8 +548,83 @@ What it holds, against the plan:
   - **`ladder_check.py` sets Always on for its stage pass.** A held ACTIVE
     now takes the mode's ceiling, so a Saver left set would cap it.
 
-Next: codex's implementation review (validation 2), then the documentation
-on the host branch, then validation 3 on the board once the bench is free.
+### Codex's implementation review (10-20) and what changed
+
+Verbatim: [`review-codex-power-modes-impl-2026-10-20.md`](review-codex-power-modes-impl-2026-10-20.md),
+prompt [`review-prompt-power-modes-impl.txt`](review-prompt-power-modes-impl.txt).
+Its verdict: the firmware is correct, DRIFT's option (c) included, with no
+change to `0e322097f4` needed. Fix the colour harness before the flash, and
+the bench scripts before accepting validation 4.
+
+1. **Must-fix: `colour.c`'s `scale8` was not the board's.** QMK builds
+   lib8tion with `FASTLED_SCALE8_FIXED=1`, so the board scales by `i × (1 + s)
+   >> 8`. **Fixed** (`dbc33d6`); everything passes with it.
+2. **Must-fix: `ladder_check.py` passed on all-zero readings.** **Fixed:** a
+   reference must read lit (at least 20 ‰ at value 255, 2 at 100, white at
+   128 at least 100). It ends INCOMPLETE (exit 2) without `--rig`, since the
+   Heatmap is then not judged. A mocked all-zero board now fails 25 rows.
+3. **Must-fix: the clean-ups could skip steps.** **Fixed in both scripts:**
+   each step runs on its own, a failed one exits 1, and the stage held at the
+   start is put back, not released.
+4. **Must-fix: `current_map.py` never checked what it measured.** **Fixed:**
+   - op 14 is read at each hold's start and end, and a mode, stage or ceiling
+     other than the one meant stops the run;
+   - the level is checked at every hold, and must be known for the stage map;
+   - opens are retried.
+5. **Should-fix: the samples could repeat one second, and short windows of an
+   animation are not comparable.** **Fixed:**
+   - samples 1.2 s apart;
+   - every effect at speed 255, so a cycle completes within a sample;
+   - the stage pass's fixed 20% documented as such.
+6. **Should-fix: the colour build declared its own `rgb_t`/`hsv_t`.**
+   **Fixed:** it takes QMK's `color.h` on both sides of the call.
+7. **Should-fix: no independent baseline for USB, no warm cache, no chunks.**
+   **Fixed:**
+   - `k_drift_usb` hashes DRIFT on USB across three speeds and warm-cache
+     changes against `8b06e4dcc4`'s own DRIFT, which `run.sh` rebuilds to
+     check the constant;
+   - a warm-cache stream with the ceiling, hue, saturation and value moving;
+   - the board's 81 LEDs in QMK's 5 chunks;
+   - the transitions it named (Saver's held ACTIVE released on USB, the low
+     cap on a held ACTIVE in Lights out, `Fn`+`B` under the lights cut);
+   - the dev-hooks scenarios under the sanitizers;
+   - a ninth mutant (DRIFT's cache blind to hue), caught by `k_drift_usb`.
+   The LED positions stay a synthetic grid, and the docs no longer claim
+   board-frame coverage.
+8. **Notes, agreed:** the desired/applied split, the ordering with the lights
+   cut, the consumers (sleep, op 14, the bulb, the energy count), and
+   applying 128 to a held ACTIVE in Lights out.
+9. **Should-fix: comments.**
+   - **Fixed** (`5df4e0e3b7`, `dbc33d6`): `power.h`'s dim (a ceiling at 64),
+     DRIFT's half saving, "the MCU never slept", `ladder.c`'s op 14 sub 1.
+   - **Already done:** the documentation it listed as open was on the branch
+     (`67ae9e8`) after the commit it read.
+
+**Results after the fixes:** `run.sh` passes against `5df4e0e3b7`, and the
+mutants are 26 of 27 caught (all 9 new ones, plus the known survivor).
+
+### What is left, handed over (10-20)
+
+JD gave the go to build and flash, and asked for the rest to be handed to
+the bench session (`ak820-pro-32`). The board checks are cut to what
+matters:
+1. **Merge order:**
+   - the firmware branch into `ak820pro-jdlien` (a fast-forward from
+     `8b06e4dcc4`);
+   - the provenance `./build.sh dev` in the main clone;
+   - the flash;
+   - then `deps.lock` and the host branch into `main`.
+
+   `run.sh` and `ladder_check.py` need the host branch, whose scripts look
+   for the venv at the repo root.
+2. **Validation 3:** `deep_cycles.py --n 20` on BT and `--n 10` on 2.4G on the
+   exact artifact, relay 2 checked on first.
+3. **One `ladder_check.py --rig`.**
+4. **Not run:** the stage map and the per-mode real-time sleeps. R5 measures
+   the timings in use.
+5. **Then:** CLAUDE.md's state block, `current-status.md`, `battery.md`'s
+   state note with the flash, and the lock-LED handler (`1261ab2fa8`'s)
+   rebased onto the revision if it is to stay on the board.
 
 ## Codex's review (10-20) and what changed
 
