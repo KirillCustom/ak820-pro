@@ -1,0 +1,17 @@
+You are reviewing a small firmware delta before it is flashed (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2). Read only files inside the repository you were started in (the ak820-pro checkout); do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
+
+The board runs 7387d189 (raw HID over the 2.4G dongle, stage 1: the 81 collector and the 91 echo, dev builds only; your reviews: plans/review-codex-raw81-stage1-2026-10-19.md and its verify). Measured on the Mac's board (history/raw81-echo-20261019-mac/, the README's last section): every echo costs one main-loop pass of 13-15 ms, of which ch582_task's RX drain takes 8.1-8.8 ms for the 81's 34 bytes in one call. The delta is one commit, on branch gremlin/raw81:
+  git -C qmk_firmware-ak820pro diff 7387d189 4c5cb496
+Files: qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c, hid_protocol.c. Plan: plans/RAWHID-24G-PLAN.md.
+
+It (1) stops the drain after RAW81_DRAIN_MS (2) once a collection is in progress, so the rest of the 81 waits in the 128-byte input queue for later passes; (2) raises RAW81_LIFETIME_MS from 15 to 40 to span those passes; (3) records the last commit's duration and pass count and the most passes on op 17 page 1; (4) corrects a comment (the output queue is 128 bytes). The daily build is unchanged (no new symbols, the same text/data/bss as de5450e487's daily).
+
+Check, citing file:line:
+1. The silence rule under the new drain: RAW81_SILENCE_MS must be judged on the line, never on the drain's pace. Bytes still in the input queue must never count as silence (a long pass after a mid-collection break must not look like 5 ms of silence and split or end a frame or a quarantine wrongly). Trace every path.
+2. The drain bound: the ms timer's granularity (timer_read, 16-bit), the break's placement before the read, interaction with the 64-byte cap, with quarantine, with a collection that commits mid-drain (the rest of the drain continues with the window), and with ch582_tx_drain()'s recursion.
+3. The lifetime at 40 ms: does anything else (the silence rule, the false-start exposure, the reply's latency, the ACK window) depend on it being short? What is lost by aborting later?
+4. Input-queue headroom: a collection now leaves bytes queued across passes; can the 128-byte queue overflow under the module's traffic (an 81 burst, 5x frames, ACKs) at the main loop's real pass rate, and what then?
+5. The pass counter and timing fields: correctness, saturation, reset.
+6. Anything that could cost a keystroke or stall the main loop, or differ when no 81 arrives.
+
+Rank findings must-fix / should-fix / note; be brief. Say plainly whether anything blocks flashing this dev build.
