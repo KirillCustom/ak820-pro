@@ -74,11 +74,18 @@ def main():
     ap.add_argument("--timeout-ms", type=int, default=250)
     ap.add_argument("--seed", type=int, default=81)
     ap.add_argument("--json")
-    ap.add_argument("--no-board", action="store_true", help="skip the cable-side counters")
+    ap.add_argument("--no-board", action="store_true", help="leave the counters out of the report")
     a = ap.parse_args()
     rng = random.Random(a.seed)
 
-    before = None if a.no_board else board_counters()
+    # Always, --no-board or not: op 17 answering is the only check that the
+    # board runs stage 1. On an older build these random bodies would go
+    # through the 3-byte window alone, and a 5B or 5C with a matching sum
+    # inside one would act -- a link state, or a battery reading the gauge
+    # takes (the Mac session, 10-19).
+    before = board_counters()
+    if a.no_board:
+        before = None
     d = hid.Device(path=dongle_path("mi_03").encode())
     rtts, lost, stray, dup = [], 0, 0, 0
     try:
