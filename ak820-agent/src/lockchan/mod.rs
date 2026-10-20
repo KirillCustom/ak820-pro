@@ -15,6 +15,7 @@
 
 pub mod frame;
 pub mod policy;
+pub mod sender;
 
 /// Which LED bits carry data (the plan's "Profiles").
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
