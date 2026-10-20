@@ -456,5 +456,5 @@ disable until the build changes (the host cannot see a build change over the
 radio; a USB presence clears it); the first cable-out push can take up to two
 media ticks (the quiet, then the probe and text).
 
-Live again after the fixes (23:52 10-20, `--radio-only`): the lock, the quiet,
+Live again after the fixes (23:52 10-19, `--radio-only`): the lock, the quiet,
 qualified 3 s later, `radio_qualified=yes`, no failures.
