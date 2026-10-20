@@ -38,6 +38,10 @@ pub fn main() -> ExitCode {
         ["clock", flags @ ..] => clock(flags),
         ["install", flags @ ..] => install(flags),
         ["uninstall"] => uninstall(),
+        // Development: one lock-LED frame to the board over BLE (the one
+        // command that writes, and only the keyboard's LED report).
+        ["lockchan", "send", artist, title] => lockchan_send(artist, title),
+        ["lockchan", "clear"] => lockchan_send("", ""),
         ["status"] => status(),
         ["--version"] | ["version"] => {
             println!("{}", crate::version_line("ak820"));
@@ -1103,4 +1107,50 @@ mod install_tests {
         assert_eq!(task_arguments(log, false, true), "--log \"L.log\" --radio");
         assert_eq!(task_arguments(log, true, true), "--log \"L.log\" --clock --radio");
     }
+}
+
+/// One lock-LED frame over BLE, through the daemon's own executor: the
+/// development check of the Windows route before the sender thread exists.
+/// Empty artist and title send CLEAR.
+fn lockchan_send(artist: &str, title: &str) -> Result<(), String> {
+    use crate::lockchan::frame::{self, Abort, Control, Line, Payload, Time};
+    use std::time::Instant;
+
+    struct Wall;
+    impl Time for Wall {
+        fn now(&self) -> Instant {
+            Instant::now()
+        }
+        fn sleep_until(&self, t: Instant) -> bool {
+            std::thread::sleep(t.saturating_duration_since(Instant::now()));
+            true
+        }
+    }
+    struct Never;
+    impl Control for Never {
+        fn abort(&self) -> Option<Abort> {
+            None
+        }
+    }
+
+    let snapshot = crate::smtc::Snapshot {
+        artist: artist.into(),
+        title: title.into(),
+        icon: if title.is_empty() { crate::text::Icon::None } else { crate::text::Icon::Play },
+        ..Default::default()
+    };
+    let (kind, bytes) = crate::lockchan::content(&snapshot);
+    let mut lights = super::lock_lights::BleLights::open()?
+        .ok_or("the board's BLE keyboard is not listed (paired and connected?)")?;
+    let mut line = Line::default();
+    let t0 = Instant::now();
+    let out = frame::run(&mut lights, &Wall, &Never, &mut line, || Some(Payload { kind, seq: 0, bytes: bytes.clone() }));
+    println!(
+        "type {kind}, {} payload bytes: {out:?}, {} writes in {:.2} s{}",
+        bytes.len(),
+        line.writes,
+        t0.elapsed().as_secs_f64(),
+        if line.restore_pending { " (restore pending)" } else { "" }
+    );
+    Ok(())
 }

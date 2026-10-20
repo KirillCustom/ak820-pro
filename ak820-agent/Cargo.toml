@@ -52,6 +52,9 @@ features = [
     "Win32_System_Diagnostics_ToolHelp",         # process snapshot: wait for ak820ctl.exe to exit, no HID involved
     "Win32_System_LibraryLoader",                # tests: msvcrt.dll!_localtime64, the oracle CRT, by LoadLibrary
     "Win32_System_Time",                         # FileTimeToSystemTime + SystemTimeToTzSpecificLocalTime: the clock's localtime()
+    "Win32_UI_Input_KeyboardAndMouse",           # the lock-LED channel: GetKeyState, GetLastInputInfo
+    "Win32_System_RemoteDesktop",                # the lock-LED channel: the session active and unlocked (R4-1)
+    "Win32_System_StationsAndDesktops",          # the lock-LED channel: the input desktop is the thread's (R4-1)
     # WinRT, for the media half (phase 1).
     "Media_Control",
     "Foundation",
