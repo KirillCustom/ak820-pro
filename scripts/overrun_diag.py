@@ -60,7 +60,7 @@ def kinds(h):
                     "max_whole_ms": ms(U16(b, 8)), "spans_ge_1ms": U32(b, 10), "spans_ge_1_4ms": U32(b, 14),
                     "spans": U32(b, 18)})
     b = op(h, 22, [0xFF])
-    return out, {"ctx_sleep": U16(b, 0), "tick_hz": U32(b, 2)}
+    return out, {"ctx_sleep": U16(b, 0), "tick_hz": U32(b, 2), "now_secs": U32(b, 6)}
 
 
 def ring(h, seq):
@@ -69,7 +69,7 @@ def ring(h, seq):
         b = op(h, 21, [page])
         for j in range(2):
             e = b[14 * j:14 * j + 14]
-            slots[2 * page + j] = {"seq": U16(e, 0), "ms": U32(e, 2), "act": e[6], "kind": e[7] & 3,
+            slots[2 * page + j] = {"seq": U16(e, 0), "secs": U32(e, 2), "act": e[6], "kind": e[7] & 3,
                                    "in_drain": bool(e[7] & 0x40), "byte_mode": bool(e[7] & 0x80),
                                    "span_ms": ms(U16(e, 8)), "usb_max_ms": ms(U16(e, 10)),
                                    "st_max_ms": ms(U16(e, 12))}
@@ -116,8 +116,9 @@ def show(d):
     b = d["burst"]
     print(f"  burst: {'active, ' if b['active'] else ''}{b['done']} done, {b['failed']} failed, {b['left']} left, "
           f"{b['skipped']} skipped passes, {b['exposure_ms']} ms first to last ({b['lo']}-{b['hi']} ms gaps)")
+    now = d["sleep"]["now_secs"]
     for e in d["ring"]:
-        print(f"  OE #{e['seq']} at {e['ms']} ms: act {e['act']:#x} kind {e['kind']}{' drain' if e['in_drain'] else ''}"
+        print(f"  OE #{e['seq']} {now - e['secs']} s ago (board second {e['secs']}): act {e['act']:#x} kind {e['kind']}{' drain' if e['in_drain'] else ''}"
               f"{' byte' if e['byte_mode'] else ''}; last span {e['span_ms']} ms, USB {e['usb_max_ms']}, "
               f"timer {e['st_max_ms']}")
     for w in d["wakes"]:
