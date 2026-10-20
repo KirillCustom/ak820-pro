@@ -70,6 +70,9 @@ pub struct Status {
     pub retries: u64,
     pub last_sent: Option<Instant>,
     pub last_error: Option<String>,
+    /// Lines for the daemon's log, one per change frame sent (not refreshes
+    /// or repeats), drained by [`Handle::take_log`].
+    pub log: Vec<String>,
     pub restore_pending: bool,
     pub writes: u64,
 }
@@ -213,6 +216,11 @@ impl Handle {
     pub fn granted(&self) -> bool {
         self.with(|s| s.granted)
     }
+
+    /// The change frames sent since the last call, for the daemon's log.
+    pub fn take_log(&self) -> Vec<String> {
+        self.with(|s| std::mem::take(&mut s.status.log))
+    }
 }
 
 impl Default for Handle {
@@ -269,6 +277,30 @@ fn current_of(slot: &Slot, now: Instant) -> (Option<(Media, Instant)>, Option<In
     }
 }
 
+/// A change frame for the log: the title's lines, or the transport's icon and
+/// readout.
+fn describe(payload: &Content, m: &Media) -> String {
+    let mmss = |s: u32| format!("{}:{:02}", s / 60, s % 60);
+    match payload.0 {
+        super::TYPE_CLEAR => "lockchan: sent clear".into(),
+        super::TYPE_NOW_PLAYING if payload.1.len() >= 2 => {
+            let n0 = payload.1[1] as usize;
+            let l0 = String::from_utf8_lossy(&payload.1[2..2 + n0.min(payload.1.len() - 2)]);
+            let l1 = String::from_utf8_lossy(&payload.1[(2 + n0).min(payload.1.len())..]);
+            format!("lockchan: sent title {} - {}", l0, l1)
+        }
+        super::TYPE_TRANSPORT if payload.1.len() == 6 => {
+            let pos = u16::from_be_bytes([payload.1[2], payload.1[3]]) as u32;
+            let dur = u16::from_be_bytes([payload.1[4], payload.1[5]]) as u32;
+            match m.pb {
+                Some(_) => format!("lockchan: sent transport {} {}/{}", m.icon.name(), mmss(pos), mmss(dur)),
+                None => format!("lockchan: sent transport {} (no readout)", m.icon.name()),
+            }
+        }
+        k => format!("lockchan: sent type {k}"),
+    }
+}
+
 /// Which frame a step sends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
@@ -317,6 +349,8 @@ pub struct Core<P: Platform> {
     sent_pos: Option<(u32, Instant)>,
     /// Bumped on every seek detected between frames.
     seek_rev: u32,
+    /// The generation of each kind last logged: a change frame logs once.
+    logged: [Option<u64>; 2],
     line: Line,
     next_open: Option<Instant>,
     armed: Option<u32>,
@@ -381,6 +415,7 @@ impl<P: Platform> Core<P> {
             text_sent: None,
             sent_pos: None,
             seek_rev: 0,
+            logged: [None, None],
             line: Line::default(),
             next_open: None,
             armed: None,
@@ -642,6 +677,7 @@ impl<P: Platform> Core<P> {
         // epochs and identity are what the frame then guards (R4-5; review,
         // 10; verify, 3). A transport frame is also cut by a text change.
         let picked: Cell<Option<Picked>> = Cell::new(None);
+        let described: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
         let new_rev = Cell::new(self.seek_rev);
         let out = {
             struct Picking<'a, T: Time> {
@@ -714,6 +750,7 @@ impl<P: Platform> Core<P> {
                     }
                 };
                 picked.set(Some(Picked { gen, text_epoch: te, tr_epoch: re, id: id_hash(&id), pos, at }));
+                *described.borrow_mut() = describe(&payload, &m);
                 Some(Payload { kind: payload.0, seq, bytes: payload.1 })
             })
         };
@@ -761,9 +798,15 @@ impl<P: Platform> Core<P> {
                     }
                     Kind::Transport => {}
                 }
+                let slot = if kind == Kind::Text { 0 } else { 1 };
+                let line = (self.logged[slot] != Some(gen)).then(|| described.borrow().clone());
+                self.logged[slot] = Some(gen);
                 self.publish(h, |st| {
                     st.frames += 1;
                     st.last_sent = Some(done);
+                    if let Some(l) = line {
+                        st.log.push(l);
+                    }
                 });
             }
             Outcome::Sent => {}

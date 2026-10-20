@@ -531,6 +531,9 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
             // After every stand-down, so the file says what is so now.
             st.radio = radio.as_ref().map(|r| r.status.clone());
             st.lockchan = lockchan.as_ref().map(|lc| {
+                for line in lc.take_log() {
+                    log.line(&line);
+                }
                 let s = lc.status();
                 crate::status::LockchanStatus {
                     state: if s.state.is_empty() { "off".into() } else { s.state.into() },
