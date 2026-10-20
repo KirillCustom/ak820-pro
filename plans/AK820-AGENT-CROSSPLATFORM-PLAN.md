@@ -11,7 +11,10 @@ checks still owed; S1b's live half and 5b are open. Each row in
 [Phases](#phases-with-gates-that-can-actually-fail) names what it owes.
 **Phase 6 stops before Apple:** `scripts/package-macos.sh` (`e77cd15`) builds
 and signs a `.dmg`, but nothing is notarized, tagged or published; the
-Releases hold only the Windows v0.1.0/v0.1.1. The helper is vendored in `ak820-agent/helper/` (`f5121e5`), and
+Releases hold only the Windows v0.1.0/v0.1.1. **Decided 10-20:** Phase 6
+goes ahead later, from a separate repo for the agent, with a notarized Mac
+release and a signed Windows build ([`BACKLOG.md`](BACKLOG.md), "The agent
+in its own repo"). The helper is vendored in `ak820-agent/helper/` (`f5121e5`), and
 the per-exchange memory growth found afterwards is fixed (`bf7b7f3`,
 [`AK820-AGENT-MACOS-LEAK-PLAN.md`](AK820-AGENT-MACOS-LEAK-PLAN.md)). Audits:
 [Phase audits](#phase-audits).

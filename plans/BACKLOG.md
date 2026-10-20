@@ -22,6 +22,40 @@ The order agreed after the sleep experiments:
    - a final pass for anything personal (the public-repo rule: no family or
      household details).
 
+## The agent in its own repo: a notarized Mac release, a signed Windows build (2026-10-20) -- pending, for later
+
+JD is fine with moving `ak820-agent/` to a separate repository and
+releasing it properly from there:
+- **macOS:** notarized and stapled;
+- **Windows:** properly code-signed.
+
+He has everything this needs. Today Phase 6 stops before Apple
+([`AK820-AGENT-CROSSPLATFORM-PLAN.md`](AK820-AGENT-CROSSPLATFORM-PLAN.md)):
+the Mac `.dmg` is signed but not notarized, and the Windows zips (v0.1.0,
+v0.1.1) are unsigned. None of it is started:
+
+1. **The new repo,** with `ak820-agent/`'s history (a subtree split or
+   `git filter-repo`) and its release workflow moved over.
+   - **Its fixtures come from this repo,** so they move or are vendored:
+     `scripts/gen_ascii_fold.py` checks against `hostagent/ak820text.py`,
+     and `scripts/clock_oracle.c` is the pinned `ak820ctl.c`.
+   - **The vendored MediaRemote helper** (`ak820-agent/helper/`) moves with
+     it.
+2. **macOS, Phase 6:**
+   - `scripts/package-macos.sh`'s `.dmg` notarized and stapled, as the
+     plan's signing section lays out (after `../streamdeck-now-playing/build/`);
+   - `INSTALL-macos.txt` brought up to date.
+3. **Windows:**
+   - `ak820-agent.exe` and `ak820.exe` signed with a timestamp, in CI or
+     locally;
+   - `scripts/sandbox-6b.ps1`'s clean-install check run on the signed zip.
+4. **Releases from tags there.** This repo's README points at them, and the
+   firmware's artifacts stay released here.
+5. **Release defaults:**
+   - `--lockchan` only against firmware with the lock-LED handler: it is
+     dev-only today, on `mac/lockchan-pm`, not in a daily build;
+   - the Mac's `--radio` the same, for the 2.4G dongle's raw HID.
+
 ## Power mode icons and names: done (2026-10-19)
 
 The modes are renamed (Always on, Balanced, Power saver, Lights out), and on
