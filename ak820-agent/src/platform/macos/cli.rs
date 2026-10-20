@@ -21,7 +21,7 @@
 //!                            the RTC, as `ak820ctl clock --read` prints it; refuses beside a clock owner
 //! ak820 probe [--seconds N] [--applescript] [--dylib PATH]
 //!                            what MediaRemote reports; touches no keyboard at all
-//! ak820 install [--in-place] [--clock] [--radio] [--dylib PATH]
+//! ak820 install [--in-place] [--clock] [--radio] [--lockchan] [--dylib PATH]
 //!                            the daemon as a LaunchAgent; --clock retires the Python timekeeper (4b);
 //!                            --radio carries now-playing over the 2.4G dongle off USB
 //! ak820 uninstall [--keep-bash-off] [--keep-timekeeper-off]
@@ -61,7 +61,7 @@ pub fn main() -> ExitCode {
         ["lockchan", "send", artist, title] => lockchan_send(artist, title),
         ["lockchan", "clear"] => lockchan_send("", ""),
         _ => {
-            eprintln!("usage: ak820 --version | list | info | health [--crash] [--stalls] [--rows] [--isr] [--json] [--raw] | lighting | selftest | clock [--raw] [--anyway] | probe [--seconds N] [--applescript] [--dylib PATH] | install [--in-place] [--clock] [--radio] [--dylib PATH] | uninstall [--keep-bash-off] [--keep-timekeeper-off] | status | lockchan check | lockchan send ARTIST TITLE | lockchan clear");
+            eprintln!("usage: ak820 --version | list | info | health [--crash] [--stalls] [--rows] [--isr] [--json] [--raw] | lighting | selftest | clock [--raw] [--anyway] | probe [--seconds N] [--applescript] [--dylib PATH] | install [--in-place] [--clock] [--radio] [--lockchan] [--dylib PATH] | uninstall [--keep-bash-off] [--keep-timekeeper-off] | status | lockchan check | lockchan send ARTIST TITLE | lockchan clear");
             eprintln!("(install, uninstall and status change LaunchAgents and touch no board; lockchan send and clear write the board's LED report over BLE, a development check; every other command only reads the board)");
             return ExitCode::from(2);
         }

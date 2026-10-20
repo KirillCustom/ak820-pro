@@ -50,6 +50,7 @@ pub struct Definition<'a> {
     pub clock: bool,
     /// Now-playing over the 2.4G dongle while the board is not on USB.
     pub radio: bool,
+    pub lockchan: bool,
 }
 
 /// Does the installed plist run the daemon with `--clock`? Read from the file
@@ -98,7 +99,7 @@ pub fn plist(def: &Definition) -> String {
     <array>
         <string>{daemon}</string>
         <string>--log</string>
-        <string>{log}</string>{clock}{radio}
+        <string>{log}</string>{clock}{radio}{lockchan}
     </array>
 {env}
     <key>RunAtLoad</key>
@@ -129,6 +130,7 @@ pub fn plist(def: &Definition) -> String {
         stdio = path(def.stdio),
         clock = if def.clock { "\n        <string>--clock</string>" } else { "" },
         radio = if def.radio { "\n        <string>--radio</string>" } else { "" },
+        lockchan = if def.lockchan { "\n        <string>--lockchan</string>" } else { "" },
     )
 }
 
@@ -277,6 +279,7 @@ mod tests {
             dylib: None,
             clock: false,
             radio: false,
+            lockchan: false,
         });
         assert!(p.contains("<string>/Users/a&amp;b/bin/ak820-agent</string>"));
         assert!(!p.contains("EnvironmentVariables"));
@@ -291,6 +294,7 @@ mod tests {
             dylib: Some(Path::new("/y/nowplaying-mediaremote.dylib")),
             clock: true,
             radio: false,
+            lockchan: false,
         });
         assert!(plist_owns_clock(&p));
         assert!(p.contains("<string>/x/log</string>\n        <string>--clock</string>\n    </array>"));
@@ -307,6 +311,7 @@ mod tests {
             dylib: None,
             clock: true,
             radio: true,
+            lockchan: false,
         });
         assert!(p.contains("<string>--clock</string>\n        <string>--radio</string>\n    </array>"));
     }
@@ -325,11 +330,22 @@ mod tests {
                 dylib: Some(Path::new("/y/d.dylib")),
                 clock: true,
                 radio: true,
+                lockchan: false,
             }),
         )
         .unwrap();
         let ok = Command::new("/usr/bin/plutil").arg("-lint").arg(&path).status().unwrap().success();
         let _ = std::fs::remove_file(&path);
         assert!(ok);
+    }
+
+    #[test]
+    fn lockchan_reaches_the_daemon_only_when_asked() {
+        let d = std::path::Path::new("/x/ak820-agent");
+        let l = std::path::Path::new("/x/log");
+        let on = plist(&Definition { daemon: d, log: l, stdio: l, dylib: None, clock: false, radio: true, lockchan: true });
+        assert!(on.contains("<string>--radio</string>\n        <string>--lockchan</string>\n    </array>"));
+        let off = plist(&Definition { daemon: d, log: l, stdio: l, dylib: None, clock: false, radio: true, lockchan: false });
+        assert!(!off.contains("--lockchan"));
     }
 }

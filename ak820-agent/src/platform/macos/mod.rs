@@ -58,6 +58,12 @@ impl crate::platform::Platform for Native {
         device::open_radio()
     }
 
+    /// The lock-LED channel's sender, on a thread of its own: P3 over the
+    /// board's BLE keyboard (`lock_lights.rs`).
+    fn spawn_lockchan() -> Option<Result<crate::lockchan::sender::Handle, String>> {
+        Some(crate::lockchan::sender::spawn(lock_lights::Mac::default()))
+    }
+
     fn radio_lock() -> Result<Option<crate::platform::RadioGuard>, String> {
         radio_lock::try_take().map(|held| held.map(|l| Box::new(l) as crate::platform::RadioGuard))
     }

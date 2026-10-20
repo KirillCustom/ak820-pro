@@ -2,12 +2,15 @@
 //! (Phase 4b).
 //!
 //! ```text
-//! ak820-agent [--log PATH] [--status PATH] [--interval SECS] [--once] [--clock] [--radio]
+//! ak820-agent [--log PATH] [--status PATH] [--interval SECS] [--once] [--clock] [--radio] [--lockchan]
 //! ```
 //!
 //! `--radio` carries now-playing over the 2.4G dongle while the board is not
 //! on USB (`crate::radio`); `--radio-only`, for development, does so even
-//! with the cable in.
+//! with the cable in. `--lockchan` carries it over Bluetooth through the
+//! keyboard's lock lights while neither the cable nor the radio can
+//! (`crate::lockchan`, `lock_lights.rs`); it needs Input Monitoring, and an
+//! `--interval` of 5 s or less.
 //!
 //! ⚠️ **`--clock` is checked, not trusted**, as on Windows (the phase-3a/4a
 //! audit's finding 1): exactly one process may run clock transactions, or two
@@ -91,12 +94,19 @@ pub fn main() {
                 opts.radio_only = true;
                 i += 1;
             }
+            ("--lockchan", _) => {
+                opts.lockchan = true;
+                i += 1;
+            }
             (other, _) => bail(&opts.log, &format!("unknown argument {other:?}")),
         }
     }
 
     // After parsing, so a refusal lands in the log `--log` named, whatever the
     // argument order.
+    if opts.lockchan && opts.interval > agent::LOCKCHAN_MAX_INTERVAL {
+        bail(&opts.log, "--lockchan needs --interval of 5 s or less (the board's raw-HID lease is 10 s)");
+    }
     if opts.clock {
         if let Err(why) = clock_is_ours() {
             bail(&opts.log, &format!("not starting with --clock: {why}"));

@@ -261,6 +261,22 @@ func waitForAccess() {
 let args = Array(CommandLine.arguments.dropFirst())
 let mode = args.first ?? "check"
 Probe.note("start: \(mode) (pid \(getpid()))")
+
+// Every mode but `check` writes the board's LED report, so it takes the
+// lock-LED channel's owner lock first, the daemon's and `ak820 lockchan`'s
+// (`ak820-agent/src/platform/macos/radio_lock.rs`): a frame from here never
+// interleaves with theirs (codex, the macOS writer's review, P2 1). Held for
+// the life of the process; the kernel drops it at exit.
+var ownerLock: Int32 = -1
+if mode != "check" {
+    let path = "/Users/Shared/ak820pro/lockchan.lock"
+    try? FileManager.default.createDirectory(atPath: "/Users/Shared/ak820pro", withIntermediateDirectories: true)
+    ownerLock = open(path, O_RDONLY | O_CREAT, 0o666)
+    if ownerLock < 0 || flock(ownerLock, LOCK_EX | LOCK_NB) != 0 {
+        Probe.note("\(mode): another sender holds \(path) (the daemon's --lockchan, or ak820 lockchan); not writing")
+        exit(75)
+    }
+}
 waitForAccess()
 
 switch mode {
