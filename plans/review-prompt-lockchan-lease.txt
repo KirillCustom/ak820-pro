@@ -1,0 +1,7 @@
+Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md.
+
+A short verify of P2 1 in plans/review-codex-lockchan-playback-fixes-2026-10-20.md (read it): qmk_firmware-ak820pro, branch mac/lockchan-pm, commit 845996c39c on afc771237c (`git -C qmk_firmware-ak820pro show 845996c39c`). A type 3 is now admitted by display_text_lease_left() (the title's lease from text_stamp, not the cached text_present), and the readout's expiry is capped at the lease left. Artifact: ak820pro-builds/out/via-dev-845996c39c-20261020-170819.{bin,elf,json}, token 0x2e279a39.
+
+Check: the arithmetic and its boundary against draw_text_slot's own expiry (`>` there, `>=` here); whether playback can still outlive the title in any path (a type 1 renewing text while playback runs, raw HID's setter, display_sleep_wake, the expiry serviced late on both sides); that raw HID's 20 s lease is unchanged; and the manifest, token, ds_deep_wfi in SRAM and the RAM gap. P2 2 is Gremlin's sender and not in this commit.
+
+Findings ranked P1 (must fix before the attended dev bench flash), P2, P3, each with a failure scenario and fix, then a one-line verdict.

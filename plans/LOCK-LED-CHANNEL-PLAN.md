@@ -1130,6 +1130,21 @@ come before the playback sender is in daily use.
 | 3 | Every type 1 sent must leave a current type 3 owed (repeats, refreshes, wake and acquisition resends), since every type 1 turns playback off | **For the sender (Gremlin):** sent 10-20 |
 | 4 | P3: Fn+D's exit paints the cached position, then jumps | **To fix:** playback serviced before the clock band is painted |
 
+**The fixes** (`afc771237c` on `mac/lockchan-pm`, the power modes'
+`5df4e0e3b7` with the lock-LED commits cherry-picked on top; the same on
+`mac/lockchan-playback` as `4809d01ace`): the readout's state moves to
+`graphics/playback.c`, pure, with `scripts/playback_test.c` (codex's two
+media-key scenarios, a planted rebase and a missing deadline check each make
+it fail). Codex's verify ([verbatim](review-codex-lockchan-playback-fixes-2026-10-20.md))
+clears it for an attended bench flash and finds the power-mode combination
+sound:
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | A type 3 was admitted by the cached `text_present`, which only `draw_text_slot` expires, so a spent title could take a readout that outlived it | **Fixed** (`845996c39c`): admitted by `display_text_lease_left()`, from the stamp, and the readout's expiry capped at the lease left |
+| 2 | The sender checks "the current text was sent" before its warm-up, not at the transport's pick | **For Gremlin's sender:** sent 10-20 |
+| note | An icon guess's rollback bumps the text generation, which in Lights out lights the screen briefly | Accepted: a rollback is a correction worth showing |
+
 Its integration rules for the sender, also sent to Gremlin:
 - the position's own as-of instant: on the Mac it is the snapshot's
   creation, not `observed`;
