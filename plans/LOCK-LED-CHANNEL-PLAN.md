@@ -1022,3 +1022,35 @@ each frame's outcome, its slowest write, and the board's verdict.
   resend 2 s after a change and its 60 s refresh carry the rest. Left
   open: whether the Mac's other Bluetooth devices (a mouse, a trackpad,
   headphones) make the latency worse.
+
+### Codex on the implementation (10-20) and what changed
+
+[Verbatim](review-codex-lockchan-impl-2026-10-20.md), prompt
+[`review-prompt-lockchan-impl.txt`](review-prompt-lockchan-impl.txt), on
+`7bcc0ea`. Verdict: not for a soak as is; the encoder and the ordinary frame
+sound. Eight must-fixes, five should-fixes; **all agreed and done** (the
+tests bite on each: 39 lockchan unit tests, 708 parity cases).
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | `restore_pending` not serviced on its own: revoked, or after a final CLEAR, it could wait forever | **Fixed.** `Core::step` runs `frame::restore_only` every second while one is owed, granted or not; the lights and the lock stay until it confirms |
+| 2 | A failed write did not move the recovery clock | **Fixed.** A retired failure sets `last_completion` |
+| 3 | The abort and lock checks ran before the spacing wait, not right before submitting | **Fixed.** `Run::write` checks after the wait |
+| 4 | The radio revoked the lock lights only after its push; USB evidence from the clock or health only at the loop's next look | **Fixed.** `Radio::before_media` revokes before the first media request; `open_noting` revokes at once |
+| 5 | `raw_media_last` missed radio requests that failed or went unanswered | **Fixed.** `Radio::last_media_attempt`, set after every media request, whatever its outcome |
+| 6 | A stuck query at open was retried | **Fixed.** `Platform::poisoned()`; the Windows open reports a stuck query, the sender poisons and keeps the lock |
+| 7 | `ak820 lockchan send` and the Python harness skipped the owner lock | **Fixed.** Both take `lockchan.lock` |
+| 8 | No orderly stop; the stop's restore could not wait with the real clock | **Fixed where there is a path:** any return from the agent loop stops the sender and waits 3 s; the stop's restore waits through the flag (`Time::sleep_through`). **Stated limit:** Task Scheduler's "End" kills the process, and the lights stay as they were until Windows' next LED report |
+| 9 | Staleness, the wake guess and the locks' validity sampled only when a frame was due; no resend on an unlock | **Fixed.** Sampled every second while granted; CLEAR scheduled at the staleness; the locks coming back is a resend |
+| 10 | Generations from byte equality (A, B, A lost); content captured before the warm-up | **Fixed.** A content epoch in the slot; the newest content picked after the quiet; a completion counts only with the owner unchanged |
+| 11 | Handover kept USB's publication memory; a new acquisition kept the old repeat state | **Fixed.** `via` reset when the lock lights are granted; `Policy::acquired` |
+| 12 | The 10 s frame limit not checked on completion | **Fixed** |
+| 13 | State left at "sending"; the CLI's exit status zero on failure | **Fixed.** "waiting" after a frame, counters published at once, poison published; the CLI fails unless `Sent` with the lights confirmed |
+| tests | Lengths 0-48 and every type | **Done:** 708 cases |
+
+**Also from the Mac's gap study (10-20):** a missed phase deadline or a lock
+change retries at once without growing the backoff (`Policy::retry`, three
+in a row before a failure). **The Caps race, measured on the Mac, is ~3
+writes wide:** after a real Caps tap the board can show the old Caps for
+~1.5 s, until the restore; it has never committed a wrong frame. A stated
+limit.

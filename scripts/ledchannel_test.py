@@ -58,6 +58,25 @@ RING = 52
 WIN = sys.platform == "win32"
 WIN_MIN_GAP_MS = int(os.environ.get("AK820_WIN_GAP_MS", "8"))
 WIN_DONGLE = "vid_0c45&pid_fdfd&mi_00"
+# The daemon's lock-LED owner lock (plans/LOCK-LED-CHANNEL-PLAN.md, R3-3): a
+# byte-range lock on byte 0, the same as ak820-agent's, taken for the run so
+# the daemon with --lockchan and this script never interleave reports.
+_win_lock = None
+
+
+def win_take_lock():
+    global _win_lock
+    if _win_lock is None:
+        import msvcrt
+        path = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "ak820pro", "lockchan.lock")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        f = open(path, "w")   # kept empty, as raw81.lock: the lock is on byte 0
+        f.seek(0)
+        try:
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            sys.exit("another lock-LED owner (the daemon with --lockchan?) holds lockchan.lock")
+        _win_lock = f
 
 
 def win_user_leds():
@@ -73,6 +92,7 @@ def win_send(gap_ms, vals):
     list, never from HID enumeration (CLAUDE.md)."""
     import ctypes
     from ctypes import wintypes
+    win_take_lock()
     k32 = ctypes.WinDLL("kernel32", use_last_error=True)
     k32.CreateFileW.restype = wintypes.HANDLE
     k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,

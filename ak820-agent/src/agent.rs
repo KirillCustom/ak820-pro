@@ -292,6 +292,28 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
     // When this process last completed a raw-HID media request, by USB or the
     // radio, delivered or not: the handover waits 12 s after it (R4-2).
     let mut raw_media_last: Option<Instant> = None;
+    // Any return from this loop stops the sender with its one bounded restore
+    // (R3-3, R4-4; implementation review, 8). A Task Scheduler "End" kills
+    // the process instead, and the lights stay as they were until Windows'
+    // next LED report: a stated limit.
+    struct StopOnDrop(Option<crate::lockchan::sender::Handle>);
+    impl Drop for StopOnDrop {
+        fn drop(&mut self) {
+            if let Some(h) = &self.0 {
+                h.stop_and_wait(Duration::from_secs(3));
+            }
+        }
+    }
+    let _stop_lockchan = StopOnDrop(lockchan.clone());
+    // The radio revokes the lock lights before its first media request, and
+    // USB evidence from any open does too, at once (implementation review, 4).
+    if let Some(lc) = &lockchan {
+        if let Some(r) = radio.as_mut() {
+            let lc = lc.clone();
+            r.before_media = Some(Box::new(move || lc.revoke()));
+        }
+        let _ = LOCKCHAN.set(lc.clone());
+    }
     let mut clock = if opts.clock {
         log.line(&format!(
             "clock loop: syncing every {}s ({}s while the residual exceeds {} ms); cache {}",
@@ -380,8 +402,13 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
                     &mut &log,
                 );
                 st.transport = transport.into();
-                if transport == "usb" || transport == "radio" {
+                if transport == "usb" {
                     raw_media_last = Some(Instant::now());
+                }
+                // The radio's own record: a request that failed or went
+                // unanswered may still have reached the board (review, 5).
+                if let Some(t) = radio.as_ref().and_then(|r| r.last_media_attempt) {
+                    raw_media_last = Some(raw_media_last.map_or(t, |m| m.max(t)));
                 }
                 if let Some(lc) = &lockchan {
                     // The content and when the source observed it (R3-7); a
@@ -396,6 +423,12 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
                     // discovery) and the radio is not carrying (R2-5).
                     let absent = matches!(&outcome, Some(Err(hid::Error::Absent)));
                     if absent && transport == "none" {
+                        if !lc.granted() {
+                            // Leaving raw HID: when it comes back it publishes
+                            // in full, not from its memory of what it last
+                            // showed (implementation review, 11).
+                            via = Via::Nothing;
+                        }
                         lc.grant(raw_media_last, Instant::now());
                     } else {
                         lc.revoke();
@@ -530,6 +563,10 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
 /// 2). The media tick handles its own opener in [`media_tick`].
 static USB_SEEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// The lock lights' handle, for [`open_noting`] to revoke at the moment USB
+/// evidence is found, before the clock's or health's request (review, 4).
+static LOCKCHAN: std::sync::OnceLock<crate::lockchan::sender::Handle> = std::sync::OnceLock::new();
+
 /// `P::open_board()`, noting USB evidence in [`USB_SEEN`].
 fn open_noting<P: Platform>() -> Result<P::Device, hid::Error> {
     let r = P::open_board();
@@ -538,6 +575,9 @@ fn open_noting<P: Platform>() -> Result<P::Device, hid::Error> {
         Err(e) => usb_evidence(e),
     } {
         USB_SEEN.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(lc) = LOCKCHAN.get() {
+            lc.revoke();
+        }
     }
     r
 }

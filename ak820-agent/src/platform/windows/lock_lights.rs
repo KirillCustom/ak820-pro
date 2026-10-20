@@ -156,11 +156,18 @@ struct Pending {
 
 impl BleLights {
     /// Open the board's BLE keyboard: `Ok(None)` when it is not listed.
-    pub fn open() -> Result<Option<BleLights>, String> {
-        let path = match pick(&list_keyboards()?) {
+    /// `Err((why, stuck))`: `stuck` when the opening query did not retire,
+    /// its handle and buffers then left to the kernel for good.
+    pub fn open() -> Result<Option<BleLights>, (String, bool)> {
+        Self::open_inner()
+    }
+
+    fn open_inner() -> Result<Option<BleLights>, (String, bool)> {
+        let fail = |e: String| (e, false);
+        let path = match pick(&list_keyboards().map_err(fail)?) {
             Pick::One(p) => p,
             Pick::None => return Ok(None),
-            Pick::Ambiguous(v) => return Err(format!("{} BLE AK820 keyboards listed: {v:?}", v.len())),
+            Pick::Ambiguous(v) => return Err(fail(format!("{} BLE AK820 keyboards listed: {v:?}", v.len()))),
         };
         let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
         let handle = unsafe {
@@ -174,18 +181,23 @@ impl BleLights {
                 None,
             )
         }
-        .map_err(|e| format!("open {path}: {e}"))?;
+        .map_err(|e| fail(format!("open {path}: {e}")))?;
         let event = match unsafe { CreateEventW(None, true, false, PCWSTR::null()) } {
             Ok(e) => e,
             Err(e) => {
                 unsafe { CloseHandle(handle).ok() };
-                return Err(format!("event: {e}"));
+                return Err(fail(format!("event: {e}")));
             }
         };
         let mut me = BleLights { handle, event, unit: 0, stuck: false };
         // The unit id only: the flags it answers are stale (0 with Num on,
         // measured 10-19), so the user's state never comes from here.
-        let q = me.ioctl(IOCTL_KEYBOARD_QUERY_INDICATORS, None).map_err(|e| format!("query: {e:?}"))?;
+        let q = match me.ioctl(IOCTL_KEYBOARD_QUERY_INDICATORS, None) {
+            Ok(q) => q,
+            // `me` drops here; a stuck one leaks its handle and event (Drop).
+            Err(WriteError::Stuck) => return Err(("query: stuck".into(), true)),
+            Err(WriteError::Failed(e)) => return Err(fail(format!("query: {e}"))),
+        };
         me.unit = q.UnitId;
         Ok(Some(me))
     }
@@ -340,13 +352,23 @@ impl LockLights for BleLights {
 
 /// The sender's platform on Windows: the BLE keyboard, `lockchan.lock`, and
 /// the last input's tick.
-pub struct WinPlat;
+#[derive(Default)]
+pub struct WinPlat {
+    poisoned: bool,
+}
 
 impl crate::lockchan::sender::Platform for WinPlat {
     type Lights = BleLights;
 
     fn open(&mut self) -> Result<Option<BleLights>, String> {
-        BleLights::open()
+        BleLights::open().map_err(|(e, stuck)| {
+            self.poisoned |= stuck;
+            e
+        })
+    }
+
+    fn poisoned(&self) -> bool {
+        self.poisoned
     }
 
     fn lock(&mut self) -> Result<Option<Box<dyn std::any::Any + Send>>, String> {

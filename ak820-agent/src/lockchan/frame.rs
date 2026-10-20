@@ -40,6 +40,9 @@ pub trait Time {
     fn now(&self) -> Instant;
     /// Sleep until `t`, or less if stopped; false when stopped.
     fn sleep_until(&self, t: Instant) -> bool;
+    /// Sleep until `t` whatever the stop flag says: the shutdown's one
+    /// bounded restore (R4-4; codex, implementation review, 8).
+    fn sleep_through(&self, t: Instant);
 }
 
 /// Whether the frame is still wanted, asked before every write.
@@ -119,11 +122,15 @@ struct Run<'a, L: LockLights, T: Time, C: Control> {
     time: &'a T,
     control: &'a C,
     line: &'a mut Line,
+    /// Stopping: waits ignore the stop flag, for the one bounded restore.
+    stopping: bool,
 }
 
 impl<L: LockLights, T: Time, C: Control> Run<'_, L, T, C> {
     fn wait(&self, t: Instant) -> Result<(), Why> {
-        if !self.time.sleep_until(t) {
+        if self.stopping {
+            self.time.sleep_through(t);
+        } else if !self.time.sleep_until(t) {
             return Err(Why::Abort(Abort::Stop));
         }
         Ok(())
@@ -131,8 +138,11 @@ impl<L: LockLights, T: Time, C: Control> Run<'_, L, T, C> {
 
     /// One write, spaced from the previous completion, its deadline checked
     /// against that saved completion both before submitting and on its own
-    /// completion (codex r3, 6).
-    fn write(&mut self, v: u8, limit: Option<Duration>) -> Result<(), Why> {
+    /// completion (codex r3, 6). With `guard`, the frame's baseline: whether
+    /// the frame is still wanted and the user's locks unchanged are asked
+    /// **after** the spacing wait, right before submitting (codex,
+    /// implementation review, 3).
+    fn write(&mut self, v: u8, limit: Option<Duration>, guard: Option<u8>) -> Result<(), Why> {
         let prev = self.line.last_completion;
         if let Some(p) = prev {
             self.wait(p + self.lights.spacing())?;
@@ -140,9 +150,17 @@ impl<L: LockLights, T: Time, C: Control> Run<'_, L, T, C> {
                 return Err(Why::Deadline);
             }
         }
+        if let Some(u) = guard {
+            self.checked(u)?;
+        }
         match self.lights.write(v) {
             Ok(()) => {}
-            Err(WriteError::Failed(e)) => return Err(Why::Write(e)),
+            Err(WriteError::Failed(e)) => {
+                // Retired, but it may have gone out: the recovery wait counts
+                // from now, not from the last success (implementation review, 2).
+                self.line.last_completion = Some(self.time.now());
+                return Err(Why::Write(e));
+            }
             Err(WriteError::Stuck) => return Err(Why::Write(STUCK.into())),
         }
         let done = self.time.now();
@@ -166,7 +184,7 @@ impl<L: LockLights, T: Time, C: Control> Run<'_, L, T, C> {
     fn restore(&mut self) -> Result<bool, Why> {
         for _ in 0..RESTORE_TRIES {
             let Some(u) = self.lights.user() else { return Ok(false) };
-            self.write(u, None)?;
+            self.write(u, None, None)?;
             if self.lights.user() == Some(u) {
                 return Ok(true);
             }
@@ -198,7 +216,7 @@ pub fn run<L: LockLights, T: Time, C: Control>(
     line: &mut Line,
     pick: impl FnOnce() -> Option<Payload>,
 ) -> Outcome {
-    let mut r = Run { lights, time, control, line };
+    let mut r = Run { lights, time, control, line, stopping: false };
     if r.lights.user().is_none() {
         return Outcome::Unknown;
     }
@@ -215,14 +233,10 @@ pub fn run<L: LockLights, T: Time, C: Control>(
                 r.line.restore_pending = true;
                 return Outcome::Abandoned(why);
             }
-            // Shutdown makes one bounded attempt, within the exit budget the
-            // thread enforces (R4-4); its sleeps return at once, so no
-            // recovery wait.
-            let restored = if why == Why::Abort(Abort::Stop) {
-                r.restore()
-            } else {
-                r.recovery_wait().and_then(|_| r.restore())
-            };
+            // Shutdown makes one bounded attempt, its waits through the stop
+            // flag, within the exit budget the thread's owner enforces (R4-4).
+            r.stopping = why == Why::Abort(Abort::Stop);
+            let restored = r.recovery_wait().and_then(|_| r.restore());
             match restored {
                 Ok(ok) => r.line.restore_pending = !ok,
                 Err(Why::Write(e)) if e == STUCK => return Outcome::Poisoned,
@@ -230,6 +244,21 @@ pub fn run<L: LockLights, T: Time, C: Control>(
             }
             Outcome::Abandoned(why)
         }
+    }
+}
+
+/// A restore alone, for `restore_pending` while no frame is due or the
+/// channel is revoked (R3-1; implementation review, 1): the recovery wait,
+/// then the repairs. True when confirmed.
+pub fn restore_only<L: LockLights, T: Time, C: Control>(lights: &mut L, time: &T, control: &C, line: &mut Line) -> Result<bool, Outcome> {
+    let mut r = Run { lights, time, control, line, stopping: false };
+    match r.recovery_wait().and_then(|_| r.restore()) {
+        Ok(ok) => {
+            r.line.restore_pending = !ok;
+            Ok(ok)
+        }
+        Err(Why::Write(e)) if e == STUCK => Err(Outcome::Poisoned),
+        Err(why) => Err(Outcome::Abandoned(why)),
     }
 }
 
@@ -249,10 +278,8 @@ fn frame<L: LockLights, T: Time, C: Control>(
     let p = r.lights.profile();
 
     // The warm-up: one change and back, so the board has the baseline.
-    r.checked(u)?;
-    r.write(u ^ warm_bit(p), None)?;
-    r.checked(u)?;
-    r.write(u, Some(DATA_GAP))?;
+    r.write(u ^ warm_bit(p), None, Some(u))?;
+    r.write(u, Some(DATA_GAP), Some(u))?;
     // The quiet.
     let quiet_from = r.line.last_completion.expect("just written");
     r.wait(quiet_from + QUIET)?;
@@ -263,7 +290,6 @@ fn frame<L: LockLights, T: Time, C: Control>(
     let writes = encode(&pay.bytes, pay.kind, pay.seq, p, u).map_err(|e| Why::Write(format!("{e:?}")))?;
     let start = r.time.now();
     for (i, &v) in writes.iter().enumerate() {
-        r.checked(u)?;
         if r.time.now() - start > FRAME_LIMIT {
             return Err(Why::Deadline);
         }
@@ -272,7 +298,11 @@ fn frame<L: LockLights, T: Time, C: Control>(
             1 | 2 => Some(PREAMBLE_GAP),
             _ => Some(DATA_GAP),
         };
-        r.write(v, limit)?;
+        r.write(v, limit, Some(u))?;
+    }
+    // The whole frame's limit, on completion too (implementation review, 12).
+    if r.time.now() - start > FRAME_LIMIT {
+        return Err(Why::Deadline);
     }
     // The trailer ended on `u`; check the user's lights are still theirs.
     if r.lights.user() != Some(u) {
@@ -297,6 +327,9 @@ mod tests {
                 self.0.set(t);
             }
             true
+        }
+        fn sleep_through(&self, t: Instant) {
+            self.sleep_until(t);
         }
     }
 
@@ -331,7 +364,11 @@ mod tests {
             let i = self.writes.len();
             if let Some((at, e)) = &self.fail_at {
                 if *at == i {
-                    return Err(e.clone());
+                    // A failure that retires after the IOCTL's deadline, once.
+                    let e = e.clone();
+                    self.fail_at = None;
+                    self.time.0.set(self.time.0.get() + Duration::from_secs(1));
+                    return Err(e);
                 }
             }
             let cost = match self.slow_at {
@@ -491,6 +528,50 @@ mod tests {
         let mut k = Fake::new(&t);
         k.slow_at = Some((30, Duration::from_millis(320)));
         assert_eq!(run(&mut k, &t, &go(), &mut Line::default(), payload), Outcome::Abandoned(Why::Deadline));
+    }
+
+    #[test]
+    fn a_failed_write_waits_the_recovery_from_its_own_end_before_the_restore() {
+        let t = FakeTime(Cell::new(Instant::now()));
+        let mut k = Fake::new(&t);
+        k.fail_at = Some((10, WriteError::Failed("timed out (cancelled)".into())));
+        let mut line = Line::default();
+        let out = run(&mut k, &t, &go(), &mut line, payload);
+        assert_eq!(out, Outcome::Abandoned(Why::Write("timed out (cancelled)".into())));
+        let w = &k.writes;
+        assert_eq!(w.len(), 11, "ten, then the restore");
+        // The failure took 1 s after write 9; the restore waits 600 ms after that.
+        assert!(w[10].0 - w[9].0 >= Duration::from_secs(1) + RECOVERY, "{:?}", w[10].0 - w[9].0);
+        assert!(!line.restore_pending);
+    }
+
+    #[test]
+    fn a_change_during_the_spacing_wait_stops_the_next_write() {
+        // The user's lock changes while the executor waits out the spacing:
+        // the check after the wait sees it and nothing more of the frame goes.
+        struct Mid<'t> {
+            k: Fake<'t>,
+            changed_at: Instant,
+        }
+        impl LockLights for Mid<'_> {
+            fn profile(&self) -> Profile { Profile::P0 }
+            fn spacing(&self) -> Duration { Duration::from_millis(16) }
+            fn user(&mut self) -> Option<u8> {
+                Some(if self.k.time.now() >= self.changed_at { 0x06 } else { 0x02 })
+            }
+            fn write(&mut self, v: u8) -> Result<(), WriteError> { self.k.write(v) }
+        }
+        let t = FakeTime(Cell::new(Instant::now()));
+        let start = t.now();
+        // RECOVERY, warm-up, QUIET, then about 15 payload writes in.
+        let changed_at = start + RECOVERY + QUIET + Duration::from_millis(20 + 15 * 17 + 8);
+        let mut k = Mid { k: Fake::new(&t), changed_at };
+        let out = run(&mut k, &t, &go(), &mut Line::default(), payload);
+        assert_eq!(out, Outcome::Abandoned(Why::UserChanged));
+        let w = &k.k.writes;
+        let before: Vec<_> = w.iter().filter(|x| x.0 <= changed_at + Duration::from_millis(17)).collect();
+        assert_eq!(w.len(), before.len() + 1, "only the restore after the change");
+        assert_eq!(w.last().unwrap().1, 0x06);
     }
 
     #[test]

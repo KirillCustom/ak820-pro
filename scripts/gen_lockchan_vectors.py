@@ -14,7 +14,7 @@ sys.path.insert(0, HERE)
 from lockchan import encode, P0, P1, P2, P3, PROFILES  # noqa: E402
 
 OUT = os.path.join(HERE, "..", "ak820-agent", "tests", "lockchan_parity.rs")
-LENGTHS = (0, 1, 2, 3, 4, 7, 8, 13, 20, 29, 37, 42, 47, 48)
+LENGTHS = tuple(range(49))   # every length (codex, implementation review)
 
 
 def cases():
@@ -29,6 +29,9 @@ def cases():
         for payload in (bytes(48), b"\xff" * 48, b"\xff" * 5):
             yield profile, 15, 255, 0x07, payload
         yield profile, 0, 0, 0x00, b"Cosmic Cadet - Europa - The Adventure"[:42]
+        # Every type (codex, implementation review).
+        for kind in range(16):
+            yield profile, kind, rng.randrange(256), 0x00, bytes(rng.randrange(256) for _ in range(9))
         # Every user baseline (codex, sender design, 17).
         for user in range(8):
             yield profile, 1, user, user, bytes(rng.randrange(256) for _ in range(13))

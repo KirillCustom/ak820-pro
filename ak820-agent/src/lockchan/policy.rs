@@ -73,6 +73,16 @@ impl Policy {
         }
     }
 
+    /// A new acquisition of the channel: the current content due now, with
+    /// its repeat owed again (codex, implementation review, 11).
+    pub fn acquired(&mut self, now: Instant) {
+        if self.content.is_some() {
+            self.next = Some(now);
+            self.repeat_owed = true;
+            self.soft = 0;
+        }
+    }
+
     /// The handover wait: nothing goes before `t`.
     pub fn not_before(&mut self, t: Instant) {
         self.not_before = Some(self.not_before.map_or(t, |n| n.max(t)));

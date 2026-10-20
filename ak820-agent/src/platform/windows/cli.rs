@@ -1129,6 +1129,9 @@ fn lockchan_send(artist: &str, title: &str) -> Result<(), String> {
             std::thread::sleep(t.saturating_duration_since(Instant::now()));
             true
         }
+        fn sleep_through(&self, t: Instant) {
+            self.sleep_until(t);
+        }
     }
     struct Never;
     impl Control for Never {
@@ -1144,8 +1147,20 @@ fn lockchan_send(artist: &str, title: &str) -> Result<(), String> {
         ..Default::default()
     };
     let (kind, bytes) = crate::lockchan::content(&snapshot);
-    let mut lights = super::lock_lights::BleLights::open()?
-        .ok_or("the board's BLE keyboard is not listed (paired and connected?)")?;
+    // The daemon's owner lock, held through the frame and its restore, and
+    // kept for the process if a write sticks (codex, implementation review, 7).
+    let guard = super::radio_lock::try_take_named("lockchan.lock")?
+        .ok_or("another process (the daemon with --lockchan?) holds the lock-LED lock")?;
+    let mut lights = match super::lock_lights::BleLights::open() {
+        Ok(Some(l)) => l,
+        Ok(None) => return Err("the board's BLE keyboard is not listed (paired and connected?)".into()),
+        Err((e, stuck)) => {
+            if stuck {
+                std::mem::forget(guard);
+            }
+            return Err(e);
+        }
+    };
     let mut line = Line::default();
     let t0 = Instant::now();
     let out = frame::run(&mut lights, &Wall, &Never, &mut line, || Some(Payload { kind, seq: 0, bytes: bytes.clone() }));
@@ -1156,5 +1171,15 @@ fn lockchan_send(artist: &str, title: &str) -> Result<(), String> {
         t0.elapsed().as_secs_f64(),
         if line.restore_pending { " (restore pending)" } else { "" }
     );
+    if out == frame::Outcome::Poisoned {
+        std::mem::forget(lights);
+        std::mem::forget(guard);
+        return Err("a write is stuck; the lock is held until this process exits".into());
+    }
+    // Success is a whole frame with the user's lights confirmed (review, 13).
+    if out != frame::Outcome::Sent || line.restore_pending {
+        return Err(format!("not sent cleanly: {out:?}"));
+    }
+    drop(guard);
     Ok(())
 }

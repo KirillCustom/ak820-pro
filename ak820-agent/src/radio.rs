@@ -117,6 +117,13 @@ pub struct Radio {
     pushed_generation: u64,
     seed: u64,
     pub status: RadioStatus,
+    /// Called right before this tick's first media request, so a lower
+    /// transport (the lock lights) stops before the radio pushes (codex,
+    /// lock-LED implementation review, 4).
+    pub before_media: Option<Box<dyn Fn()>>,
+    /// When a media request last completed, delivered or not: the lock
+    /// lights' handover waits after it (R4-2; implementation review, 5).
+    pub last_media_attempt: Option<Instant>,
 }
 
 impl Default for Radio {
@@ -137,6 +144,8 @@ impl Radio {
             pushed_generation: 0,
             seed,
             status: RadioStatus { state: State::Off.word().into(), ..RadioStatus::default() },
+            before_media: None,
+            last_media_attempt: None,
         }
     }
 
@@ -266,10 +275,15 @@ impl Radio {
 
         let plan = publisher.plan(snapshot, now);
         let mut pushed = false;
+        if let Some(f) = &self.before_media {
+            f();
+        }
         if let Some(text) = &plan.text {
             for (command, body) in text {
                 let link = &mut self.link.as_mut().expect("held").0;
-                if let Err(f) = link.push(&dev, clock, *command, body) {
+                let r = link.push(&dev, clock, *command, body);
+                self.last_media_attempt = Some(clock.now());
+                if let Err(f) = r {
                     self.fail(f, now, &stamp, log);
                     return false;
                 }
@@ -283,7 +297,9 @@ impl Radio {
             }
         }
         let link = &mut self.link.as_mut().expect("held").0;
-        if let Err(f) = link.push(&dev, clock, plan.playback.0, &plan.playback.1) {
+        let r = link.push(&dev, clock, plan.playback.0, &plan.playback.1);
+        self.last_media_attempt = Some(clock.now());
+        if let Err(f) = r {
             self.fail(f, now, &stamp, log);
             return pushed;
         }
