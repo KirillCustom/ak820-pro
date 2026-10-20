@@ -310,8 +310,10 @@ pub struct Core<P: Platform> {
     /// The text generation last sent whole: type 3 goes only while a title
     /// is shown (the Mac session: it cannot bring back an icon after a clear).
     text_sent: Option<u64>,
-    /// The position the last type 3 carried and when it was picked, for the
-    /// seek check.
+    /// The position the last type 3 picked (sent whole or not) and when, for
+    /// the seek check: at every step and at every pick, so a seek during a
+    /// transport's warm-up or one that cut it still earns its own revision
+    /// and repeat (codex, type-3 verify, 1).
     sent_pos: Option<(u32, Instant)>,
     /// Bumped on every seek detected between frames.
     seek_rev: u32,
@@ -500,7 +502,8 @@ impl<P: Platform> Core<P> {
             if seeked(m, *pos_at, sent, now) {
                 self.seek_rev = self.seek_rev.wrapping_add(1);
                 self.tr.set(tr_policy_id(m, self.seek_rev), now);
-                self.sent_pos = None;
+                // The new position is the baseline now.
+                self.sent_pos = m.pb.map(|pb| (pos_at_instant(pb, *pos_at, now), now));
             }
         }
         if stop {
@@ -639,6 +642,7 @@ impl<P: Platform> Core<P> {
         // epochs and identity are what the frame then guards (R4-5; review,
         // 10; verify, 3). A transport frame is also cut by a text change.
         let picked: Cell<Option<Picked>> = Cell::new(None);
+        let new_rev = Cell::new(self.seek_rev);
         let out = {
             struct Picking<'a, T: Time> {
                 ctl: Ctl<'a>,
@@ -674,7 +678,7 @@ impl<P: Platform> Core<P> {
             let ctl = Picking { ctl: Ctl { h, owner }, kind, picked: &picked, time };
             let lights = self.lights.as_mut().expect("opened above");
             let (text, tr) = (&mut self.text, &mut self.tr);
-            let (text_sent, seek_rev) = (self.text_sent, self.seek_rev);
+            let (text_sent, last_pos) = (self.text_sent, self.sent_pos);
             let line = &mut self.line;
             frame::run(lights, time, &ctl, line, || {
                 let at = time.now();
@@ -697,8 +701,15 @@ impl<P: Platform> Core<P> {
                             return None;
                         }
                         let id = tr_id(&m);
-                        tr.set(tr_policy_id(&m, seek_rev), at);
                         let pos = m.pb.map(|pb| pos_at_instant(pb, pos_at, at));
+                        // A seek since the last pick: its own revision here
+                        // too, not only at a step (type-3 verify, 1).
+                        if let (Some(pos), Some(last)) = (pos, last_pos) {
+                            if pos != last.0 && seeked(&m, pos_at, last, at) {
+                                new_rev.set(new_rev.get().wrapping_add(1));
+                            }
+                        }
+                        tr.set(tr_policy_id(&m, new_rev.get()), at);
                         (tr.generation(), id, super::transport(m.icon, m.pb, pos.unwrap_or(0)), pos)
                     }
                 };
@@ -708,6 +719,12 @@ impl<P: Platform> Core<P> {
         };
         let done = time.now();
         let p = picked.get();
+        self.seek_rev = new_rev.get();
+        if let Some(pp) = p {
+            if let Some(pos) = pp.pos {
+                self.sent_pos = Some((pos, pp.at));
+            }
+        }
         let policy = match kind {
             Kind::Text => &mut self.text,
             Kind::Transport => &mut self.tr,
@@ -741,11 +758,8 @@ impl<P: Platform> Core<P> {
                         // Type 1 turned the board's readout off: the
                         // transport goes right after (the Mac session).
                         self.tr.force(done);
-                        self.sent_pos = None;
                     }
-                    Kind::Transport => {
-                        self.sent_pos = p.and_then(|p| p.pos.map(|pos| (pos, p.at)));
-                    }
+                    Kind::Transport => {}
                 }
                 self.publish(h, |st| {
                     st.frames += 1;
@@ -1474,11 +1488,14 @@ mod tests {
             })
         };
         let title_at = find(&playing("Bravo", Icon::Play, 0, 0).text).expect("Bravo's title");
+        let mut any = false;
         for pos in 0..30 {
             if let Some(at) = find(&crate::lockchan::transport(Icon::Play, Some(Playback { pos_s: pos, dur_s: 200 }), pos)) {
                 assert!(at > title_at, "a Bravo transport before its title");
+                any = true;
             }
         }
+        assert!(any, "Bravo's transport went, after its title");
     }
 
     #[test]
@@ -1490,12 +1507,14 @@ mod tests {
         run_until(&mut r, t0 + Duration::from_secs(20));
         let (h, t) = (r.h.clone(), r.t.clone());
         let n0 = r.kb.borrow().writes.len();
-        // A pause starts a transport; 10 writes into it, a seek.
+        // A seek to 200 starts a transport; 10 writes into it, a seek to 50:
+        // title, icon, playing and duration unchanged, only the position
+        // (codex, type-3 verify, 2: the old code finished this frame).
         let t1 = r.t.now();
-        r.h.set(playing("Alpha", Icon::Pause, 120, 300), t1, t1);
+        r.h.set(playing("Alpha", Icon::Play, 200, 300), t1, t1);
         r.kb.borrow_mut().hook = Some(Box::new(move |i| {
             if i == n0 + 10 {
-                h.set(playing("Alpha", Icon::Play, 250, 300), t.now(), t.now());
+                h.set(playing("Alpha", Icon::Play, 50, 300), t.now(), t.now());
             }
         }));
         r.core.step(&r.h, &*r.t);
@@ -1538,6 +1557,33 @@ mod tests {
             });
             assert!(!hit, "a play-icon transport at {pos} after the key");
         }
+    }
+
+    #[test]
+    fn a_seek_during_a_transports_warm_up_still_gets_its_repeat() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 100, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        // Seek A to 200; let it go, so its 2 s repeat is next.
+        let t1 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 200, 300), t1, t1);
+        run_until(&mut r, t1 + Duration::from_millis(1500));
+        let (h, t) = (r.h.clone(), r.t.clone());
+        let n0 = r.kb.borrow().writes.len();
+        // During the repeat's warm-up (its first write), seek B to 50.
+        r.kb.borrow_mut().hook = Some(Box::new(move |i| {
+            if i == n0 {
+                h.set(playing("Alpha", Icon::Play, 50, 300), t.now(), t.now());
+            }
+        }));
+        let t2 = r.t.now();
+        run_until(&mut r, t2 + Duration::from_secs(10));
+        // B went, and again 2 s later: two transports near 50 (old code: one,
+        // then the 60 s refresh).
+        let n = transports(&r, Icon::Play, 300, 70).iter().filter(|p| (50..=60).contains(*p)).count();
+        assert!(n >= 2, "{n} transports for seek B");
     }
 
     #[test]
