@@ -1,0 +1,16 @@
+2026-10-19 21:50:44 arm a: per transaction, no burst, at least 90 s of echo
+2026-10-19 21:52:19   OE 17 (+9 in the drain), refused 0, with PCF 0; burst 50 done of 0; echo lost 17 of 5000 over 92.52 s of load, 6.18 s with nothing in flight
+2026-10-19 21:52:19 arm b: per transaction, a burst of 1000, at least 90 s of echo
+2026-10-19 21:54:06   OE 104 (+5 in the drain), refused 0, with PCF 92; burst 1000 done of 1000; echo lost 220 of 3000 over 105.63 s of load, 57.31 s with nothing in flight
+2026-10-19 21:54:06 arm c: per byte, a burst of 1000, at least 90 s of echo
+2026-10-19 21:55:42   OE 798 (+4 in the drain), refused 0, with PCF 790; burst 1000 done of 1000; echo lost 167 of 3000 over 93.91 s of load, 43.76 s with nothing in flight
+2026-10-19 21:55:42 arm d: per byte, no burst, at least 90 s of echo
+2026-10-19 21:57:16   OE 11 (+3 in the drain), refused 0, with PCF 0; burst 1000 done of 0; echo lost 11 of 5000 over 91.97 s of load, 4.65 s with nothing in flight
+2026-10-19 21:57:16 arm d: per byte, no burst, at least 90 s of echo
+2026-10-19 21:58:52   OE 23 (+6 in the drain), refused 0, with PCF 7; burst 1000 done of 0; echo lost 19 of 5000 over 93.57 s of load, 6.73 s with nothing in flight
+2026-10-19 21:58:52 arm c: per byte, a burst of 1000, at least 90 s of echo
+2026-10-19 22:00:27   OE 745 (+3 in the drain), refused 0, with PCF 737; burst 1000 done of 1000; echo lost 162 of 3000 over 93.03 s of load, 42.46 s with nothing in flight
+2026-10-19 22:00:27 arm b: per transaction, a burst of 1000, at least 90 s of echo
+2026-10-19 22:02:12   OE 90 (+5 in the drain), refused 0, with PCF 80; burst 1000 done of 1000; echo lost 211 of 3000 over 103.86 s of load, 54.82 s with nothing in flight
+2026-10-19 22:02:12 arm a: per transaction, no burst, at least 90 s of echo
+2026-10-19 22:03:49   OE 21 (+2 in the drain), refused 0, with PCF 1; burst 1000 done of 0; echo lost 20 of 5000 over 94.3 s of load, 7.01 s with nothing in flight

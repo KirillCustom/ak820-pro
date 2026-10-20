@@ -588,3 +588,29 @@ open was the host tool's:
 and lighting were restored and verified, and the daemon's first sync read
 -437.2 ms.
 
+## The A/B's result (10-19 21:48-22:04): per byte is not the fix
+
+[`history/overrun-ab-20261019/`](../history/overrun-ab-20261019/README.md).
+- **A per-transaction 7-byte read masks 2.63 ms,** and ~9% of them caused an
+  overrun under the echo's load.
+- **Per byte, the longest mask is 0.30 ms, but overruns rose ~8x** (one per
+  locked stretch that meets arriving bytes). The 7-byte read's whole call
+  grew to 5.44 ms, past the deep sleep's 5 ms deadline (no failures, no
+  margin).
+- **Overruns with nothing in progress went on in both modes,** ~12-26 an arm.
+
+**The receiver holds far less than 16 bytes,** since a 0.3 ms stretch
+(~3.5 bytes) should never overrun 16. The plan's FIFO premise was wrong, and
+any masked stretch over ~87 us while bytes arrive can overrun.
+
+**Consequences:**
+- **The boot default stays per transaction,** and the daily build must not
+  force per byte (`halconf.h` today compiles it into daily: to change before
+  any daily release or `ak820pro-jdlien` fast-forward).
+- **Next:**
+  - measure the depth directly (a chosen masked span under the load);
+  - then a bit-level release, a quiet-line admission for the PCF, and a hunt
+    for the other stretches over ~87 us.
+- **Tonight's night in per-transaction mode still runs as planned:** the
+  ring's contexts for the natural rate.
+

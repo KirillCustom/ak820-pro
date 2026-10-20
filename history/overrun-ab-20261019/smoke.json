@@ -1,0 +1,344 @@
+{
+ "args": {
+  "cmd": "ab",
+  "arg": null,
+  "lo": 40,
+  "hi": 80,
+  "arms": "b",
+  "secs": 5.0,
+  "n": 50,
+  "json": "history/overrun-ab-20261019/smoke.json"
+ },
+ "at": "2026-10-19 21:48:55",
+ "arms": [
+  {
+   "arm": "b",
+   "byte_mode": false,
+   "burst_asked": 50,
+   "start": 1792468135.278,
+   "end": 1792468175.555,
+   "burst_start": {
+    "left": 50,
+    "done": 0,
+    "failed": 0,
+    "exposure_ms": 0,
+    "active": true,
+    "skipped": 0,
+    "lo": 40,
+    "hi": 80,
+    "host_t": 1792468135.436
+   },
+   "burst_done_by": 1792468156.476,
+   "board": {
+    "summary": {
+     "oe_obs": 9,
+     "oe_drain": 0,
+     "rx_drop": 0,
+     "ring_seq": 9,
+     "byte_mode": 0,
+     "usb_max_ms": 0.048,
+     "st_max_ms": 0.021,
+     "ctx_pcf": 3,
+     "ctx_flash": 0,
+     "ctx_none": 6,
+     "rx_off": 0
+    },
+    "kinds": [
+     {
+      "kind": "read 1 (4 B)",
+      "count": 0,
+      "fails": 0,
+      "max_span_ms": 0.0,
+      "max_whole_ms": 0.0,
+      "spans_ge_1ms": 0,
+      "spans_ge_1_4ms": 0,
+      "spans": 0
+     },
+     {
+      "kind": "read 7 (10 B)",
+      "count": 50,
+      "fails": 0,
+      "max_span_ms": 2.629,
+      "max_whole_ms": 3.115,
+      "spans_ge_1ms": 50,
+      "spans_ge_1_4ms": 50,
+      "spans": 50
+     },
+     {
+      "kind": "write 1 (3 B)",
+      "count": 0,
+      "fails": 0,
+      "max_span_ms": 0.0,
+      "max_whole_ms": 0.0,
+      "spans_ge_1ms": 0,
+      "spans_ge_1_4ms": 0,
+      "spans": 0
+     },
+     {
+      "kind": "write 8 (9 B)",
+      "count": 0,
+      "fails": 0,
+      "max_span_ms": 0.0,
+      "max_whole_ms": 0.0,
+      "spans_ge_1ms": 0,
+      "spans_ge_1_4ms": 0,
+      "spans": 0
+     }
+    ],
+    "sleep": {
+     "ctx_sleep": 0,
+     "tick_hz": 187500,
+     "now_secs": 150
+    },
+    "burst": {
+     "left": 0,
+     "done": 50,
+     "failed": 0,
+     "exposure_ms": 3398,
+     "active": false,
+     "skipped": 0,
+     "lo": 40,
+     "hi": 80
+    },
+    "ring": [
+     {
+      "seq": 0,
+      "secs": 111,
+      "act": 1,
+      "kind": 1,
+      "in_drain": false,
+      "byte_mode": false,
+      "span_ms": 2.624,
+      "usb_max_ms": 0.048,
+      "st_max_ms": 0.021
+     },
+     {
+      "seq": 1,
+      "secs": 112,
+      "act": 1,
+      "kind": 1,
+      "in_drain": false,
+      "byte_mode": false,
+      "span_ms": 2.624,
+      "usb_max_ms": 0.021,
+      "st_max_ms": 0.021
+     },
+     {
+      "seq": 2,
+      "secs": 112,
+      "act": 1,
+      "kind": 1,
+      "in_drain": false,
+      "byte_mode": false,
+      "span_ms": 2.629,
+      "usb_max_ms": 0.021,
+      "st_max_ms": 0.021
+     },
+     {
+      "seq": 3,
+      "secs": 117,
+      "act": 0,
+      "kind": 1,
+      "in_drain": false,
+      "byte_mode": false,
+      "span_ms": 2.624,
+      "usb_max_ms": 0.048,
+      "st_max_ms": 0.021
+     },
+     {
+      "seq": 4,
+      "secs": 117,
+      "act": 0,
+      "kind": 1,
+      "in_drain": false,
+      "byte_mode": false,
+      "span_ms": 2.624,
+      "usb_max_ms": 0.021,
+      "st_max_ms": 0.0
+     },
+     {
+      "seq": 5,
+      "secs": 128,
+      "act": 0,
+      "kind": 1,
+      "in_drain": false,
+      "byte_mode": false,
+      "span_ms": 2.624,
+      "usb_max_ms": 0.048,
+      "st_max_ms": 0.021
+     },
+     {
+      "seq": 6,
+      "secs": 130,
+      "act": 0,
+      "kind": 1,
+      "in_drain": false,
+      "byte_mode": false,
+      "span_ms": 2.624,
+      "usb_max_ms": 0.043,
+      "st_max_ms": 0.021
+     },
+     {
+      "seq": 7,
+      "secs": 136,
+      "act": 0,
+      "kind": 1,
+      "in_drain": false,
+      "byte_mode": false,
+      "span_ms": 2.624,
+      "usb_max_ms": 0.048,
+      "st_max_ms": 0.021
+     },
+     {
+      "seq": 8,
+      "secs": 143,
+      "act": 0,
+      "kind": 1,
+      "in_drain": false,
+      "byte_mode": false,
+      "span_ms": 2.624,
+      "usb_max_ms": 0.048,
+      "st_max_ms": 0.021
+     }
+    ],
+    "wakes": []
+   },
+   "echo_runs": [
+    {
+     "t_first": 1792468135.429,
+     "t_last": 1792468156.476,
+     "n": 1000,
+     "replied": 987,
+     "lost": 13,
+     "lost_at": [
+      1792468135.573,
+      1792468135.868,
+      1792468136.203,
+      1792468136.647,
+      1792468136.938,
+      1792468137.23,
+      1792468137.522,
+      1792468137.861,
+      1792468138.309,
+      1792468138.607,
+      1792468142.27,
+      1792468152.956,
+      1792468155.866
+     ],
+     "lost_until": [
+      1792468135.832,
+      1792468136.128,
+      1792468136.462,
+      1792468136.904,
+      1792468137.197,
+      1792468137.488,
+      1792468137.772,
+      1792468138.12,
+      1792468138.567,
+      1792468138.865,
+      1792468142.529,
+      1792468153.215,
+      1792468156.126
+     ],
+     "rtt_ms": {
+      "min": 14.01,
+      "median": 17.16,
+      "p95": 21.03,
+      "max": 49.24
+     }
+    },
+    {
+     "t_first": 1792468156.944,
+     "t_last": 1792468175.12,
+     "n": 1000,
+     "replied": 998,
+     "lost": 2,
+     "lost_at": [
+      1792468161.181,
+      1792468168.607
+     ],
+     "lost_until": [
+      1792468161.433,
+      1792468168.865
+     ],
+     "rtt_ms": {
+      "min": 14.83,
+      "median": 17.06,
+      "p95": 20.85,
+      "max": 27.08
+     }
+    }
+   ],
+   "load_s": 39.22,
+   "echo_sent": 2000,
+   "echo_lost": 15,
+   "idle_intervals": [
+    [
+     1792468135.573,
+     1792468135.832
+    ],
+    [
+     1792468135.868,
+     1792468136.128
+    ],
+    [
+     1792468136.203,
+     1792468136.462
+    ],
+    [
+     1792468136.647,
+     1792468136.904
+    ],
+    [
+     1792468136.938,
+     1792468137.197
+    ],
+    [
+     1792468137.23,
+     1792468137.488
+    ],
+    [
+     1792468137.522,
+     1792468137.772
+    ],
+    [
+     1792468137.861,
+     1792468138.12
+    ],
+    [
+     1792468138.309,
+     1792468138.567
+    ],
+    [
+     1792468138.607,
+     1792468138.865
+    ],
+    [
+     1792468142.27,
+     1792468142.529
+    ],
+    [
+     1792468152.956,
+     1792468153.215
+    ],
+    [
+     1792468155.866,
+     1792468156.126
+    ],
+    [
+     1792468156.476,
+     1792468156.944
+    ],
+    [
+     1792468161.181,
+     1792468161.433
+    ],
+    [
+     1792468168.607,
+     1792468168.865
+    ]
+   ],
+   "idle_s": 4.33
+  }
+ ]
+}

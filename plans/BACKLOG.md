@@ -60,7 +60,7 @@ goes unserviced for its length: up to 101 ILRC cycles, ~2.9 ms, against a
 The host's sync writes the PCF every 5 min; two syncs fell in the Caps
 windows after the soak, when the module was busy.
 
-**Planned 10-19:** [`OVERRUN-CAPS-PLAN.md`](OVERRUN-CAPS-PLAN.md) (measure in a dev build with an A/B under the 2.4G echo's load, then a per-byte lock in the I2C driver), at codex.
+**Measured 10-19** ([`OVERRUN-CAPS-PLAN.md`](OVERRUN-CAPS-PLAN.md), [`../history/overrun-ab-20261019/`](../history/overrun-ab-20261019/README.md)): the PCF's long reads do cause overruns under load, but **the receiver holds far less than 16 bytes** (a per-byte lock's 0.3 ms stretches overran ~8x more often), and overruns with nothing in progress continue. The per-byte lock is not the fix; the depth is next.
 
 **To do:** first confirm it (do the overruns line up with PCF transactions:
 a cheap per-overrun stamp, or an hour's correlation with the daemon's sync
