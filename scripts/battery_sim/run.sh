@@ -13,12 +13,15 @@ build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
 cp -R "$here/stubs/." "$build/"
 cp "$kb/battery.c" "$kb/battery.h" "$kb/power.c" "$kb/power.h" "$build/"
+[ -f "$kb/rgb_matrix_kb.inc" ] && cp "$kb/rgb_matrix_kb.inc" "$build/"   # the colour build's effects
+qroot="$(cd "$kb/../../.." && pwd)"   # the tree $kb is in: QMK's quantum/color.c for the colour build
 [ -f "$kb/battery_tail.h" ] && cp "$kb/battery_tail.h" "$build/"   # flash 2's generated tail table
 cc -std=c11 -O1 -Wall -Wextra -Wno-unused-parameter -I"$build" \
    -o "$build/sim" "$here/sim.c" "$build/battery.c" "$build/power.c" -lm
 fail=0
 # Phase 2's scenarios (ladder.c, count.c) and the two drains they replay.
 phase2="l_normal l_modes l_usb l_low_cap l_val_cap l_lights_cut l_announce l_persisted l_minimal l_minimal_enter l_minimal_owed l_low_alert l_sleep l_sleep_low l_sleep_usb l_wake_notice l_wake_notice_high
+        l_no_lights_off l_ceiling_moves l_low_edge l_unknown_level
         c_rate c_uneven c_wrap c_hold c_ratchet c_floor_cut c_time_left c_load_step c_usb_data
         c_stale c_excursion c_bias c_clamp_cross c_reboot
         c_band_top c_band_top_edge c_floor_boot c_cut_reseat c_hold_stale c_handover_stays c_floor_entry c_clamp_marker"
@@ -80,6 +83,41 @@ if grep -q '^#define POWER_HAS_MODES' "$build/power.h"; then
         "$build/sim" c_replay_r3$v "$r3" || fail=1
         "$build/sim" c_replay_2e$v "$e2" || fail=1
     done
+
+    # The dev build's power.c (AK820_DEV_HOOKS: the bench's held stage, mode
+    # and sleep time, HC_DEVHOOK op 14): every scenario again, since the hooks
+    # must change nothing until used, then the ones that use them.
+    if grep -q 'want_val' "$build/power.c"; then
+        cc -std=c11 -O1 -Wall -Wextra -Wno-unused-parameter -DAK820_DEV_HOOKS -I"$build" \
+           -o "$build/sim_dev" "$here/sim.c" "$build/battery.c" "$build/power.c" -lm
+        dev=0
+        for s in $phase2; do "$build/sim_dev" "$s" > /dev/null || { echo "FAIL $s in the dev-hooks build"; dev=1; }; done
+        [ $dev = 0 ] && echo "ok   every power scenario in the dev-hooks build" || fail=1
+        for s in l_forced_ceiling l_set_mode l_under_dim c_lights_off_held; do
+            "$build/sim_dev" "$s" || fail=1
+        done
+    fi
+
+    # The colour path (colour.c): QMK's own conversion and CIE table in place
+    # of sim.c's stub, and the board's DRIFT and RAINFALL under the ceilings.
+    if [ -f "$build/rgb_matrix_kb.inc" ] && grep -q 'want_val' "$build/power.c"; then
+        for f in color led_tables; do
+            cc -std=c11 -O1 -Wall -DUSE_CIE1931_CURVE -I"$qroot/quantum" -I"$qroot/platforms" \
+               -c -o "$build/$f.o" "$qroot/quantum/$f.c"
+        done
+        cc -std=c11 -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -DSIM_REAL_COLOUR -I"$build" \
+           -o "$build/sim_colour" "$here/sim.c" "$build/battery.c" "$build/power.c" \
+           "$build/color.o" "$build/led_tables.o" -lm
+        for s in k_hook k_drift k_rainfall; do
+            "$build/sim_colour" "$s" || fail=1
+        done
+    fi
+fi
+
+# The mutants (mutants.py): each a change to a copy of the source that a named
+# scenario must catch. `run.sh --no-mutants` skips them.
+if [ "${1:-}" != "--no-mutants" ] && grep -q 'want_val' "$build/power.c"; then
+    python3 "$here/mutants.py" --src "$kb" || fail=1
 fi
 
 # Phase 2's sensitivity (report only, `run.sh --sensitivity`): both drains
