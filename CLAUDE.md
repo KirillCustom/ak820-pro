@@ -147,14 +147,25 @@ Two workstreams, Phase 2 first:
   no light ([`plans/LOCK-LED-CHANNEL-PLAN.md`](plans/LOCK-LED-CHANNEL-PLAN.md)
   has the resume list; what the module forwards is in
   [docs/wireless.md](docs/wireless.md)).
-- **On the board since 18:32 10-19: `7387d18947`** (a `dev` build, token
-  `0x19f958d5`): the build below plus Gremlin's RX tap and raw HID over
-  2.4G's stage 1, the echo (dev builds only; the daily is unchanged). Its
-  echo works from the Mac (`history/raw81-echo-20261019-mac/`); every echo
-  costs one main-loop pass of 10 ms or more, still to explain
-  ([`plans/RAWHID-24G-PLAN.md`](plans/RAWHID-24G-PLAN.md)). BLE has no
-  vendor channel; its `FEE0` is the module's OTA, never to be written
-  ([docs/wireless.md](docs/wireless.md)).
+- **On the board since 22:19 10-19: `e7f6890e06`** (a `dev` build, token
+  `0xfa68ad25`; `ak820pro-jdlien` and `deps.lock` point at it): Gremlin's
+  2.4G stage 1 with its pause fixed (the per-byte `timer_read` was a 64-bit
+  software divide, ~250 us a call), plus the overrun/Caps build
+  ([`plans/OVERRUN-CAPS-PLAN.md`](plans/OVERRUN-CAPS-PLAN.md)):
+  - **the Caps label through its own queue;**
+  - **the I2C driver restarted after a failure;**
+  - **one PCF transaction a pass;**
+  - **dev-only:** the overrun diagnostics (HC_DEVHOOK ops 20-24,
+    `scripts/overrun_diag.py`).
+
+  ⚠️ **UART2's receiver holds about one byte** (measured 10-19,
+  `history/overrun-depth-20261019/`): any masked stretch over ~80 us while
+  the module sends loses bytes, and the PCF's 2.6 ms transaction is the
+  worst of them. The per-byte release is no fix and is dev-only, off. BLE
+  has no vendor channel; its `FEE0` is the module's OTA, never to be
+  written ([docs/wireless.md](docs/wireless.md)).
+- **Before it: `7387d18947`** (token `0x19f958d5`, 18:32 10-19), stage 1's
+  echo on the build below.
 - **Before it: deep sleep and the power-mode icons**, `83d8768c64` (a
   `dev` build, token `0xcf9da0e0`, from 16:16 10-19: `26fcafaeca`, flashed
   13:18 and soaked, plus the bulbs' art reworked on the panel, display.c
@@ -167,8 +178,7 @@ Two workstreams, Phase 2 first:
   deep sleep draws 3.2 mA against ~27 awake and dark, wakes on a key, and
   the waking key is not lost; light sleep with WFI saves ~4.7 mA.** **Pushed 10-19** (`ak820pro-jdlien`
   and ChibiOS-Contrib's `ak820pro-patches`), and `deps.lock` pins
-  `7387d18947` (the board's firmware: `ak820pro-jdlien` fast-forwarded to
-  `gremlin/raw81` after its echo passed), so a fresh `setup.sh` builds it. JD: push freely now; the repo is not widely
+  `e7f6890e06` (the board's firmware, above), so a fresh `setup.sh` builds it. JD: push freely now; the repo is not widely
   circulated.
 - **The power logger stays on the pack** (INA228 + MAX17048,
   [docs/test-bench.md](docs/test-bench.md), "The power logger"): current and
