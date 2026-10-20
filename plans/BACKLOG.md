@@ -54,9 +54,36 @@ timings, and both run full brightness while typing, which is what costs.
   - **Someone already at value 128 or less** gains nothing, since the cap
     only lowers. A cap relative to the user's own value (half of it) would
     reach them, but saves less for them anyway.
-  - **Relaxing Balanced instead** (dim at 2 min, sleep at 15) widens the
-    feel, not the runtime. It costs ~6% at JD's use, and ~17% for the
-    stop-start day, whose 15-minute breaks would never sleep.
+  - **A side benefit:** the ladder acts only on battery and never changes a
+    setting, so the cap gives "bright on USB, dimmer on battery" with no
+    setting to touch. The battery level is fixed at 128, though, not one the
+    user picks.
+
+**A gentler Balanced, proposed alongside.** The intent: it works as if
+plugged in unless you are most likely gone, or watching a movie. Today's
+1-minute dim is distracting to someone still at the desk.
+- **The proposed ladder:** dim at 10 min, LEDs off at 15, screen off at 20,
+  deep sleep at 21. The screen-off and the sleep could be one step at 20:
+  the backlight has to be off before a sleep anyway, and a dark minute
+  awake costs ~2 mWh and buys nothing.
+- **Modelled, in days a charge** (today's Balanced → this one):
+  - the office day (8 h nonstop, one absence): 5.9 → 5.8;
+  - an evening movie (3 h of typing, a 2 h movie): 12.9 → 11.9;
+  - JD's logged use: 13.2 → 11.1 (−16%);
+  - stop-start (4 h of typing, twenty 15-min breaks): 8.7 → 5.8 (−33%).
+    Each break now stays lit for 10 of its 15 minutes; Power saver is the
+    mode for that day.
+- **The cost is per absence:** about 10 minutes at full lights, ~50 mWh
+  (0.3% of the pack) more than today each time.
+
+**The set it makes:**
+- **Always on:** behaves as if plugged in, always.
+- **Balanced:** as if plugged in, until you are probably gone.
+- **Power saver:** half-bright, and quick to dim and sleep.
+- **Lights out:** dark.
+
+Each one now differs from its neighbours in how it feels, not only in a few
+minutes of timing.
 
 **Merging them** was the first idea. The model says the two are close in practice
 ([`../docs/power.md`](../docs/power.md), "The power modes at JD's use"):
