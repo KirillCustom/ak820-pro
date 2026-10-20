@@ -299,3 +299,42 @@ and [verify](review-codex-raw81-drain-verify-2026-10-19.md), verbatim:
 | Note: 40 ms extends a false start's damage; 128 bytes of input queue cover ~11 ms; silence survives the new scheduling | **Accepted** for stage 1 (one request at a time). |
 | Verify, should-fix: under a continuous request stream `rx_left` can recur pass after pass with no global bound on a keyboard frame's wait | **Taken for stage 2:** a bound on consecutive skipped pumps (after it, one full drain to the queue's end, then the pump), and stage 2's one-dispatch-per-pass. Stage 1's echo, one request at a time, cannot produce the pattern. |
 | Verify, note: the 64-byte cap still exits without `rx_left` (the existing limitation) | **Accepted;** recorded, unchanged from before stage 1. |
+
+## The real cause, and stage 1 passing (10-19, gremlin)
+
+`ea73efb2` on gremlin echoed **0 of 10**: every collection hit its 40 ms
+lifetime, though the RX tap showed all 34 bytes read. The cause of both that
+and 7387d189's 8-9 ms drain: stage 1 stamped each byte with `timer_read()`,
+and the budget added a `timer_elapsed()` per iteration. QMK's `timer_read32()`
+converts with `TIME_I2MS`, which on the M0 is `__aeabi_lmul` +
+`__aeabi_uldivmod` in software (the disassembly), ~250 us a byte at the row
+ISR's load. **Fixed in `a42a317e`/`79245590`:** both use the 16-bit system
+tick (`chVTGetSystemTimeX`, `chTimeDiffX`, compile-time `TIME_MS2I`: 375 and
+938 ticks at 187.5 kHz). [Review](review-codex-raw81-ticks-2026-10-19.md),
+verbatim: no must-fix; the getter is a single CT16B5 register read; no
+per-byte ms conversion remains; a stale stamp only under-measures silence
+(its note that "~5 ms late" bounds the alias window, not recovery, is taken).
+
+**Measured on gremlin, `79245590` (Windows, `win_raw81_echo.py`,
+`history/raw81-echo-20261019-gremlin/`): 430 of 430.**
+
+| run | echoed | RTT median | p95 | max | passes >= 10 ms added |
+|---|---|---|---|---|---|
+| 10 at 20 ms | 10/10 | 17.6 | 19.9 | 19.9 | 0 |
+| 100 at 20 ms | 100/100 | 17.9 | 20.7 | 23.1 | 1 |
+| 300 back to back | 300/300 | 17.0 | 21.0 | 24.0 | 3 |
+| 20 at 100 ms | 20/20 | 17.8 | 20.6 | 20.6 | 1 |
+
+Each 81 now takes 6-7 ms over 2 passes (the module's own pacing). No pass
+>= 25 ms, no UART overrun, no A1 give-up, replacement or queue-full. **No ACK
+was ever counted in a 91's window: the module does not ACK 91.** The one
+open item from the drain-bound verify, TX fairness under a continuous stream,
+belongs to stage 2.
+
+**A board-wide follow-up (proposal, held until the Mac session's overrun
+A/B and its night baseline are done):** 142 `timer_read*`/`timer_elapsed*`
+call sites, many per pass, each paying the same software divide. Fix once in
+`platforms/chibios/timer.c` (32-bit, carrying the sub-ms remainder over the
+16-bit tick's increments), after measuring one call's cost and the calls per
+pass; codex to check the stall counters' 25 ms arithmetic, which runs through
+it.
