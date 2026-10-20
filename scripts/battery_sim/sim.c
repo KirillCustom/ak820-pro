@@ -1408,11 +1408,13 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "l_forced_ceiling")) l_forced_ceiling();
     else if (!strcmp(s, "l_set_mode"))       l_set_mode();
     else if (!strcmp(s, "l_under_dim"))      l_under_dim();
+    else if (!strcmp(s, "l_low_minimal_held")) l_low_minimal_held();
     else if (!strcmp(s, "c_lights_off_held")) c_lights_off_held();
 #endif
 #ifdef SIM_REAL_COLOUR
     else if (!strcmp(s, "k_hook"))  k_hook();
     else if (!strcmp(s, "k_drift")) k_drift();
+    else if (!strcmp(s, "k_drift_usb")) k_drift_usb();
     else if (!strcmp(s, "k_rainfall")) k_rainfall();
 #endif
     else if (!strcmp(s, "c_rate"))        c_rate();

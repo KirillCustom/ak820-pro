@@ -184,6 +184,17 @@ static void l_lights_cut(void) {
     CHECK(scale == 0, "cut after the wake: scale %u", scale);
     power_set_lights_cut(false);
     CHECK(scale == 255, "lifted: scale %u", scale);
+    /* The cut around a ceiling move: Fn+B into Saver under the cut takes the
+     * 128 at once (one repaint, still dark), and the lift shows it. */
+    power_set_lights_cut(true);
+    int r0 = rgb_restarts;
+    power_cycle_mode(); ltick();   /* Saver, typing */
+    expect_stage(POWER_STAGE_ACTIVE, 0, 0xFF, 128, "cut, Fn+B into Saver");
+    expect_one_repaint(r0, "Saver's ceiling under the cut");
+    r0 = rgb_restarts;
+    power_set_lights_cut(false);
+    expect_stage(POWER_STAGE_ACTIVE, 255, 0xFF, 128, "the cut lifted in Saver");
+    expect_one_repaint(r0, "the cut lifted in Saver");
 }
 
 /* A mode left unset (a flash) is Normal, and the overlay says so once, 3 s
@@ -510,13 +521,39 @@ static void l_forced_ceiling(void) {
     power_force_stage(0xFF); lrun_s(1);
     expect_stage(POWER_STAGE_ACTIVE, 255, 0xFF, 255, "Full on USB, released");
     CHECK(rgb_restarts == r0, "released into the same lighting: %d repaints", rgb_restarts - r0);
-    power_set_mode(POWER_MODE_SAVER);
+    /* Released from Saver's held 128 on USB: back to no ceiling, once. */
+    power_set_mode(POWER_MODE_SAVER); power_force_stage(POWER_STAGE_ACTIVE); ltick();
+    expect_stage(POWER_STAGE_ACTIVE, 255, 0xFF, 128, "Saver on USB, ACTIVE held again");
+    r0 = rgb_restarts;
+    power_force_stage(0xFF); ltick();
+    expect_stage(POWER_STAGE_ACTIVE, 255, 0xFF, 255, "Saver on USB, released");
+    expect_one_repaint(r0, "Saver's held ACTIVE released on USB");
     power_force_stage(POWER_STAGE_LIGHTS_OFF); ltick();
     expect_stage(POWER_STAGE_LIGHTS_OFF, 0, 4, 255, "LIGHTS_OFF held: still reachable by the bench");
     power_force_stage(0xFF); ltick();
 }
 
-/* The bench's mode change (op 14 sub 0), on battery while typing: Saver's
+/* Below 15%, the low cap's 128 holds in every mode, Lights out included
+ * (plans/POWER-MODES-REVISION-PLAN.md, "Implementation": Lights out reaches
+ * ACTIVE only held by the bench, so that is the one case it changes). */
+static void l_low_minimal_held(void) {
+    kb_eeconfig_set_power_mode(POWER_MODE_MINIMAL);
+    power_init();
+    vdd_mv = 3900; c5 = 62;   /* ~11%: under the low cap */
+    lrun_s(30);
+    CHECK(battery_level_permille() <= 150, "level %u pm, want <= 150", battery_level_permille());
+    idle_ms = 0; ltick();
+    CHECK(power_stage() == POWER_STAGE_SCREEN_OFF && scale == 0, "low, Lights out, typing: dark (stage %d, scale %u)",
+          power_stage(), scale);
+    power_force_stage(POWER_STAGE_ACTIVE); ltick();
+    expect_stage(POWER_STAGE_ACTIVE, 255, 0xFF, 128, "low, Lights out, ACTIVE held: the low cap's 128");
+    CHECK(power_lights_mode() == POWER_MODE_MINIMAL, "low, Lights out: its own bulb, %d", power_lights_mode());
+    power_force_stage(0xFF); ltick();
+    CHECK(power_stage() == POWER_STAGE_SCREEN_OFF && scale == 0 && power_val_cap() == 255,
+          "low, Lights out, released: stage %d, scale %u, cap %u", power_stage(), scale, power_val_cap());
+}
+
+/* The bench's mode change (op 14 sub 1), on battery while typing: Saver's
  * ceiling and back, once each. */
 static void l_set_mode(void) {
     power_init();

@@ -377,9 +377,12 @@ INA228's `vbus_mv` (below).
   saver (`jd saver`, at its 128 ceiling: ~161 mW with the USB data, ~154
   untethered). On Phase 2 firmware every map holds a mode (Always on but for
   `jd saver`) and a forced stage, so the ladder cannot move a load
-  mid-hold. ⚠️ It refuses at a level of 15% or below: a held stage keeps the
-  low cap's stages out but not its ceiling, Power saver's 128 while typing in
-  every mode.
+  mid-hold. ⚠️ It refuses at a level of 15% or below, before and during the
+  run: a held stage keeps the low cap's stages out but not its ceiling, Power
+  saver's 128 while typing in every mode. The stage map also needs a known
+  level and a dev build, and it reads op 14 back at each hold's start and
+  end: a mode, stage or ceiling other than the one meant stops the run, since
+  the logger would be measuring the wrong load.
 - `scripts/ladder_check.py [--rig]` (Phase 2, and the modes' revision): on
   USB, the LED drive read back, op 14 read back after a tick:
   - every enabled effect through every forced stage in Always on: off must
@@ -388,9 +391,16 @@ INA228's `vbus_mv` (below).
     saver at value 255 and 100: at 255 Power saver at most 0.35 of Always on
     for the effects that convert at the user's value (DRIFT 0.70), at 100 the
     two alike; solid white at 255 in Power saver within 5% of white at 128;
-  - means over each hold, with a tolerance for the animated effects. Typing
-    Heatmap lights only pressed keys, so `--rig` taps the relay's key through
-    its holds; without it, the Heatmap is reported and not judged.
+  - a reference that reads 0 fails, so a dead renderer or a stuck reading
+    cannot pass;
+  - every effect at speed 255, and each hold's mean taken over samples 1.2 s
+    apart (the board's figure is a second's), with a tolerance for the
+    animated effects;
+  - Typing Heatmap lights only pressed keys, so `--rig` taps the relay's key
+    through its holds; without it the Heatmap is reported, not judged, and
+    the run ends INCOMPLETE (exit 2);
+  - about 18 minutes. The lighting, the mode and any stage held at the start
+    are put back step by step; a failed step exits 1.
 - `scripts/devhook.py lcd [LEVEL | on | off]`: the screen's backlight by
   hand.
 - **Results** (`plans/POWER-CAMPAIGN-PLAN.md`, R1 and R2), at 4.17 V: JD's
