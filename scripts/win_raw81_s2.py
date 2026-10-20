@@ -235,9 +235,19 @@ def test_stream(r, h, n, log=None):
            "board_delta": d, "stall_link_delta": ds, "losses": losses, "max_rtt_ms": round(r.max_rtt, 2)}
     print(f"stream {n}: {res}; rtt median {q(0.5)} p95 {q(0.95)} max {q(1.0)} ms; board "
           + ", ".join(f"{k} +{v}" for k, v in d.items() if v) + "; " + ", ".join(f"{k} +{v}" for k, v in ds.items() if v))
-    check("stream: every transaction ok", res.get("ok", 0) == n, res)
+    # The link's UART loses bytes under load (the Mac session's overrun A/B,
+    # 10-19: an effective receive buffer of ~1 byte), so a request can be
+    # corrupted on the way in: the board quarantines it and the host times
+    # out. Losses are accepted only when the board's own counters account
+    # for them; an incomplete pair, a NAK or an unexplained loss fails.
+    explained = sum(d.get(k, 0) for k in ("taint", "badsum", "lifetime", "badenv"))
+    lost = res.get("unknown", 0)
+    out["loss_rate"] = round(lost / n, 4) if n else 0
+    check(f"stream: {res.get('ok', 0)}/{n} ok, {lost} lost, {explained} explained by the board",
+          res.get("ok", 0) + lost == n and lost <= explained + d.get("drops", 0), (res, d))
+    check("stream: no incomplete pair and no NAK", not res.get("incomplete") and not res.get("nak"), res)
     check("stream: p95 under 30 ms", rtts and q(0.95) < 30, q(0.95))
-    for k in ("drops", "defer_overrun", "short_writes", "badsum", "taint", "lifetime", "badenv"):
+    for k in ("defer_overrun", "short_writes"):
         check(f"stream: board {k} +0", d.get(k, 0) == 0, d.get(k))
     check("stream: no pass >= 25 ms", ds.get("ge25") in (0, None), ds.get("ge25"))
     for k in ("giveups", "replaced", "queue_full"):
