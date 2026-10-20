@@ -155,3 +155,22 @@ folded in where they match. Dispositions:
 | 8 | Observability: `HC_LINK` page 0 has 2 spare bytes; separate counters; explicit stage exits | **Taken.** Stage 1's counters live on a dev-hook page of their own (`HC_DEVHOOK` op 17): commits, bad sums, lifetime aborts, UART-taint aborts, quarantined bytes, `91`s sent, replies dropped, ACKs inside the window. The stage exits are adopted as codex wrote them (its finding 8). |
 
 Stage 1 is dev-only (`AK820_DEV_HOOKS`), like the tap.
+
+## Stage 1 built and reviewed (10-19)
+
+`gremlin/raw81` at `7387d189` (on the RX tap's `4ee56290`):
+[review](review-codex-raw81-stage1-2026-10-19.md) of `5dbca738` (1 must-fix,
+3 should-fix) and [verify](review-codex-raw81-stage1-verify-2026-10-19.md) of
+the fixes, both verbatim; prompts beside them.
+
+| finding | disposition |
+|---|---|
+| Must-fix 1: the 3-byte window survived a collection and a quarantine (a pending `61 0D`, a whole `81`, then `0A` forged an ACK that could release an A1) | **Fixed:** the window starts over at a collection's start and at a quarantine's end. Verified closed. |
+| Should-fix 2: a UART error seen while idle was forgotten, so a corrupt burst's `81` could start clean | **Fixed:** `r81_tainted`, set by any drain-start error and cleared only by silence or a reset, sends the next `81` to quarantine. Verified closed; its note (the commit-time poll aborts without setting the flag) is behaviourally safe, since quarantine holds until silence. |
+| Should-fix 3: the lifetime was checked only before a drain | **Fixed:** checked again at commit. Verified closed. |
+| Should-fix 4: no reset on link changes | **Fixed:** `LOCKCHAN_LINK_LOST()` (all ten sites) also drops the pending echo and quarantines a collection. Verified closed. |
+| Notes: the unbounded `sdWrite`; ACK attribution by the window's flag; an ACK after the window closes could still pop an A1 | **Accepted** as limits of a dev experiment; the echo test measures the ACK timing that decides them. |
+
+The daily build carries none of it: no new symbols, and the same text, data
+and bss as `de5450e487`'s daily. **Verdict: nothing blocks flashing it for
+the stage-1 measurements.**
