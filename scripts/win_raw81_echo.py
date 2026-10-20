@@ -63,7 +63,9 @@ def board_counters():
     names = ["committed", "bad_sum", "lifetime", "uart_taint", "sent_91", "dropped", "acks_in_window"]
     c = {n: int.from_bytes(p0[4 + 4 * i:8 + 4 * i], "little") for i, n in enumerate(names)}
     c.update(state=p1[4], boundary=p1[5], pending=p1[6], ack_window=p1[7],
-             quarantined_bytes=int.from_bytes(p1[8:12], "little"))
+             quarantined_bytes=int.from_bytes(p1[8:12], "little"),
+             # 7387d189 has zeros here; the drain-bounded build fills them
+             last_collect_ms=int.from_bytes(p1[12:14], "little"), last_passes=p1[14], max_passes=p1[15])
     return c
 
 
@@ -134,7 +136,10 @@ def main():
           f"rtt ms min {res['rtt_ms']['min']} median {res['rtt_ms']['median']} "
           f"p95 {res['rtt_ms']['p95']} max {res['rtt_ms']['max']}")
     if res["board_delta"]:
-        print("board: " + ", ".join(f"{k} +{v}" for k, v in res["board_delta"].items() if v))
+        gauges = ("state", "boundary", "pending", "ack_window", "last_collect_ms", "last_passes", "max_passes")
+        print("board: " + ", ".join(f"{k} +{v}" for k, v in res["board_delta"].items() if v and k not in gauges))
+        print(f"board: the last 81 took {after['last_collect_ms']} ms over {after['last_passes']} pass(es); "
+              f"the most passes any took: {after['max_passes']}")
     if a.json:
         os.makedirs(os.path.dirname(os.path.abspath(a.json)), exist_ok=True)
         with open(a.json, "w") as f:
