@@ -331,5 +331,5 @@ has every figure.
 - **On the board:** `b2a07e0d37` since 01:04 10-20. `ak820pro-jdlien` and
   `deps.lock` point at it.
 - **Open:** the ~1 OE a minute left under full load, which the monitor's
-  128 µs threshold cannot see (`BACKLOG.md`); the RTT's uptime question;
+  128 µs threshold cannot see (`BACKLOG.md`); what the build still adds to the radio's RTT (about 1 ms on Gremlin);
   the 64-bit math on other per-pass paths.

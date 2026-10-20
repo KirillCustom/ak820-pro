@@ -52,8 +52,8 @@ the next reset instead of waiting for it.
 Gremlin's Windows cable-out test needs JD's hands there too.
 
 **Then:**
-- the backlog's new items: 64-bit math per pass, the OEs left, the RTT's
-  uptime question;
+- the backlog's new items: 64-bit math per pass, the OEs left, the ~1 ms
+  of RTT the build still adds (a dev variant without the UART hooks);
 - R5.
 
 ## 2026-10-19
