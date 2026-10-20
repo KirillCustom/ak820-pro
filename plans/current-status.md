@@ -54,7 +54,6 @@ Gremlin's Windows cable-out test needs JD's hands there too.
 **Then:**
 - the backlog's new items: 64-bit math per pass, the OEs left, the RTT's
   uptime question;
-- `overrun_diag.py`'s cosmetic burst tally;
 - R5.
 
 ## 2026-10-19

@@ -321,8 +321,11 @@ def run_arm(name, a, mask_us=0):
            "burst_start": b0, "board": d, "load": L}
     s, m = d["summary"], d["mon"]
     cm.say(f"  OE {s['oe_obs']} (+{s['oe_drain']} in the drain), refused {s['rx_drop']}, with PCF {s['ctx_pcf']}, "
-           f"none {s['ctx_none']}; burst {d['burst']['done']} of {arm['burst_asked']}"
-           f"{' UNFINISHED' if unfinished else ''}; load {L['ok']} ok, {L['lost']} lost of {L['requests']}, "
+           f"none {s['ctx_none']}; "
+           # The burst's tally is the last burst's: settling stops one, not zeroes it.
+           + (f"burst {d['burst']['done']} of {arm['burst_asked']}{' UNFINISHED' if unfinished else ''}; "
+              if with_burst else "no burst; ")
+           + f"load {L['ok']} ok, {L['lost']} lost of {L['requests']}, "
            f"ge25 {L['ge25']}, ge10 {L['ge10']}; tap {d['rxtap']['bytes']} B"
            + (f"; gaps >= 128 us {m['n_128us']}, >= 347 us {m['n_347us']}, longest {m['max_ms']} ms" if mon_on else ""))
     return arm

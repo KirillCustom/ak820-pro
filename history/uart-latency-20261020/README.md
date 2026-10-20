@@ -64,8 +64,9 @@ at its start.
   scripts' raw-HID opens collided, and `ak820text` then locked the cable
   out for its 60 s enumeration backoff. Fixed in `deep_sleep.open_dev`
   (`30e8605`).
-- Cosmetic: each arm's log prints the last burst's "done" count, because
-  settling stops a burst without zeroing its tally.
+- Cosmetic: each arm's log printed the last burst's "done" count, because
+  settling stops a burst without zeroing its tally. The tool now prints it
+  for burst arms only.
 
 ## ge10: the passes of 10 ms or more under radio load
 
