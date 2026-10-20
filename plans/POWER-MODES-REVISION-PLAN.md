@@ -1,8 +1,9 @@
 # The power modes, revised: round timings, and a Power saver that differs (2026-10-20)
 
-Status: **revision 2, after codex's plan review (below). Nothing is built.**
-One choice is JD's before building: Drift's cap (firmware step 4). The
-discussion behind the plan is in [`BACKLOG.md`](BACKLOG.md), "Balanced and
+Status: **revision 2, after codex's plan review (below). Built on branches,
+host-tested, not flashed** (see "Implementation"). Drift's cap is decided:
+option (c), the simpler one and the less likely to break (firmware step 4).
+The discussion behind the plan is in [`BACKLOG.md`](BACKLOG.md), "Balanced and
 Power saver: widen the spread, or merge them?". The figures come from
 [`../docs/power.md`](../docs/power.md)'s model and the logged drain's
 activity log.
@@ -154,7 +155,9 @@ All in `keyboards/a_jazz/ak820pro/`, on a branch off `ak820pro-jdlien`.
    Mode-derived updates go through `power_task()`.
    `power_set_lights_cut()` keeps calling `apply()` directly, which reads the
    current `want_val`.
-4. **`rgb_matrix_kb.inc`, Drift and the cap.** ⚠️ JD's choice, below.
+4. **`rgb_matrix_kb.inc`, Drift and the cap.** **Decided: (c).** It is the
+   smaller change and removes the cap from the palette's cache key, a class
+   of stale-palette bug; Drift's own LED power is small.
    - **Today:** Drift builds its nine stops through the capped
      `rgb_matrix_hsv_to_rgb()`, so each stop's own value is clipped and
      converted through the CIE curve. Only then does Drift scale the RGB
@@ -495,6 +498,55 @@ Also later:
   value);
 - A8's 1-minute activity column, which would show how often 1-5 minute
   pauses happen and settle the new Balanced's real cost.
+
+## Implementation (10-20)
+
+On two branches, both named `power-modes-revision`, built in worktrees so
+the main clone's checkout is untouched:
+- **Firmware: `0e322097f4`** on `ak820pro-jdlien` at `8b06e4dcc4` (the deep
+  sleep's fix had landed, so no rebase). `power.c`, `power.h`,
+  `rgb_matrix_kb.inc`. Dev, daily and fpb compile with no warnings.
+- **Host side: `b0c2ee3`** on this repo. It is not on `main` because
+  `run.sh` runs against the main clone's `power.c`, the one on the board, and
+  the new ladder cases fail there until the firmware merges. Both merge
+  together.
+
+What it holds, against the plan:
+- **The simulator:**
+  - every ladder edge at t - 1 ms and t;
+  - Saver's 128 while typing;
+  - LIGHTS_OFF never reached unforced;
+  - each ceiling move repaints once and the next ticks apply nothing (a boot
+    in Saver, `Fn`+`B`, the cable both ways, the dims);
+  - the low cap at exactly 151 and 150 ‰ and its exit;
+  - the unknown level;
+  - `c_load_step` at Balanced's dark stage, exactly 106.9 mW;
+  - the dev-hooks build: a held stage's ceiling on USB, `power_set_mode()`,
+    the ceiling under the dim, LIGHTS_OFF held at 110.2 mW.
+- **The colour test** (`colour.c`): QMK's own `color.c` and CIE table, every
+  hue, saturation and value under 64 and 128, through `power.c`'s ladder.
+  - DRIFT under a ceiling equals DRIFT at `min(v, ceiling)` with none, frame
+    for frame;
+  - RAINFALL never drives over it.
+- **Mutants:** all 8 new ones caught (the 5 the plan names, a held stage's
+  ceiling on USB, and Drift's palette and knob).
+  - `tail_fw.c` had not linked since Phase 2 (no stub for the LED drive), so
+    `mutants.py` could not run at all. Fixed.
+  - One older mutant, "the re-seat before RELAX_S", survives on
+    `8b06e4dcc4`'s unchanged `battery.c` too. It is listed as a known
+    survivor, printed on every run (`BACKLOG.md`).
+- **Departures from the plan:**
+  - **The low cap's 128 applies in every mode, Lights out included.** Lights
+    out never reaches ACTIVE on battery unless the bench holds it, so the
+    exclusion bought nothing.
+  - **`ladder_check.py` judges harder than "Saver at or below Full":** at
+    most 0.35 of Full for the effects that convert at the user's value
+    (expected 0.19) and 0.70 for Drift (expected 0.50).
+  - **`ladder_check.py` sets Always on for its stage pass.** A held ACTIVE
+    now takes the mode's ceiling, so a Saver left set would cap it.
+
+Next: codex's implementation review (validation 2), then the documentation
+on the host branch, then validation 3 on the board once the bench is free.
 
 ## Codex's review (10-20) and what changed
 

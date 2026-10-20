@@ -32,7 +32,12 @@ on the pack showed no pass of 25 ms or more. On the board since 16:16 10-19
 but the bezel clipping the slot at an angle, noted. The record:
 [`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
 
-## Balanced and Power saver: widen the spread, or merge them? (2026-10-20, an idea, not decided)
+## Balanced and Power saver: widen the spread, or merge them? (2026-10-20) -- decided: widen
+
+**Decided 10-20: widened**, with Balanced gentler too:
+[`POWER-MODES-REVISION-PLAN.md`](POWER-MODES-REVISION-PLAN.md). Built on
+branches and host-tested, not yet flashed. The discussion as it stood:
+
 
 **Widening it, the option leaning ahead.** Today the two differ only in idle
 timings, and both run full brightness while typing, which is what costs.
@@ -114,6 +119,25 @@ waiting on data. R5 measures Balanced either way.
   values, drop Saver from `Fn`+`B`'s cycle, and map a stored Saver to
   Balanced at boot.
 - Saver's bulb art goes. The docs' mode table loses a column.
+
+## A battery mutant the simulator no longer catches: the re-seat before RELAX_S (2026-10-20)
+
+`mutants.py` (B2's table) had not run since Phase 2: `tail_fw.c` lacked a stub
+for the LED drive Phase 2 added, so every grid catcher failed to link. With
+the stub (on the power-modes branch), 17 of B2's 18 are caught. One survives
+on `8b06e4dcc4`'s battery.c, unchanged by the power work:
+- **The mutant:** the re-seat taken before RELAX_S (`if (!relax_done)
+  return;` removed).
+- **Its catcher, `m_reseat_0929`,** passes anyway. Phase 2 rewrote it for the
+  count: the level is the count, re-seated into the voltage's band, and its
+  check is "under 900 and in the band", which an early re-seat also meets.
+- **To decide:** whether an early re-seat can now do harm (then the catcher
+  needs a sharper check, such as the exact level after RELAX_S), or whether
+  the band makes RELAX_S's wait redundant here (then the mutant retires, as
+  round 4's "990 cap" did).
+
+Until then `mutants.py` lists it in `KNOWN_SURVIVORS` and prints it on every
+run instead of failing.
 
 ## ~~The animation's resume clears the whole panel synchronously (43-44 ms)~~ FIXED 2026-10-20 (`ce70c8da41`) (2026-10-19)
 

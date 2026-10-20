@@ -1,0 +1,24 @@
+Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md. Everything below is reachable from inside it with git.
+
+Review the IMPLEMENTATION of plans/POWER-MODES-REVISION-PLAN.md (revision 2; your plan review is plans/review-codex-power-modes-revision-2026-10-20.md). JD chose option (c) for DRIFT (firmware step 4): the palette built uncapped, the value knob capped. Nothing is flashed yet; this review comes before the flash (the plan's validation 2).
+
+Where the code is (both are branches named power-modes-revision; do not check anything out, read with git):
+- Firmware, one commit 0e322097f4 on ak820pro-jdlien (8b06e4dcc4): `git -C qmk_firmware-ak820pro diff ak820pro-jdlien power-modes-revision`, and whole files with `git -C qmk_firmware-ak820pro show power-modes-revision:keyboards/a_jazz/ak820pro/<file>` (power.c, power.h, rgb_matrix_kb.inc; unchanged but relevant: sleep.c, hid_protocol.c op 14 ~line 1027-1107, battery.c, graphics/display.c's power_lights_mode use). QMK's own colour code: `git -C qmk_firmware-ak820pro show power-modes-revision:quantum/color.c` (and quantum/led_tables.c, quantum/rgb_matrix/rgb_matrix.c).
+- Host side, one commit b0c2ee3 on this repo's main: `git diff main...power-modes-revision -- scripts`, and whole files with `git show power-modes-revision:<path>`: scripts/battery_sim/{ladder.c,count.c,sim.c,colour.c,run.sh,mutants.py,tail_fw.c}, scripts/ladder_check.py, scripts/current_map.py, scripts/ladder_sleep.py. Unchanged helpers they lean on: scripts/sleep_baseline.py, scripts/deep_sleep.py, hostagent/ak820battery.py.
+
+Results so far (host only, nothing on the board): dev, daily and fpb compile with no warnings; the simulator's run.sh passes against the branch's firmware (every scenario, the dev-hooks build, the colour build, the scenarios under ASan/UBSan); mutants.py: all 8 new power.c/DRIFT mutants caught; one older battery.c mutant ("the re-seat before RELAX_S") also survives on 8b06e4dcc4's unchanged battery.c and is listed as KNOWN_SURVIVORS rather than failing every run. ladder_check.py ran only against a mocked board.
+
+Deliberate departures from the plan, to judge:
+1. power_task applies the low cap's 128 in every mode, Minimal included (the plan excluded Minimal). Minimal never reaches ACTIVE unforced on battery (its ladder is dark from 0 ms), so it differs only for a held ACTIVE in Minimal below 15%.
+2. ladder_check.py adds sharper criteria than the plan's "Saver at or below Full": CAPPED_MAX 0.35 for the effects that convert at the user's value, DRIFT_MAX 0.70 for DRIFT.
+3. The host side sits on a branch, not main: main's run.sh runs against the main clone's power.c, the one on the board, and the new ladder cases would fail there until the firmware merges.
+
+Check, and say file:line for each finding:
+1. Firmware correctness: want_val against val_cap; the change check in power_task; the forced stage's ceiling on USB; ordering with power_set_lights_cut's direct apply(); anything reading power_val_cap() or the stage that now sees a value it did not before (sleep.c's blockers and power_rgb_dark, op 14, the bulb, battery.c's model); the 128 at the low cap in Always on and Balanced; LIGHTS_OFF unreachable but forceable; the comments' accuracy.
+2. DRIFT: is hsv_to_rgb (uncapped, CIE applied) the same palette as before on USB, exactly; is the v cap correct at every value; anything in DRIFT's cache or init that the change breaks; RAINFALL and every other effect still capped.
+3. The tests: does each new scenario test what its comment claims, and could any pass vacuously? colour.c's validity: its stub types against QMK's rgb_t/hsv_t across translation units, lib8tion's scale8 formula as the board builds it, the LED grid, K_FRAMES, the ceilings set through power.c; the mutants' adequacy (anything important a mutant could break that nothing catches).
+4. The bench scripts: ladder_check.py's criteria, tolerances and its op 14 reads after a tick; that every path restores JD's lighting, the stage and the mode; the relay handle with --rig (macOS opens it exclusively); current_map.py's mode per state, its refusal at or below 150 per mille and its "jd saver" expectation (~161 mW with USB data attached); ladder_sleep.py's times.
+5. Anything else in the firmware or host tools that assumes the old timings (420 s, 300 s, 180 s, 120 s, 60 s, 30 s) or the old Saver lighting and is not updated.
+6. Is this ready for the plan's validation 3 onward (the exact dev artifact's sleep soak on BT and 2.4G, then the bench), and what must change first?
+
+Classify each finding must-fix / should-fix / note and end with a verdict.
