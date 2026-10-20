@@ -7,6 +7,7 @@
     venv/bin/python scripts/overrun_diag.py mode transaction|byte
     venv/bin/python scripts/overrun_diag.py burst N [--lo MS] [--hi MS] | burst stop
     venv/bin/python scripts/overrun_diag.py ab [--arms abcddcba] [--secs 90] [--n 1000] [--json OUT]
+    venv/bin/python scripts/overrun_diag.py sweep [--us 50,100,...] [--n 500] [--secs 30] [--json OUT]
 
 `status` prints the OE counts and their contexts, each PCF kind's spans, the
 burst, the OE ring and the deep sleep's last eight wakes. `ab` runs the A/B:
@@ -21,7 +22,9 @@ each for --secs (or until its burst is done, plus 10 s), under the 2.4G echo's
 load (mac_raw81_echo.py at --gap-ms 0), with the board's figures zeroed at
 each arm's start and read at its end. The cable's raw HID is opened only
 between the echo's runs (macOS's is exclusive, and the daemon's syncs need
-it). Needs the Mac's dongle, the slider on 2.4G and the cable's data.
+it). `sweep` measures the receiver's depth: per span, a burst of masked
+spans of that length (no I2C), the same load and accounting, per transaction.
+Needs the Mac's dongle, the slider on 2.4G and the cable's data.
 """
 import argparse, json, os, subprocess, sys, tempfile, time
 
@@ -60,7 +63,7 @@ def kinds(h):
                     "max_whole_ms": ms(U16(b, 8)), "spans_ge_1ms": U32(b, 10), "spans_ge_1_4ms": U32(b, 14),
                     "spans": U32(b, 18)})
     b = op(h, 22, [0xFF])
-    return out, {"ctx_sleep": U16(b, 0), "tick_hz": U32(b, 2), "now_secs": U32(b, 6)}
+    return out, {"ctx_sleep": U16(b, 0), "tick_hz": U32(b, 2), "now_secs": U32(b, 6), "ctx_probe": U16(b, 10)}
 
 
 def walk_back(slots, seq, cap):
@@ -97,8 +100,9 @@ def ring(h, seq):
     sys.exit("the OE ring kept moving during its readout")
 
 
-def burst(h, sub=0, n=0, lo=40, hi=80):
-    b = op(h, 23, [sub, n & 0xFF, n >> 8, lo, hi])
+def burst(h, sub=0, n=0, lo=40, hi=80, mask_us=0):
+    """sub 1 starts PCF reads; sub 3 the depth probe (n masked spans of mask_us)."""
+    b = op(h, 23, [sub, n & 0xFF, n >> 8, lo, hi, mask_us & 0xFF, mask_us >> 8])
     return {"left": U16(b, 0), "done": U16(b, 2), "failed": U16(b, 4), "exposure_ms": U32(b, 6),
             "active": bool(b[10]), "skipped": U16(b, 12), "lo": b[14], "hi": b[15]}
 
@@ -201,10 +205,11 @@ class Echo:
             os.unlink(self.out)
 
 
-def run_arm(name, a):
+def run_arm(name, a, mask_us=0):
     """Load from start to end: echo runs back to back until --secs of wall time
     have passed and, in a burst arm, MARGIN_S of load after the burst was seen
-    finished. The burst starts once the first run is sending."""
+    finished. The burst starts once the first run is sending. With mask_us,
+    the burst is the depth probe's masked spans instead of PCF reads."""
     byte_mode, with_burst = ARMS[name]
 
     def prep(h):
@@ -220,7 +225,7 @@ def run_arm(name, a):
     try:
         echo.wait_ready()
         if with_burst:
-            b0 = ds.with_dev(lambda h: burst(h, 1, a.n, a.lo, a.hi))
+            b0 = ds.with_dev(lambda h: burst(h, 3 if mask_us else 1, a.n, a.lo, a.hi, mask_us))
             b0["host_t"] = round(time.time(), 3)
         while True:
             runs.append(echo.finish())
@@ -241,7 +246,7 @@ def run_arm(name, a):
     # Time with nothing in flight: between runs, and each loss's wait.
     idle = [[r0["t_last"], r1["t_first"]] for r0, r1 in zip(runs, runs[1:])]
     idle += [[t0, t1] for r in runs for t0, t1 in zip(r["lost_at"], r["lost_until"])]
-    arm = {"arm": name, "byte_mode": byte_mode, "burst_asked": a.n if with_burst else 0,
+    arm = {"arm": name, "mask_us": mask_us, "byte_mode": byte_mode, "burst_asked": a.n if with_burst else 0,
            "start": round(t_arm, 3), "end": round(time.time(), 3), "burst_start": b0,
            "burst_done_by": done_at, "board": d, "echo_runs": runs,
            "load_s": round(sum(r["t_last"] - r["t_first"] for r in runs), 2),
@@ -254,11 +259,11 @@ def run_arm(name, a):
     return arm
 
 
-def run_ab(a):
+def run_ab(a, masks=None):
     arms = []
     try:
-        for name in a.arms:
-            arms.append(run_arm(name, a))
+        for name, us in ([("b", us) for us in masks] if masks else [(n, 0) for n in a.arms]):
+            arms.append(run_arm(name, a, us))
     finally:
         # Whatever happened: no burst left running, and the lock span back to
         # per transaction, as the board boots. Each tried on its own, so one
@@ -273,13 +278,15 @@ def run_ab(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["status", "reset", "mode", "burst", "ab"])
+    ap.add_argument("cmd", choices=["status", "reset", "mode", "burst", "ab", "sweep"])
     ap.add_argument("arg", nargs="?")
     ap.add_argument("--lo", type=int, default=40)
     ap.add_argument("--hi", type=int, default=80)
     ap.add_argument("--arms", default="abcddcba")
     ap.add_argument("--secs", type=float, default=90)
     ap.add_argument("--n", type=int, default=1000)
+    ap.add_argument("--us", default="50,100,150,200,300,500,1000,1500",
+                    help="sweep: the depth probe's masked spans, us")
     ap.add_argument("--json")
     a = ap.parse_args()
     res = None
@@ -307,6 +314,11 @@ def main():
         if any(c not in ARMS for c in a.arms):
             sys.exit("--arms: letters from abcd")
         res = {"args": vars(a), "at": time.strftime("%Y-%m-%d %H:%M:%S"), "arms": run_ab(a)}
+    elif a.cmd == "sweep":
+        masks = [int(x) for x in a.us.split(",")]
+        if any(not 1 <= m <= 3000 for m in masks):
+            sys.exit("--us: 1..3000 each")
+        res = {"args": vars(a), "at": time.strftime("%Y-%m-%d %H:%M:%S"), "arms": run_ab(a, masks)}
     if a.json and res is not None:
         with open(a.json, "w") as f:
             json.dump(res, f, indent=1)
