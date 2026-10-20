@@ -245,7 +245,7 @@ def run(L):
         check(f"badenv {name}", [v[0] for v in b.verdicts] == ["BADENV"] and b.rx.state == 2, b.verdicts)
 
     # 10b. A valid CRC over a wrong magic, or over session 0: still BADENV.
-    for magic, session in ((0x00, 5), (0x07, 5), (0xC6, 5), (0xFF, 5), (0xC7, 0)):
+    for magic, session in ((0x00, 5), (0x07, 5), (0xC5, 5), (0xFF, 5), (0xC6, 0)):
         inner = health + bytes(26 - len(health))
         head = bytes([magic, session, 0, 13])
         c = P.crc16(head + inner)
@@ -260,9 +260,18 @@ def run(L):
     b.drain(w[30:], step_ms=1)
     check("lifetime at commit", [v[0] for v in b.verdicts] == ["LIFETIME"], b.verdicts)
 
-    # 11. Forbidden but well formed: FORBIDDEN, boundary kept.
+    # 10d. Envelope v1 (0xC7, unmasked) is retired: BADENV.
+    inner = health + bytes(26 - len(health))
+    head = bytes([0xC7, 5, 0, 13])
+    c = P.crc16(head + inner)
+    b = fresh(L); b.drain(wire81(head + bytes([c >> 8, c & 0xFF]) + inner))
+    check("v1 envelope refused", [v[0] for v in b.verdicts] == ["BADENV"], b.verdicts)
+
+    # 11. Forbidden but well formed: FORBIDDEN, boundary kept. (A command not
+    #     starting 0x07, VIA's own, cannot even be expressed in envelope v2:
+    #     byte 0 is not sent and the board restores 0x07.)
     for inner in (b"\x07\x13\x05", b"\x07\x13\x79BOOT", b"\x07\x13\x76\x01", b"\x07\x10\x01",
-                  b"\x07\x11\x01", b"\x05\x00\x00\x00\x00\x00", b"\x07\x13\x0e\x05", b"\x07\x12\x05"):
+                  b"\x07\x11\x01", b"\x07\x13\x0e\x05", b"\x07\x12\x05"):
         b = fresh(L); b.drain(wire81(env(11, inner)) + wire81(env(12, health)))
         check(f"forbidden {inner.hex()}", [v[0] for v in b.verdicts] == ["FORBIDDEN", "OK"], b.verdicts)
     for inner in (b"\x07\x12\x01", b"\x07\x12\x02", b"\x07\x12\x03", b"\x07\x12\x04", b"\x07\x13\x01",
