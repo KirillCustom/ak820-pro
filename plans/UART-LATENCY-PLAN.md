@@ -310,3 +310,26 @@ sleep's recovery under the new deferral.
 | 2 | should: the closing masked stretch starts after the row IRQ's restore, not "from the relock" | **Taken** (`ce70c8da41`). |
 | 3 | should: `overrun_diag.py` still speaks the old op 20 and has no monitor readout; fix it before accepting A/B numbers | **Taken** before the A/B: the tool is updated first (row 4 above claimed it early). |
 | 4 | note: the complete-pass < 25 ms gate needs hardware; admission is not that guarantee | Stands: the release matrix measures it. |
+
+## Results (10-19/20 night): built, flashed, measured
+
+[`../history/uart-latency-20261020/`](../history/uart-latency-20261020/README.md)
+has every figure.
+- **The A/B:** under the PCF burst, the old lock lost 7.7% of requests to
+  199-205 OEs an arm. The defaults (unlocked, UART2 at 0) lost 3-6 of
+  5,600. With no burst, UART2 at 0 against 1 gives 2-5 OEs against 9-15.
+  The gap monitor costs nothing measurable.
+- **One fix after:** the admission check divided 64-bit every pass (Gremlin
+  saw passes >= 10 ms rise). `b2a07e0d37` compares ticks.
+  [Codex: no findings](review-codex-pass-ticks-2026-10-20.md). It takes
+  0.15 ms off every pass.
+- **The release matrix, all on `b2a07e0d37` and all with no pass >= 25 ms:**
+  - the stuck bus: 20/20, 10-11 ms whole, the bus fine after;
+  - 20 staged restores: the longest blit 19 ms;
+  - 200 relay presses during a request stream: every one registered by the
+    board, nothing given up, replaced or dropped on the link.
+- **On the board:** `b2a07e0d37` since 01:04 10-20. `ak820pro-jdlien` and
+  `deps.lock` point at it.
+- **Open:** the ~1 OE a minute left under full load, which the monitor's
+  128 µs threshold cannot see (`BACKLOG.md`); the RTT's uptime question;
+  the 64-bit math on other per-pass paths.

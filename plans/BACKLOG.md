@@ -32,7 +32,12 @@ on the pack showed no pass of 25 ms or more. On the board since 16:16 10-19
 but the bezel clipping the slot at an angle, noted. The record:
 [`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
 
-## The animation's resume clears the whole panel synchronously (43-44 ms) (2026-10-19)
+## ~~The animation's resume clears the whole panel synchronously (43-44 ms)~~ FIXED 2026-10-20 (`ce70c8da41`) (2026-10-19)
+
+Routed through the staged restore with the boot redraw: 20 restores measured
+with no pass >= 25 ms, the longest blit 19 ms
+([`../history/uart-latency-20261020/`](../history/uart-latency-20261020/README.md)).
+
 
 `display_redraw_dashboard()` (`display.c`), the path the animation's resume
 and the boot take, still does one `lcd_clear_rect()` of the full panel:
@@ -43,6 +48,20 @@ restore was staged. **To do:** route it through the staged restore, or clear
 in bands one per pass, as the restore does.
 
 ## UART overruns on the radio link, ~1-2 an hour, likely the PCF's I2C (2026-10-19)
+
+**Mostly fixed 2026-10-20 (`ce70c8da41`, then `b2a07e0d37`;
+[`UART-LATENCY-PLAN.md`](UART-LATENCY-PLAN.md),
+[`../history/uart-latency-20261020/`](../history/uart-latency-20261020/README.md)).**
+The PCF's transfer runs unlocked, with only the row ISR held off, and UART2
+sits above USB. Under stage 2's back-to-back load:
+- the PCF burst's 199-205 OEs an arm (7.7% of requests lost) fell to 3-6;
+- with no burst, priority 0 against 1 gives 2-5 against 9-15.
+
+**What is left:** ~1 OE a minute under full load. The gap monitor sees
+almost no interrupt gap of 128 µs or more, so the suspects are masked
+stretches of ~90-128 µs, below its first threshold. Lower that threshold,
+or add one at 90 µs, to name them.
+
 
 The module-to-board link loses a byte now and then: **92 overruns in 51.9 h
 on flash 2f's drain, 13 in 16.9 h on 2e, 6 in the 2.5 h after the 10-19
@@ -1075,3 +1094,37 @@ on the board — health page 1 (`HC_GET`) — never one that can move the LCD, a
 never while JD is typing or a now-playing agent is live. The
 `TEXT_PLAYBACK` choice was made to be "production traffic, faster"; faster is
 exactly what production traffic is not.
+
+## 64-bit time math on every main-loop pass (2026-10-20)
+
+On the M0 every `TIME_I2MS`/`TIME_I2US` of a run-time value, `timer_read32()`
+and `timer_elapsed32()` is a 64-bit software divide: ~100-250 µs under the
+row ISR's 73%. The UART-latency build added one per pass and `b2a07e0d37`
+took it out: `rtc_fast` fell from 0.207 to 0.061 ms a pass. Others predate it.
+
+**Gremlin's objdump of `ce70c8da41`'s callers of the 64-bit helpers:**
+- `sleep_task`
+- `energy_tick` (9 multiplies, 7 divides)
+- `board_ms_now` (every pass during an acquisition)
+- `pcf_machine_step`
+- `rtc_task`
+- QMK's `usb_idle_timer_elapsed` and `usb_shared_idle_timer_elapsed`
+- the housekeeping cadence check (`ak820pro.c`)
+- health sampling (`health.c`)
+
+**To do:** count them with HC_ACCT. Move the ones that run every pass to
+system-tick compares against constants (`TIME_MS2I(constant)` folds at
+compile time). And a fast `timer_read32`, which Gremlin proposed.
+
+**Why it matters:** the slow passes under radio load are 10-12 ms, built by
+stacking, so a fraction of a millisecond a pass decides how many cross
+10 ms. None reaches 25 ms.
+
+## Request RTT under radio load: higher in the first minutes after a boot? (2026-10-20)
+
+Stage 2's 1000-stream RTT median read 25.1-25.6 ms on `ce70c8da41` at ~1 h
+up, and 27.0-27.5 ms on `b2a07e0d37` within 10 min of a boot (twice, the
+daemon swapped between). The fix cannot add time, so uptime is the
+suspect. Gremlin's 0ae4 → ce70 (25.0 → 26.9) may be the same effect.
+`ge10-b2a0-1h-*.json` tests it at ~1 h; see that folder's README.
+

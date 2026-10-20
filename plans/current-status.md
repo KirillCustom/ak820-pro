@@ -1,6 +1,6 @@
 # Current status
 
-Updated 2026-10-19 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
+Updated 2026-10-20 (the newest block is first below; the crash hunt's notes follow it). The crash hunt's section was last updated 2026-09-24, 12:45; its plan is
 [`CRASH-HUNT-PLAN.md`](CRASH-HUNT-PLAN.md). **Phase 1b is closed (10-14). The
 INA228 power logger is on the pack and recording (10-15)**; next is using it,
 below.
@@ -15,7 +15,49 @@ loop stopped next time. The crash hunt adds what they cannot say (a CPU fault
 versus a hang, the PC, stack depth, why blits time out) and tries to provoke
 the next reset instead of waiting for it.
 
-## 2026-10-19 — RESUME HERE
+## 2026-10-20 — RESUME HERE
+
+**On the board since 01:04 10-20: `b2a07e0d37`** (dev, token `0x398a2e17`;
+`ak820pro-jdlien` and `deps.lock` point at it). It is the UART-latency build
+([`UART-LATENCY-PLAN.md`](UART-LATENCY-PLAN.md)):
+- the PCF's transfer unlocked, with only the row ISR held off;
+- UART2 above USB;
+- the animation's stop and the boot redraw through the staged restore;
+- the pass budget compared in ticks.
+
+**Measured overnight, no hands**
+([`../history/uart-latency-20261020/`](../history/uart-latency-20261020/README.md)):
+- **Overruns:** the PCF burst's 7.7% of requests lost became 0.05-0.1% at
+  the defaults.
+- **The release matrix passes, with no pass >= 25 ms anywhere:** the stuck
+  bus, 20 staged restores, and 200 relay presses during a request stream.
+
+**The daemon carries now-playing over the 2.4G dongle on the Mac too.**
+- **What runs:** `v0.1.1-628-g5a9bac1`, installed `--clock --radio` at
+  01:06. The Mac's radio half is `b2b85f3` plus codex's fixes; the reviews
+  are in [`RAWHID-24G-DAEMON-PLAN.md`](RAWHID-24G-DAEMON-PLAN.md).
+- **The cable-out test passes:** the radio qualified 6.6 s after the data
+  cut, the band read back as sent, and the radio stood down 3.6 s after
+  the data came back.
+- ⚠️ **On macOS, flock and POSIX record locks never see each other.** Every
+  Mac tool on the radio lock uses flock.
+
+**Next, with JD at the desk, one action at a time:**
+1. A track playing, the cable pulled: the band and the playback readout
+   over the radio.
+2. A track change while on the radio.
+3. The cable back.
+4. Optional: the board's deep sleep on the radio, then a key.
+
+Gremlin's Windows cable-out test needs JD's hands there too.
+
+**Then:**
+- the backlog's new items: 64-bit math per pass, the OEs left, the RTT's
+  uptime question;
+- `overrun_diag.py`'s cosmetic burst tally;
+- R5.
+
+## 2026-10-19
 
 **The night's runs, no hands, all on `53afebd553`** (each folder has a README):
 - **The RGB curve** (`../history/power-bench-2026-10-15/rgb-curve-20261019/`):

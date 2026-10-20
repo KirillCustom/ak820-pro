@@ -110,10 +110,36 @@ Four things from that work that bite outside it:
 Measured results and audit findings from completed work: [`history/`](history/).
 ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 
-## Current state (2026-10-19)
+## Current state (2026-10-20)
 
-**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-19
-— RESUME HERE"). **The night of 10-18/19, no hands:** 247 of 247 deep-sleep
+**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-20
+— RESUME HERE").
+
+**On the board since 01:04 10-20: `b2a07e0d37`** (a `dev` build, token
+`0x398a2e17`; `ak820pro-jdlien` and `deps.lock` point at it). It is the
+UART-latency build ([`plans/UART-LATENCY-PLAN.md`](plans/UART-LATENCY-PLAN.md)):
+- **the PCF's transfer runs unlocked,** with only the row ISR's IRQ held off;
+- **UART2 sits above USB;**
+- **the animation's stop and the boot redraw go through the staged restore;**
+- **the pass budget is compared in ticks.**
+
+Measured overnight with no hands
+([`history/uart-latency-20261020/`](history/uart-latency-20261020/README.md)):
+- **overruns:** under a PCF burst, 7.7% of radio requests lost became
+  0.05-0.1%;
+- **the release matrix passes, with no pass >= 25 ms anywhere:** the stuck
+  bus, the staged restore, and 200 relay presses during a request stream.
+
+**The Mac's daemon carries now-playing over the 2.4G dongle with the cable
+out** (`--radio`, installed 01:06 10-20). Its cable-out test passes; the
+track change waits for JD.
+- ⚠️ **On a dev build, ops 20-26 change the board's diagnostics at run
+  time:** the lock mode, UART2's priority, the gap monitor.
+  `overrun_diag.py` puts the defaults back after its runs.
+- ⚠️ **On macOS, flock and POSIX record locks never see each other:**
+  every Mac tool on the radio lock uses flock.
+
+**Earlier on 10-19:** **The night of 10-18/19, no hands:** 247 of 247 deep-sleep
 cycles and an hour asleep at 3.17 mA, every waking key kept; ⚠️ **asleep, the
 RTC's second runs ~13% slow** (3139 s counted for 3600), so the build takes
 slept time from the PCF; the radio retries as often awake as after a wake; a
@@ -147,8 +173,8 @@ Two workstreams, Phase 2 first:
   no light ([`plans/LOCK-LED-CHANNEL-PLAN.md`](plans/LOCK-LED-CHANNEL-PLAN.md)
   has the resume list; what the module forwards is in
   [docs/wireless.md](docs/wireless.md)).
-- **On the board since 22:19 10-19: `e7f6890e06`** (a `dev` build, token
-  `0xfa68ad25`; `ak820pro-jdlien` and `deps.lock` point at it): Gremlin's
+- **Before it, from 22:19 10-19: `e7f6890e06`** (a `dev` build, token
+  `0xfa68ad25`): Gremlin's
   2.4G stage 1 with its pause fixed (the per-byte `timer_read` was a 64-bit
   software divide, ~250 us a call), plus the overrun/Caps build
   ([`plans/OVERRUN-CAPS-PLAN.md`](plans/OVERRUN-CAPS-PLAN.md)):
@@ -177,9 +203,9 @@ Two workstreams, Phase 2 first:
   [`plans/POWER-MODE-ICONS-PLAN.md`](plans/POWER-MODE-ICONS-PLAN.md)). **Measured that evening:
   deep sleep draws 3.2 mA against ~27 awake and dark, wakes on a key, and
   the waking key is not lost; light sleep with WFI saves ~4.7 mA.** **Pushed 10-19** (`ak820pro-jdlien`
-  and ChibiOS-Contrib's `ak820pro-patches`), and `deps.lock` pins
-  `e7f6890e06` (the board's firmware, above), so a fresh `setup.sh` builds it. JD: push freely now; the repo is not widely
-  circulated.
+  and ChibiOS-Contrib's `ak820pro-patches`); `deps.lock` pins the board's
+  firmware (`b2a07e0d37`, above), so a fresh `setup.sh` builds it. JD: push
+  freely now; the repo is not widely circulated.
 - **The power logger stays on the pack** (INA228 + MAX17048,
   [docs/test-bench.md](docs/test-bench.md), "The power logger"): current and
   charge from the INA228, voltage from `vcell_mv`. ⚠️ The INA228's VBUS reads
