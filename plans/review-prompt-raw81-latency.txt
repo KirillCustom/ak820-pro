@@ -1,0 +1,13 @@
+You are reviewing a small firmware delta before it is flashed (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS, a closed CH582F radio module on UART2). Read only files inside the repository you were started in (the ak820-pro checkout); do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
+
+Stage 2 of raw HID over the 2.4G dongle passes on gremlin (plans/RAWHID-24G-PLAN.md, "Stage 2 built, reviewed and passing"), with one follow-up: ~1 transaction in 4 costs a main-loop pass >= 10 ms, ~6 ms of it in ch582_task (a ~3.4 ms RX drain of a 34-byte request read byte by byte, ~1.8 ms of dispatch and response). The delta, on branch gremlin/raw81 (stage 2 rebased onto the Mac session's e7f6890e as 10fcebe8; your reviews of stage 2 apply):
+  git -C qmk_firmware-ak820pro diff 10fcebe8 135db8d2
+Files: keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c, bluetooth/raw81.c and .h. It (1) replaces the drain's single-byte chnReadTimeout with a bulk read into a local 64-byte buffer (rx_take/RX_TAKE), dev builds only; (2) makes raw81_crc16 table-driven; (3) moves the session idle from timer_read32() (a software 64-bit divide) to rtc_seconds_since_boot() with RAW81_SESSION_IDLE_S = 2 counts, and the host waits 2 s between opens. The daily build's text/data/bss are unchanged from 10fcebe8's daily.
+
+Check, citing file:line:
+1. The bulk read: every byte read is processed in the same drain (the cap passed to chnReadTimeout), the empty-queue detection and `drained`, the silence and ACK-prefix logic that follows an empty read, the WDT_TEST_HOOKS injection and mute paths, the RX tap, and that the daily build compiles the old single-byte read unchanged.
+2. The CRC table: correct for CRC-16/CCITT-FALSE (check a few entries and the update expression).
+3. The seconds-based session idle: rtc_seconds_since_boot()'s semantics and cost from the main loop (rtc/rtc.c), its behaviour across sleep, reset and wrap, the two-count rule against the plan's 1 s minimum, and the host's 2 s wait.
+4. Anything that could cost a keystroke, stall the main loop, or change behaviour when no 81 arrives.
+
+Rank findings must-fix / should-fix / note; be brief; say plainly whether anything blocks flashing this dev build.
