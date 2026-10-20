@@ -125,3 +125,99 @@ on USB.
 
 The clock over the radio (stage 3). Health over the radio. A daily build's
 dispatch. Bluetooth (no vendor channel; FEE0 is the module's OTA).
+
+## Revision 2: after codex's plan review (10-19)
+
+[Review](review-codex-rawhid-daemon-plan-2026-10-19.md), verbatim: not ready as
+written; ready once its seven must-fixes are resolved. Revision 2 replaces
+the sections above where they differ.
+
+**R2-1. Qualify over the radio, with a probe old firmware cannot misread
+(must-fixes 1, 2).** A record of a board once seen over USB cannot prove what
+the dongle reaches now (codex: a reflash while the daemon is stopped, a second
+board, a stale positive). So qualification moves onto the radio itself:
+- An older build's 3-byte window can only match `5A|5B|5C <d> <sum>` or
+  `61 0D 0A`. A 34-byte `81` frame containing **none of the bytes 0x5A, 0x5B,
+  0x5C or 0x61** can match neither, in any alignment, so a pre-stage-2 board
+  ignores it entirely: no LED state, no link state, no battery reading.
+- The **probe** is such a frame: the health read `07 13 01`, an envelope whose
+  session, seq and CRC bytes, and whose outer sum, avoid those four values (the
+  host steps the seq until they do, at most a few tries in practice; the
+  session id itself is chosen to avoid them).
+- A stage-2 board answers the probe with a reply and a receipt: the board on
+  the radio, now, is qualified. No answer within the deadline: not qualified
+  (a daily or older build, a sleeping board, or nothing linked); the radio
+  stays idle and re-probes on a backoff.
+- Qualification lasts for the radio's current acquisition only. It is dropped
+  on any probe or request timeout, any `Unknown`, a USB presence (the cable
+  is in: USB takes over; a reflash needs the cable), a dongle arrival, and
+  the daemon's start. So text, whose bytes include 'Z' (0x5A) and 'a' (0x61),
+  is only ever sent to a board that answered a probe since the last time
+  anything could have changed it.
+- Unknown health tokens, HC_GET6, and op 17 are no longer part of the gate.
+
+**R2-2. Ownership and the session (must-fix 3).** The daemon takes the same
+kernel byte-range lock as `win_raw81_s2.py` (`msvcrt.locking` on the lock
+file's byte 0 is `LockFileEx` on byte 0), **per user** (`%LOCALAPPDATA%`; the
+board's `BUSY` keeps two users' daemons from interleaving), held for the
+radio's acquisition, released when USB takes over or the radio idles out, and
+taken without blocking (contention defers radio work to a later tick). The
+older echo scripts do not take it; they are dev tools and documented as not
+to be run beside the daemon. Session state is written durably and atomically
+(temp file, flush, rename) before the first send; a missing file starts at
+session 1 only if no lock holder exists; unreadable or rolled-back state
+(a session lower than the one this process last used) fails the radio
+closed. The 1 s reopen wait is measured on the monotonic clock, with the file
+holding the wall time only as a cross-process floor (a wall-clock jump
+backwards waits at most 1 s more).
+
+**R2-3. Errors without sequence jumps (must-fix 4).** No resynchronisation
+to `last_seq + 1`: a `STALE` (this session's identity is no longer fresh)
+**rotates the session** (the idle second, then a new id), which keeps every
+identity unique by construction. `BUSY` on the daemon's own fresh session
+(its previous one admitted something under a second ago, e.g. a restart)
+waits the idle once and retries; `BUSY` otherwise backs the radio off 30 s.
+One retry per request in total, whatever the reason.
+
+**R2-4. The exchange contract (must-fix 5).** The radio uses the transport's
+own drain (`drain_until`, bounded, `Queue::Empty` required before a write) and
+its error types; `Stuck` at any point (drain, write, read) ends the tick's
+radio work at once and puts the radio in the 60 s abandoned backoff, as USB.
+The 100 ms is the transaction's read deadline, checked before feeding; a
+write's own timeout and a cancellation's grace come on top, so it is not a
+wall-clock bound. `Incomplete` (the board dispatched; the reply was lost) and
+`Unknown` (it may not have) stay distinct in logs and counters; neither
+commits the publisher.
+
+**R2-5. Outcomes separated, not just openers (must-fix 6).** The radio's
+interface is **text-only** (`set_lines`, `clear`, `playback`), built on the
+`raw81` module; no generic request. Its results go to a radio `Watch` of
+its own; the USB `Watch`, backoff and status fields are never touched by
+radio results. The fallback is chosen from the USB **opener's** `Absent`
+only, not from any cycle failure (a macOS `Absent` mid-transfer is a USB
+failure, retried on USB next tick).
+
+**R2-6. Tests at the boundaries (must-fix 7).** The cycle gets two seams,
+an opener (USB, radio) and an injected clock and session store, so it runs
+on fakes without a fake `Platform`. Cases added: the probe's byte rule
+(property: no window match in any alignment for every probe built), an old
+board (no answer: never text), qualification dropped by each trigger, lock
+contention and persistence failures (missing, unreadable, rolled back, a
+temp file left behind), rotation on `STALE`, `BUSY` own and foreign, every
+USB error state (only the opener's `Absent` selects the radio), clock and
+health never reaching the radio (compile-time: the text-only interface),
+dirty drains, late completion, and `Stuck` in each phase. Timing tests use the
+injected clock (the existing `Fake` ignores timeouts).
+
+**R2-7. A sleeping board and handover (should-fixes 8, 9).** Radio silence
+(timeouts with the dongle present) backs off 1 s, 2 s, 4 s ... to 30 s and
+logs once per transition; on macOS, radio silence is the radio's state, not a
+deaf USB device. On any change of transport, or a new radio qualification,
+the publisher's next push is a full text refresh (not after the 30 s
+keepalive). The status file reports the active transport separately from
+USB presence; qualification and session storage are kept apart from the
+best-effort status telemetry. Install combinations of `--radio` and
+`--clock` are tested.
+
+**Note taken:** one Configuration Manager snapshot per tick, shared by the
+USB and dongle openers.
