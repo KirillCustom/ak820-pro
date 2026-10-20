@@ -462,3 +462,97 @@ a relay-driven typing burst under a full-rate request stream, every press
 and release seen at the host; a power cut with a request in flight, then
 recovery with no stale answer; deep sleep with requests arriving, answered
 after a key wake and never before.
+
+## Stage 2, revision 3: after codex's verify of revision 2 (10-19)
+
+[Verify](review-codex-rawhid-stage2-plan-verify-2026-10-19.md), verbatim:
+findings 2, 3, 4, 5, 7, 9 closed; 1 open; 6, 8, 10 partial; four new
+must-fixes and two should-fixes. Revision 3 replaces revision 2 where they
+differ. `raw81.c` (`ba541f20`) and its host suite are revised to match.
+
+**R3-1. ACK before the pump on every exit (must-fix 1).** In dev builds
+`ch582_task()` runs the TX pump only when its drain reached an empty queue
+**and** the window holds no ACK prefix (`61` or `61 0D` as its newest bytes):
+an exit at the 64-byte cap, or a split ACK, defers the pump to the next pass.
+The bound: the module's UART delivers at most 11.5 bytes/ms; a pass is under
+4 ms (the slow-call profile's threshold, never reached by ch582 on
+`79245590`), so at most ~46 bytes arrive per pass against 64 drained: a
+capped queue shrinks by >= 18 bytes a pass and empties within 128/18 = 8
+passes, ~30 ms, at the line's absolute maximum rate, which the module never
+sustains. Handlers in the drain are what they were before stage 1 (the 5C
+hook, the 5B/5C ACK writes), bounded per byte. The ACK prefix check costs one
+compare. The daily build keeps its current drain unchanged.
+
+**R3-2. Sessions and 16-bit sequence numbers (must-fix 3).** The envelope
+becomes
+
+```
+[0] 0xC7  [1] session  [2..3] seq, big-endian  [4..5] CRC-16 over [0..3]
+and [6..31]  [6..31] the inner command, 26 bytes
+```
+
+Every allow-listed command fits in 26 (a text line is 5 + 21; health reads
+at most 4). The host picks a random nonzero session id when it opens the
+dongle and holds a named lock (one owner per dongle, per machine). The board
+keeps `(session, last_seq)`, unset after a reset or a link change:
+- a request in the current session is fresh if `(seq - last) mod 65536` is
+  1..32767;
+- a request in another session starts that session only if the line has been
+  free of admitted requests for **1 s** (an idle gap no radio-delayed packet
+  outlives: the dongle forwards within milliseconds and keeps nothing;
+  measured RTTs are 15-24 ms); otherwise status 4, **session busy**, so two
+  owners cannot interleave;
+- `last_seq` advances only when a request is **admitted** (dispatched), not
+  on a drop, a stale, a forbidden or a busy.
+With 16 bits and one request in flight, an identity cannot repeat within a
+session for 32,768 transactions (~10 minutes at the measured 18 ms per
+transaction); a host rotates its session id before that, after the 1 s idle.
+
+**R3-3. The receipt and the host's state machine (must-fix 2).** The receipt
+gains its own CRC:
+
+```
+[0] 0xC7  [1] session  [2..3] seq  [4] status  [5..6] last seq
+[7..8] CRC-16 of the reply (status 0)  [9..10] CRC-16 of [0..8]  [11..31] 0
+status: 0 ok, 1 bad CRC, 2 not allowed, 3 stale, 4 session busy
+```
+
+The host, per transaction: send; then accept only 33-byte reports
+(report id 0 + 32) on its own handle. A non-receipt report is held as the
+**candidate reply** (only the latest is kept, and only while the transaction
+is open); a receipt is valid only if its own CRC checks and its session and
+seq are the transaction's. Then: status 0 with a candidate whose CRC matches
+[7..8] is **success**; status 0 without one is **incomplete** (retry with a
+new seq); status 1-4 is that NAK. Anything else, or the 100 ms timeout, is
+**unknown**: the transaction is closed and its candidate discarded. A reply
+that arrives after its receipt can never match (the transaction is closed).
+Either half missing is never success.
+
+**R3-4. The 91 ACK window stays by default (must-fix 4).** The 15 ms hold
+after each response remains, now after the *pair*. A dev-hook switch turns it
+off for the experiment that would justify removing it: long runs of single
+91s, paired 91s, and mixed with relay keys on the Mac, with host-observed
+key preservation. Removal is a later decision on that evidence.
+
+**R3-5. One transaction, both frames (should-fix 5).** The response slot is
+built whole at dispatch (reply + receipt, or receipt alone) and immutable
+until both frames are written; it is sent only when nothing is in flight,
+the keyboard queue is empty, and the UART output queue has room for both (68
+bytes, checked with `oqGetEmptyI` under the lock), so `sdWrite` never waits.
+Otherwise it waits a pass. The key delay this adds (keys queued behind a
+pending pair, plus the window) is measured.
+
+**R3-6. Observable acceptance (should-fix 6).** A read-only dev hook (op 18)
+returns the band's stored text lines and playback state, so a text write
+over the radio is checked against the board's *state* over USB. That needs a
+small read accessor in `graphics/display.c` (the Mac session is editing that
+file; coordinated before it is added). Slot-full and link-down tests expect
+counted drops and host timeouts, not a NAK. Added to the matrix: a lost or
+reordered half (by suppressing one frame in a dev build), receipt-first, a
+delayed packet across a session change, cap-hit ACK ordering (a burst of 81s
+then an ACK), the nested drain (the bootloader path's `ch582_tx_drain()`
+with a request pending: no dispatch), and latency measured to the receipt.
+
+The Mac's sleep test is accepted as an interruption test, as codex framed
+it: requests time out while the board sleeps and succeed fresh after a wake;
+a real power cycle or reset stays recorded as not covered.
