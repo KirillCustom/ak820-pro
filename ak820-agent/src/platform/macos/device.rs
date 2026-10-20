@@ -277,6 +277,8 @@ impl Drop for Board {
 
 /// The board object this process holds, if any.
 static BOARD: Mutex<Option<Arc<Board>>> = Mutex::new(None);
+/// The dongle's radio object, likewise.
+static RADIO: Mutex<Option<Arc<Board>>> = Mutex::new(None);
 
 /// An open board, for one interaction. Closes on drop.
 pub struct Device {
@@ -318,11 +320,34 @@ pub fn listed() -> Vec<String> {
 
 /// Find the board, decide from properties, and open it for one interaction.
 pub fn open_board() -> Result<Device, Error> {
+    let all = discovery::list().map_err(Error::Discovery)?;
+    let choice = discovery::choose(&all.iter().map(|(c, _)| c.clone()).collect::<Vec<_>>());
+    open_chosen(&BOARD, all, choice)
+}
+
+/// The 2.4G dongle's radio interface (0C45:FDFD, FF60/61), opened for one
+/// media tick (raw81 stage 2). Only the media cycle's radio path calls this;
+/// the clock and health open the board.
+///
+/// The same identity check as the board's, with the dongle's ids. `Absent`
+/// only when no such collection is listed; one listed but seized by a hidapi
+/// peer is `Open`, busy, as the board's is. Two dongles are `Ambiguous`. The
+/// object is the radio's own, beside the board's: each is long-lived for its
+/// arrival (S2's registration leak), so neither may evict the other.
+pub fn open_radio() -> Result<Device, Error> {
+    let all = discovery::list_dongle().map_err(Error::Discovery)?;
+    let choice = discovery::choose_radio(&all.iter().map(|(c, _)| c.clone()).collect::<Vec<_>>());
+    open_chosen(&RADIO, all, choice)
+}
+
+fn open_chosen(
+    slot: &Mutex<Option<Arc<Board>>>,
+    all: Vec<(discovery::Candidate, super::cf::Io)>,
+    choice: Choice,
+) -> Result<Device, Error> {
     use std::sync::atomic::Ordering::Relaxed;
 
-    let all = discovery::list().map_err(Error::Discovery)?;
-    let candidates: Vec<_> = all.iter().map(|(c, _)| c.clone()).collect();
-    let id = match discovery::choose(&candidates) {
+    let id = match choice {
         Choice::One(id) => id,
         Choice::Absent => return Err(Error::Absent),
         Choice::Ambiguous(ids) => return Err(Error::Ambiguous(ids.iter().map(|i| format!("IOHIDDevice {i:#x}")).collect())),
@@ -332,7 +357,7 @@ pub fn open_board() -> Result<Device, Error> {
         return Err(Error::Incompatible { path: chosen.name(), why });
     }
 
-    let mut slot = BOARD.lock().unwrap_or_else(|e| e.into_inner());
+    let mut slot = slot.lock().unwrap_or_else(|e| e.into_inner());
     let reuse = slot.as_ref().is_some_and(|b| b.registry_id == id && b.usable());
     if !reuse {
         // Dropping a board that is still open elsewhere in this process

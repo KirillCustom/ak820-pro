@@ -15,6 +15,7 @@ use super::sys::*;
 
 const VID: i64 = crate::hid::VID as i64;
 const PID: i64 = crate::hid::PID as i64;
+const DONGLE_PID: i64 = crate::hid::DONGLE_PID as i64;
 const RAW_USAGE_PAGE: i64 = crate::hid::USAGE_PAGE as i64;
 const RAW_USAGE: i64 = crate::hid::USAGE as i64;
 
@@ -62,8 +63,14 @@ impl Candidate {
     }
 
     pub fn is_ours(&self) -> bool {
+        self.is_raw_hid_of(PID)
+    }
+
+    /// The raw-HID collection (FF60/61) of this product: the board's, or the
+    /// 2.4G dongle's, whose radio interface carries the same collection.
+    fn is_raw_hid_of(&self, pid: i64) -> bool {
         self.vid == Some(VID)
-            && self.pid == Some(PID)
+            && self.pid == Some(pid)
             && self.usage_page == Some(RAW_USAGE_PAGE)
             && self.usage == Some(RAW_USAGE)
     }
@@ -81,9 +88,19 @@ pub enum Choice {
 
 /// Pure: which of these, if exactly one, is ours.
 pub fn choose(candidates: &[Candidate]) -> Choice {
+    choose_of(candidates, PID)
+}
+
+/// Pure: which of these, if exactly one, is the 2.4G dongle's radio
+/// interface. More than one is more than one dongle: refused, as on Windows.
+pub fn choose_radio(candidates: &[Candidate]) -> Choice {
+    choose_of(candidates, DONGLE_PID)
+}
+
+fn choose_of(candidates: &[Candidate], pid: i64) -> Choice {
     let ours: Vec<u64> = candidates
         .iter()
-        .filter(|c| c.is_ours())
+        .filter(|c| c.is_raw_hid_of(pid))
         .map(|c| c.registry_id)
         .collect();
     match ours.as_slice() {
@@ -98,13 +115,23 @@ pub fn choose(candidates: &[Candidate]) -> Choice {
 /// Matching narrows by VID/PID in the registry itself, so services of other
 /// devices (the UPS, the Stream Deck) are never even returned to us.
 pub fn list() -> Result<Vec<(Candidate, Io)>, String> {
+    list_of(PID)
+}
+
+/// [`list`] for the 2.4G dongle (0C45:FDFD): its boot keyboard, its other
+/// collections and its radio interface, nothing opened.
+pub fn list_dongle() -> Result<Vec<(Candidate, Io)>, String> {
+    list_of(DONGLE_PID)
+}
+
+fn list_of(pid: i64) -> Result<Vec<(Candidate, Io)>, String> {
     unsafe {
         let matching = IOServiceMatching(c"IOHIDDevice".as_ptr());
         if matching.is_null() {
             return Err("IOServiceMatching(IOHIDDevice) returned NULL".into());
         }
         add_number(matching, "VendorID", VID);
-        add_number(matching, "ProductID", PID);
+        add_number(matching, "ProductID", pid);
         let mut iter: io_iterator_t = 0;
         // Consumes `matching`, success or not.
         let kr = IOServiceGetMatchingServices(0, matching as CFDictionaryRef, &mut iter);
@@ -219,6 +246,27 @@ mod tests {
         let mut none = c(5, RAW_USAGE_PAGE, RAW_USAGE);
         none.max_output = None;
         assert!(none.check_sizes().is_err());
+    }
+
+    fn dongle(id: u64, page: i64, usage: i64) -> Candidate {
+        Candidate { pid: Some(DONGLE_PID), product: Some("2.4G Wireless Receiver".into()), ..c(id, page, usage) }
+    }
+
+    /// The dongle's boot keyboard and its other collections are never the
+    /// radio; the board's raw HID is not the dongle's, nor the other way.
+    #[test]
+    fn the_radio_is_the_dongles_raw_hid_collection_only() {
+        let all = [dongle(1, 0x01, 0x06), dongle(2, 0x0C, 0x01), dongle(3, RAW_USAGE_PAGE, RAW_USAGE)];
+        assert_eq!(choose_radio(&all), Choice::One(3));
+        assert_eq!(choose(&all), Choice::Absent, "the dongle is not the board");
+        assert_eq!(choose_radio(&[c(5, RAW_USAGE_PAGE, RAW_USAGE)]), Choice::Absent, "the board is not the dongle");
+        assert_eq!(choose_radio(&[dongle(1, 0x01, 0x06)]), Choice::Absent);
+    }
+
+    #[test]
+    fn a_second_dongle_is_refused_not_guessed() {
+        let all = [dongle(3, RAW_USAGE_PAGE, RAW_USAGE), dongle(8, RAW_USAGE_PAGE, RAW_USAGE)];
+        assert_eq!(choose_radio(&all), Choice::Ambiguous(vec![3, 8]));
     }
 
     #[test]

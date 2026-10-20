@@ -1,4 +1,4 @@
-//! `ak820 install [--clock]` / `uninstall` / `status` on macOS: Phases 4a and 4b.
+//! `ak820 install [--clock] [--radio]` / `uninstall` / `status` on macOS: Phases 4a and 4b.
 //!
 //! The Windows installer's shape (`windows/cli.rs`), with launchd's mechanics:
 //!
@@ -101,14 +101,20 @@ fn wait_unlocked(timeout: Duration) -> Result<(), String> {
 pub fn install(flags: &[&str]) -> Result<(), String> {
     let mut in_place = false;
     let mut clock = false;
+    let mut radio = false;
     let mut dylib_flag: Option<PathBuf> = None;
     let mut it = flags.iter();
     while let Some(flag) = it.next() {
         match *flag {
             "--in-place" => in_place = true,
             "--clock" => clock = true,
+            "--radio" => radio = true,
             "--dylib" => dylib_flag = Some(it.next().ok_or("--dylib takes a path")?.into()),
-            other => return Err(format!("install: unknown flag {other}; the flags are --in-place, --clock and --dylib PATH")),
+            other => {
+                return Err(format!(
+                    "install: unknown flag {other}; the flags are --in-place, --clock, --radio and --dylib PATH"
+                ))
+            }
         }
     }
 
@@ -168,6 +174,7 @@ pub fn install(flags: &[&str]) -> Result<(), String> {
         stdio: &stdio,
         dylib: (beside.as_deref() != Some(dylib_path.as_path())).then_some(dylib_path.as_path()),
         clock,
+        radio,
     });
     let plist = launchd::plist_path(AGENT);
     if let Some(dir) = plist.parent() {

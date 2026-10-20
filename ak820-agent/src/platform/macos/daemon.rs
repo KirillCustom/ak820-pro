@@ -2,8 +2,12 @@
 //! (Phase 4b).
 //!
 //! ```text
-//! ak820-agent [--log PATH] [--status PATH] [--interval SECS] [--once] [--clock]
+//! ak820-agent [--log PATH] [--status PATH] [--interval SECS] [--once] [--clock] [--radio]
 //! ```
+//!
+//! `--radio` carries now-playing over the 2.4G dongle while the board is not
+//! on USB (`crate::radio`); `--radio-only`, for development, does so even
+//! with the cable in.
 //!
 //! ⚠️ **`--clock` is checked, not trusted**, as on Windows (the phase-3a/4a
 //! audit's finding 1): exactly one process may run clock transactions, or two
@@ -76,6 +80,14 @@ pub fn main() {
             }
             ("--clock", _) => {
                 opts.clock = true;
+                i += 1;
+            }
+            ("--radio", _) => {
+                opts.radio = true;
+                i += 1;
+            }
+            ("--radio-only", _) => {
+                opts.radio_only = true;
                 i += 1;
             }
             (other, _) => bail(&opts.log, &format!("unknown argument {other:?}")),

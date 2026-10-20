@@ -48,6 +48,8 @@ pub struct Definition<'a> {
     pub dylib: Option<&'a Path>,
     /// The daemon owns the clock (Phase 4b).
     pub clock: bool,
+    /// Now-playing over the 2.4G dongle while the board is not on USB.
+    pub radio: bool,
 }
 
 /// Does the installed plist run the daemon with `--clock`? Read from the file
@@ -96,7 +98,7 @@ pub fn plist(def: &Definition) -> String {
     <array>
         <string>{daemon}</string>
         <string>--log</string>
-        <string>{log}</string>{clock}
+        <string>{log}</string>{clock}{radio}
     </array>
 {env}
     <key>RunAtLoad</key>
@@ -126,6 +128,7 @@ pub fn plist(def: &Definition) -> String {
         log = path(def.log),
         stdio = path(def.stdio),
         clock = if def.clock { "\n        <string>--clock</string>" } else { "" },
+        radio = if def.radio { "\n        <string>--radio</string>" } else { "" },
     )
 }
 
@@ -273,6 +276,7 @@ mod tests {
             stdio: Path::new("/tmp/stdio.log"),
             dylib: None,
             clock: false,
+            radio: false,
         });
         assert!(p.contains("<string>/Users/a&amp;b/bin/ak820-agent</string>"));
         assert!(!p.contains("EnvironmentVariables"));
@@ -286,10 +290,25 @@ mod tests {
             stdio: Path::new("/x/stdio"),
             dylib: Some(Path::new("/y/nowplaying-mediaremote.dylib")),
             clock: true,
+            radio: false,
         });
         assert!(plist_owns_clock(&p));
         assert!(p.contains("<string>/x/log</string>\n        <string>--clock</string>\n    </array>"));
+        assert!(!p.contains("--radio"));
         assert!(p.contains("<key>AK820_MEDIAREMOTE_DYLIB</key>\n        <string>/y/nowplaying-mediaremote.dylib</string>"));
+    }
+
+    #[test]
+    fn the_radio_flag_follows_the_clock_in_the_arguments() {
+        let p = plist(&Definition {
+            daemon: Path::new("/x/ak820-agent"),
+            log: Path::new("/x/log"),
+            stdio: Path::new("/x/stdio"),
+            dylib: None,
+            clock: true,
+            radio: true,
+        });
+        assert!(p.contains("<string>--clock</string>\n        <string>--radio</string>\n    </array>"));
     }
 
     /// `plutil -lint` is what `install-agents.sh` trusts; hold the generated
@@ -305,6 +324,7 @@ mod tests {
                 stdio: Path::new("/x/s"),
                 dylib: Some(Path::new("/y/d.dylib")),
                 clock: true,
+                radio: true,
             }),
         )
         .unwrap();

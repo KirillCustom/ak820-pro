@@ -17,6 +17,7 @@ pub mod instance;
 pub mod launchd;
 pub mod media;
 pub mod process;
+pub mod radio_lock;
 mod runloop;
 mod sys;
 
@@ -50,6 +51,14 @@ impl crate::platform::Platform for Native {
     /// The board's services from the IORegistry, opening nothing.
     fn listed() -> Vec<String> {
         device::listed()
+    }
+
+    fn open_radio() -> Result<device::Device, hid::Error> {
+        device::open_radio()
+    }
+
+    fn radio_lock() -> Result<Option<crate::platform::RadioGuard>, String> {
+        radio_lock::try_take().map(|held| held.map(|l| Box::new(l) as crate::platform::RadioGuard))
     }
 
     fn spawn_media(interval: Duration, log: &Log) -> Result<media::MediaRemoteSource, String> {
