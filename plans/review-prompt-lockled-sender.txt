@@ -1,0 +1,13 @@
+Review a DESIGN, not code: the section "The daemon's sender: design (Gremlin, 10-20, for codex)" at the end of plans/LOCK-LED-CHANNEL-PLAN.md in this repo. Read the whole plan first (the wire format, version 0; the measured results; your own 10-18 review's table), then plans/GREMLIN-RESULTS.md sections 3 and 8 (Windows over 2.4G and over Bluetooth, measured), scripts/lockchan.py (the reference encoder), scripts/ledchannel_test.py (the Windows sender used in the measurements, win_send), and the board's receiver qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/lockchan.c/.h and where ch582f_ajazz.c feeds it. For the daemon: ak820-agent/src/agent.rs (the loop, media_tick's transport choice), src/radio.rs (the 2.4G raw-HID transport), src/media.rs (Publisher), src/smtc/mod.rs (text_reports, playback), and qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/graphics/display.c for the text slot's 3 min expiry, the 20 s playback expiry and the deep-sleep wake's expiry of host content.
+
+The goal: now-playing text from the Rust daemon to the board over Bluetooth, where there is no raw HID, through the keyboard's LED output report. Windows sends P0 (Num and Scroll) through IOCTL_KEYBOARD_SET_INDICATORS; the Mac will send P3 later through IOHIDDeviceSetReport. Nothing acknowledges.
+
+Go wide. In particular:
+1. The type 1 / type 2 payload contract and the firmware handler it implies: anything missing (versioning, a content id, partial updates, bounds), and whether one frame for both lines is right.
+2. The sender's frame procedure: the warm-up and quiet timings against the receiver's actual rules, spacing from completion, the user-lock re-read and abandon rule (is leaving the board on the user's state after an abandon actually true on Windows, where SET_INDICATORS does not change Windows' own state?), handle errors.
+3. The policy: on change plus a 2 s repeat, a 60 s refresh, the stated ~65 s bound on a stale title (is it right? what else can make a title stale, e.g. a frame for content A completing after content B is current, or the board committing an old frame late), the wake resend from GetLastInputInfo, the timer off over BT, nothing-to-show.
+4. Interaction with the other transports (USB raw HID, the 2.4G raw81 radio): exclusivity, handover in each direction, and what the board shows if a lock-light frame commits after the cable comes back.
+5. Threading: a sender thread fed a latest-content slot; shutdown; a stuck IOCTL.
+6. The parity-test approach (generated vectors from lockchan.py).
+7. Anything that could lose a keypress, change the user's lock state, or show something wrong for long.
+Classify every finding must-fix / should-fix / note, with file:line where it applies.
