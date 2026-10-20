@@ -18,7 +18,7 @@ no POR) — the rail sags during switchover.
 |---|---|
 | cable → BT | **no** (rides through — analog contact-timing luck, not design) |
 | BT → cable | yes, every time |
-| 2.4G ↔ anything | yes, both directions |
+| 2.4G ↔ anything | yes, both directions, as a rule: one fast 2.4G → BT flip with USB attached rode through (2026-10-19, 18:10; the sleep count since boot and the RAM kept) |
 
 Consequences:
 

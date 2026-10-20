@@ -185,6 +185,31 @@ the channel built on it is
   write (`0xe00002e2`).
 - UART overruns rose by a few during long bursts: harmless with three copies.
 
+## The GATT services over BLE (read 2026-10-19)
+
+Is there a vendor channel over BLE, as the dongle's `81`/`91` frames are over
+2.4G ([`plans/RAWHID-24G-PLAN.md`](../plans/RAWHID-24G-PLAN.md))? Read from
+JD's Mac with `scripts/ble_gatt_list.swift` (an app bundle,
+`scripts/build-ble-gatt.sh`: a plain script never hears back from
+CoreBluetooth), discovery and Device Information reads only
+(`history/ble-gatt-20261019/gatt.txt`). Beside HID-over-GATT, which macOS
+hides from apps, the module offers four services:
+
+- `180A` Device Information: **WCH's example strings, never filled in**
+  ("Model Number", "Manufacturer Name", the 11073 "experimental"
+  certification). Software Revision `2024.07.26 SVN0138`; PnP ID
+  `0C45:FEFE`, version `0x0138`.
+- `180F` Battery, `1813` Scan Parameters: standard.
+- **`FEE0` with one characteristic `FEE1`** (read, write, write without
+  response, no notify). These are the UUIDs and properties of WCH's OTA
+  profile in the CH58x examples the Device Information shows the firmware
+  was built from: almost certainly **the module's own firmware update**, not
+  a path to the SN32. ⚠️ **Never write `FEE1`.** An OTA command can erase
+  the module's flash, and with it BT and 2.4G.
+
+So BLE has no vendor channel to the board that we know of. **Over BLE, the
+lock-LED report stays the only host-to-board path**, and it is one-way.
+
 ## 2.4G after the MCU sleeps (measured 2026-10-19)
 
 Ten deep sleeps over the Mac's dongle (`history/deep-cycles-20261019-2g4/`)

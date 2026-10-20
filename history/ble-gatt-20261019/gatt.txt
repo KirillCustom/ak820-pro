@@ -1,0 +1,30 @@
+Bluetooth authorization 3
+connected peripherals: AK820 5.1-1, Air75 V3-1
+attached to AK820 5.1-1 C0FC45CE-E2CE-DB04-E229-F17316E3CA4D
+4 services
+service 180A  (Device Information)
+  char 2A23  (System ID)  read
+  char 2A24  (Model Number String)  read
+  char 2A25  (Serial Number String)  read
+  char 2A26  (Firmware Revision String)  read
+  char 2A27  (Hardware Revision String)  read
+  char 2A28  (Software Revision String)  read
+  char 2A29  (Manufacturer Name String)  read
+  char 2A2A  (IEEE Regulatory Certification)  read
+  char 2A50  (PnP ID)  read
+service 180F  (Battery)
+  char 2A19  (Battery Level)  read,notify
+service 1813  (1813)
+  char 2A4F  (2A4F)  write-no-rsp
+  char 2A31  (2A31)  notify
+service FEE0  (FEE0)
+  char FEE1  (FEE1)  read,write-no-rsp,write
+  value System ID: 0000000000000000
+  value Model Number String: "Model Number"
+  value Serial Number String: "Serial Number"
+  value Firmware Revision String: "Firmware Revision"
+  value Hardware Revision String: "Hardware Revision"
+  value Software Revision String: "2024.07.26 SVN0138"
+  value Manufacturer Name String: "Manufacturer Name"
+  value IEEE Regulatory Certification: fe006578706572696d656e74616c
+  value PnP ID: 01450cfefe3801
