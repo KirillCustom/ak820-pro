@@ -1135,8 +1135,9 @@ first suspect. **But Gremlin's board separates by build, not uptime**
 | b2a0 | 25.9 ms | +17 to +24 |
 
 So the fix took back about half there. The ~1 ms and ~+10 left against
-0ae4 are likely the always-on dev UART hooks (dev builds only: a daily
-build is the test). This Mac's board runs the other way (ce70 25.1-25.6 at
+0ae4 are likely the always-on dev UART hooks. The test is a dev build with only
+the UART enter/exit hooks compiled out: a daily build answers no raw81
+request, so the 1000-stream cannot run on it. This Mac's board runs the other way (ce70 25.1-25.6 at
 1 h right after the A/B; b2a0 27.0-27.5 fresh). `ge10-b2a0-1h-*.json`, at
 ~1 h up, tests whether that is uptime here; see that folder's README.
 
