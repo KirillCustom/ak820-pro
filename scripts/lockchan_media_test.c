@@ -82,18 +82,19 @@ int main(void) {
         if (!rejects(g)) { printf("FAIL: icon %u accepted\n", icon); fails++; }
     }
 
-    /* Text: printable ASCII only, every position. */
+    /* Text: printable ASCII only, every position; a rejection writes nothing
+     * (through rejects(): codex, handler review, 3). */
     for (unsigned c = 0; c < 256; c++) {
-        char s[2] = {(char)c, 0};
-        uint8_t p[] = {1, 1, (uint8_t)c, 'x'};
-        lockchan_frame_t g = frame(1, p, 4);
         bool ok = c >= 0x20 && c <= 0x7E;
-        lockchan_media_t mm;
-        if (lockchan_media_parse(&g, &mm) != ok) { printf("FAIL: byte 0x%02x in line 0\n", c); fails++; }
+        uint8_t p[] = {1, 1, (uint8_t)c, 'x'};
+        if (rejects(frame(1, p, 4)) == ok) { printf("FAIL: byte 0x%02x in line 0\n", c); fails++; }
         p[2] = 'x'; p[3] = (uint8_t)c;
-        g = frame(1, p, 4);
-        if (lockchan_media_parse(&g, &mm) != ok) { printf("FAIL: byte 0x%02x in line 1\n", c); fails++; }
-        (void)s;
+        if (rejects(frame(1, p, 4)) == ok) { printf("FAIL: byte 0x%02x in line 1\n", c); fails++; }
+        /* The last byte of a maximum-length frame. */
+        uint8_t full[42];
+        memset(full, 'a', sizeof full);
+        full[0] = 0; full[1] = 19; full[41] = (uint8_t)c;
+        if (rejects(frame(1, full, 42)) == ok) { printf("FAIL: byte 0x%02x last of 42\n", c); fails++; }
     }
 
     /* Over 42 even when each line would fit by n0 alone. */
