@@ -1,0 +1,15 @@
+ok   a) cable in: transport=usb, radio=off: {'transport': 'usb', 'radio': 'off', 'radio_qualified': 'no', 'radio_sessions': '0', 'radio_pushes': '0', 'radio_failures': '0', 'radio_incomplete': '0', 'radio_silent': '0', 'radio_last_push': None, 'radio_last_error': None, 'media_last_text': 'pause Lucy In Disguise - Passing Mirrors', 'board': 'present', 'updated': '2026-10-20 01:06:53'}
+data off at 01:06:57
+ok   b) radio=qualified, transport=radio after 6.6 s: {'transport': 'radio', 'radio': 'qualified', 'radio_qualified': 'yes', 'radio_sessions': '1', 'radio_pushes': '1', 'radio_failures': '0', 'radio_incomplete': '0', 'radio_silent': '0', 'radio_last_push': '2026-10-20 01:07:03', 'radio_last_error': None, 'media_last_text': 'pause Lucy In Disguise - Passing Mirrors', 'board': 'absent', 'updated': '2026-10-20 01:07:03'}
+ok   b) held 60 s: still transport=radio, pushes 1 -> 2: {'transport': 'radio', 'radio': 'qualified', 'radio_qualified': 'yes', 'radio_sessions': '1', 'radio_pushes': '2', 'radio_failures': '0', 'radio_incomplete': '0', 'radio_silent': '0', 'radio_last_push': '2026-10-20 01:07:35', 'radio_last_error': None, 'media_last_text': 'pause Lucy In Disguise - Passing Mirrors', 'board': 'absent', 'updated': '2026-10-20 01:08:03'}
+data on at 01:08:04
+ok   d) radio -> off after 3.6 s: {'transport': 'usb', 'radio': 'off', 'radio_qualified': 'no', 'radio_sessions': '1', 'radio_pushes': '2', 'radio_failures': '0', 'radio_incomplete': '0', 'radio_silent': '0', 'radio_last_push': '2026-10-20 01:07:35', 'radio_last_error': None, 'media_last_text': 'pause Lucy In Disguise - Passing Mirrors', 'board': 'present', 'updated': '2026-10-20 01:08:07'}
+ok   d) transport=usb after 0.0 s: {'transport': 'usb', 'radio': 'off', 'radio_qualified': 'no', 'radio_sessions': '1', 'radio_pushes': '2', 'radio_failures': '0', 'radio_incomplete': '0', 'radio_silent': '0', 'radio_last_push': '2026-10-20 01:07:35', 'radio_last_error': None, 'media_last_text': 'pause Lucy In Disguise - Passing Mirrors', 'board': 'present', 'updated': '2026-10-20 01:08:07'}
+ok   d) the band holds the daemon's last text: {'band': {'line0': {'text': 'Lucy In Disguise', 'icon': 2, 'present': True}, 'line1': {'text': 'Passing Mirrors', 'icon': 2, 'present': True}, 'playback': {'active': False, 'ticking': False, 'pos': 0, 'dur': 0}}, 'media_last_text': 'pause Lucy In Disguise - Passing Mirrors'}
+ok   d) no radio traffic after the stand-down (op 17 counters still for 8 s): {}
+ok   board stale +0 across the test: (0, 0)
+ok   board busy +0 across the test: (0, 0)
+ok   board taint +0 across the test: (1, 1)
+ok   board drops +0 across the test: (0, 0)
+ok   board resp_expired +0 across the test: (0, 0)
+all checks pass
