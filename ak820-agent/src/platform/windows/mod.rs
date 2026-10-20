@@ -11,6 +11,7 @@ pub mod daemon;
 pub mod device;
 pub mod host;
 pub mod instance;
+pub mod lock_lights;
 pub mod path;
 pub mod process;
 pub mod radio_lock;
