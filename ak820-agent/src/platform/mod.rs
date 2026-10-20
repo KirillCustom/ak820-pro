@@ -77,6 +77,15 @@ pub trait Platform {
         Err("the radio is not available on this platform yet".into())
     }
 
+    /// When a snapshot's playback position is true: at the source's last
+    /// observation (`true`: Windows, whose `smtc::position` extrapolates to
+    /// the read and whose worker caches that read), or when the loop takes the
+    /// snapshot (`false`, the default: the Mac's media layer extrapolates to
+    /// the snapshot's creation). The lock-LED channel's type 3 advances the
+    /// position from this instant, so the wrong one double-counts the age
+    /// (codex, play times, P2-2).
+    const POSITION_AS_OF_OBSERVATION: bool = false;
+
     /// Has something asked this daemon to stop (Windows: `ak820 install` or
     /// `uninstall` signalling its stop event)? The loop then returns, which
     /// stops the lock-LED sender with its one bounded restore. Default: never.

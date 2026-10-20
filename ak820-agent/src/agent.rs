@@ -422,10 +422,9 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
                     } else {
                         now
                     };
-                    // The position is extrapolated to the read itself
-                    // (`smtc::position` on Windows; the Mac's media layer to the
-                    // snapshot's creation), so it is true as of `observed`.
-                    lc.set(crate::lockchan::sender::Media::of(&snapshot), observed, observed);
+                    // When the position was true is the platform's to say.
+                    let pos_at = if P::POSITION_AS_OF_OBSERVATION { observed } else { now };
+                    lc.set(crate::lockchan::sender::Media::of(&snapshot), observed, pos_at);
                     // Only when USB is Absent (not busy, refused or a failed
                     // discovery) and the radio is not carrying (R2-5).
                     let absent = matches!(&outcome, Some(Err(hid::Error::Absent)));

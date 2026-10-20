@@ -72,6 +72,8 @@ impl crate::platform::Platform for Native {
         radio_lock::try_take().map(|held| held.map(|l| Box::new(l) as crate::platform::RadioGuard))
     }
 
+    const POSITION_AS_OF_OBSERVATION: bool = true;
+
     fn stop_requested() -> bool {
         STOP.get().is_some_and(|e| e.requested())
     }
