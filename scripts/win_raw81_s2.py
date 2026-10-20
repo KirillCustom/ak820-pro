@@ -17,7 +17,9 @@ stored text are read over it).
           board's counters (drops, deferral overruns, short writes must be 0)
   clock   the board's long clock across a deliberate 3.5 s main-loop stall
           (op 17 sub 4): it must count the whole stall, not the stall modulo
-          the tick's 0.35 s wrap (codex, v2 implementation review, must-fix)
+          the tick's 0.35 s wrap (codex, v2 implementation review, must-fix);
+          then a response held in the pump (op 17 sub 5) through such a stall
+          must expire, once, and never reach the radio (codex's verify)
   load    health reads at full rate for SECONDS, logging each loss with its
           time, for the overrun A/B (the Mac session's request)
 
@@ -189,7 +191,7 @@ def counters(h):
     c = dict(zip(["ok", "stale", "forbidden", "badenv", "badsum", "taint", "lifetime"], [u(p0, i) for i in range(7)]))
     c.update(zip(["busy", "qbytes", "drops", "dispatched", "sent91", "acks_in_window", "defer_overrun"],
                  [u(p1, i) for i in range(7)]))
-    c.update(state=p2[4], session_live=p2[10], session=p2[11], last_seq=struct.unpack_from("<H", p2, 12)[0],
+    c.update(state=p2[4], resp_pending=p2[7], session_live=p2[10], session=p2[11], last_seq=struct.unpack_from("<H", p2, 12)[0],
              short_writes=struct.unpack_from("<I", p2, 14)[0], resp_expired=struct.unpack_from("<I", p2, 18)[0])
     return c
 
@@ -294,6 +296,29 @@ def test_clock(h, tenths=35):
           abs(got - tenths / 10) < 0.05, (ticks, hz))
 
 
+def test_expiry(r, h, tenths=35):
+    c0 = counters(h)
+    devhook(h, 17, 5, 1)                                   # hold responses in the pump
+    try:
+        t, _ = r.xact(b"\x07\x13\x01")                  # dispatched; its response held
+        devhook(h, 17, 4, tenths, wait_s=tenths / 10 + 3)  # at once: the stall
+    finally:
+        devhook(h, 17, 5, 2)                               # release
+    late = []
+    end = time.perf_counter() + 0.5
+    while time.perf_counter() < end:
+        rep = r.d.read(33, 50)
+        if rep:
+            late.append(bytes(rep).hex())
+    c1 = counters(h)
+    d = {k: c1[k] - c0[k] for k in ("dispatched", "resp_expired", "sent91")}
+    check(f"expiry: held through a {tenths / 10:.1f} s stall, the response expired once and never went out",
+          t.result == "unknown" and d == {"dispatched": 1, "resp_expired": 1, "sent91": 0}
+          and c1["resp_pending"] == 0 and not late, (t.result, d, c1["resp_pending"], late[:2]))
+    t, _ = r.xact(b"\x07\x13\x01")
+    check("expiry: the session is served after it", t.result == "ok", t.result)
+
+
 def test_stream(r, h, n, log=None):
     c0, s0 = counters(h), stalls(h)
     res, rtts, losses = {}, [], []
@@ -351,6 +376,7 @@ def main():
         test_health(r, h)
     if what in ("all", "clock"):
         test_clock(h)
+        test_expiry(r, h)
     if what in ("all", "nak"):
         test_nak(r, h)
     if what == "all":

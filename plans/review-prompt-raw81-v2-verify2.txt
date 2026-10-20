@@ -1,0 +1,10 @@
+You are verifying one small addition to firmware before it is flashed (AK820 Pro, QMK on a Sonix SN32F299 Cortex-M0, ChibiOS; a dev build only). Your verify of the previous commit is plans/review-codex-raw81-v2-verify-2026-10-19.md: it said flash, with one should-fix, a direct response-expiry regression. Read it first.
+
+The addition is commit 0ae4cf8c on branch gremlin/raw81 of qmk_firmware-ak820pro (parent 145a8234, the commit you verified). It adds HC_DEVHOOK op 17 sub 5 (hid_protocol.c): a flag r81_hold_resp in bluetooth/ch582f_ajazz.c that makes r81_send_response() return without sending, placed AFTER the TTL check, so a held response still expires at 250 ms. The host test that uses it is test_expiry() in scripts/win_raw81_s2.py: hold on, one radio request (dispatched, its response held), at once a 3.5 s stall (op 17 sub 4), hold off, then listen on the radio 0.5 s and compare op 17 counters: dispatched +1, resp_expired +1, 91 frames sent +0, no response pending, nothing heard.
+
+Check, citing file:line:
+1. Is the hold safe: can it hold anything past the TTL, block sleep or request admission indefinitely, or survive in a way that wedges the radio path (a hold left on by a host that dies: what is the worst case)?
+2. Does the host test actually distinguish the old clock from the new (would the old firmware have sent the response late, or kept it pending), and is its timing sound (the dispatch-to-stall gap against the 250 ms TTL; the board's passes between them)? Are its counter expectations exact (could another counter move, e.g. a receipt-only response, the 91 ACK window)?
+3. Anything else in the delta. The daily build is unchanged.
+
+Give a verdict first (flash or hold), then findings ranked must-fix / should-fix / note.
