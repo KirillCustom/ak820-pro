@@ -33,11 +33,12 @@ def env(seq, inner, session=SESSION):
 SILENCE = 938          # ticks: TIME_MS2I(5) at 187.5 kHz
 TICKS_PER_MS = 187.5
 LIFETIME = 20
+LIFE_T = int(LIFETIME * TICKS_PER_MS)   # 3750 ticks
 
 
 class RX(ctypes.Structure):
     _fields_ = [("state", ctypes.c_int), ("boundary", ctypes.c_bool), ("tainted", ctypes.c_bool),
-                ("buf", ctypes.c_uint8 * 34), ("len", ctypes.c_uint8), ("start_ms", ctypes.c_uint32),
+                ("buf", ctypes.c_uint8 * 34), ("len", ctypes.c_uint8), ("start_tick", ctypes.c_uint16),
                 ("last_tick", ctypes.c_uint16), ("have_session", ctypes.c_bool), ("session", ctypes.c_uint8),
                 ("last_seq", ctypes.c_uint16), ("admitted_ms", ctypes.c_uint32),
                 ("c_session", ctypes.c_uint8), ("c_seq", ctypes.c_uint16), ("inner", ctypes.c_uint8 * 26)] + \
@@ -54,12 +55,12 @@ def build(cc):
     subprocess.run(cmd, check=True)
     L = ctypes.CDLL(lib)
     L.raw81_byte.restype = ctypes.c_int
-    L.raw81_byte.argtypes = [ctypes.POINTER(RX), ctypes.c_uint8, ctypes.c_uint16, ctypes.c_uint32]
+    L.raw81_byte.argtypes = [ctypes.POINTER(RX), ctypes.c_uint8, ctypes.c_uint16]
     L.raw81_empty.restype = ctypes.c_bool
     L.raw81_empty.argtypes = [ctypes.POINTER(RX), ctypes.c_uint16, ctypes.c_uint16]
     L.raw81_commit.restype = ctypes.c_int
-    L.raw81_commit.argtypes = [ctypes.POINTER(RX), ctypes.c_bool, ctypes.c_uint32, ctypes.c_uint32]
-    L.raw81_poll.argtypes = [ctypes.POINTER(RX), ctypes.c_bool, ctypes.c_uint32, ctypes.c_uint32]
+    L.raw81_commit.argtypes = [ctypes.POINTER(RX), ctypes.c_bool, ctypes.c_uint16, ctypes.c_uint16, ctypes.c_uint32]
+    L.raw81_poll.argtypes = [ctypes.POINTER(RX), ctypes.c_bool, ctypes.c_uint16, ctypes.c_uint16]
     L.raw81_window_done.argtypes = [ctypes.POINTER(RX), ctypes.c_bool]
     L.raw81_admit.argtypes = [ctypes.POINTER(RX), ctypes.c_uint8, ctypes.c_uint16, ctypes.c_uint32]
     L.raw81_receipt.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint16, ctypes.c_uint8,
@@ -93,14 +94,14 @@ class Board:
         err_at_commit: the UART error flag is first seen by the poll just
         before a commit (an error raised during this drain)."""
         self.err_at_commit = err_at_commit
-        self.L.raw81_poll(ctypes.byref(self.rx), uart_err, self.ms, LIFETIME)
+        self.L.raw81_poll(ctypes.byref(self.rx), uart_err, self.tick, LIFE_T)
         for c in data:
             self.advance(step_ms)
-            r = self.L.raw81_byte(ctypes.byref(self.rx), c, self.tick, self.ms)
+            r = self.L.raw81_byte(ctypes.byref(self.rx), c, self.tick)
             if r == 2:                       # STARTED: the window starts over
                 self.w = [0, 0, 0]
             elif r == 3:                     # FRAME
-                v = self.L.raw81_commit(ctypes.byref(self.rx), self.err_at_commit, self.ms, LIFETIME)
+                v = self.L.raw81_commit(ctypes.byref(self.rx), self.err_at_commit, self.tick, LIFE_T, self.ms)
                 if v == 0 and self.admit:
                     # the dispatch happened, with the identity reserved at commit
                     self.L.raw81_admit(ctypes.byref(self.rx), self.rx.c_session, self.rx.c_seq, self.ms)
@@ -216,7 +217,7 @@ def run(L):
     check("truncated", b.rx.lifetime == 1 and b.rx.state == 0, (b.rx.lifetime, b.rx.state))
     b = fresh(L)
     b.drain(wire81(env(7, health))[:20]); b.advance(LIFETIME + 1)
-    b.L.raw81_poll(ctypes.byref(b.rx), False, b.ms, LIFETIME)
+    b.L.raw81_poll(ctypes.byref(b.rx), False, b.tick, LIFE_T)
     check("truncated -> quarantine before silence is judged", b.rx.state == 2, b.rx.state)
     b.quiet(10); b.drain(wire81(env(8, health)))
     check("truncated recovers", [v[0] for v in b.verdicts] == ["OK"], b.verdicts)
