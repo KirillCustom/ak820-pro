@@ -586,3 +586,177 @@ takes whatever is newest when a frame starts and never queues.
 4. The Windows `LockLights`.
 5. The firmware's type 1/2 handler, codex, flash on Gremlin.
 6. Wiring into `agent.rs`, announced; a frame-level soak over BT on Gremlin.
+
+### Codex on the sender design (10-20) and revision 2
+
+[Verbatim](review-codex-lockled-sender-2026-10-20.md), prompt
+[`review-prompt-lockled-sender.txt`](review-prompt-lockled-sender.txt).
+Verdict: the basic choices are sound (full snapshots, one frame for both
+lines, P0 at 16 ms on Windows, a sender thread, delayed repeats); revise
+before implementing: restoration after an abandon, stale-content ordering,
+transport handover, bounded cancellation. Eleven must-fixes, seven
+should-fixes, three notes. **Every one is agreed**; revision 2 below
+replaces the sections above where they differ.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | "Abandon leaves the board on the user's state" is false (a user report can be overwritten by our next prepared write); a baseline repair can complete an abandoned frame's trailer | **Agreed.** R2-1: an explicit restore with fresh locks after every abandon and after every frame, and the repair only after the receiver's gap has expired the frame |
+| 2 | `user()` needs a freshness contract: `GetKeyState` follows the calling thread's input queue; unknown must suppress sending | **Agreed, measured before the Windows half is built** (R2-2) |
+| 3 | A latest-content slot does not stop an obsolete frame already running; completions and repeats must name their generation | **Agreed.** R2-3: content and transport generations; a newer content cancels the frame in flight |
+| 4 | ~65 s is not a bound: refreshes can be lost; the real fallback is the board's 180 s expiry; in-flight frames and polling add latency; lost CLEARs | **Agreed.** R2-4 restates both numbers honestly and repeats CLEAR |
+| 5 | Checking the transports when a frame starts is not exclusivity for its next 4 s; revoke the running worker; keep Absent distinct from other USB failures | **Agreed.** R2-5: an ownership generation checked between writes, revoked by USB evidence and radio qualification |
+| 6 | The firmware's `usb_mode` follows the slider, not the cable: a lock-light frame can commit after USB raw HID published newer text | **Agreed.** R2-6: the board applies a lock-light frame only when raw HID's text channel has been silent for 10 s |
+| 7 | Handover in every direction needs publication state; LED completion is not delivery; BT's bookkeeping must be its own | **Agreed.** R2-7 |
+| 8 | A thread does not solve a stuck IOCTL or shutdown; cancellation races completion; one writer per device across processes | **Agreed.** R2-8: overlapped I/O with deadlines, a poisoned state, interruptible waits, a machine-wide lock |
+| 9 | Finish the type 1/2 contract first: lengths, icon ids, ASCII, empty lines, invalid frames change nothing | **Adopted as codex's table** (R2-9) |
+| 10 | Omitting playback does not turn it off: an old timer runs beside a BT title | **Agreed.** Type 1 without the bit and type 2 both turn playback off (R2-9) |
+| 11 | Unchanged content is not the same as a media source that stopped observing: a wedged SMTC read could keep yesterday's title alive by refresh | **Agreed.** R2-10: observation age gates every send |
+| 12 | Retry and discovery separate from content changes; backoff; absence vs discovery failure; UnitId on each handle | **Agreed** (R2-8, R2-11) |
+| 13 | Keep the timings; define phase deadlines and what completion means; spacing and lock checks on warm-up and repair writes too | **Agreed** (R2-1, R2-12) |
+| 14 | `GetLastInputInfo` is per session and can wrap; keep an idle-armed state; more resend reasons | **Agreed** (R2-13) |
+| 15 | The board's optimistic play/pause icon is corrected only by the next frame: up to a minute over BT | **Accepted as a stated limit for v1**, checked in the soak (R2-14) |
+| 16 | Compare the serialized payload, not the Unicode strings | **Agreed:** content identity is `(type, payload bytes)` |
+| 17 | Parity proves the encoder only; test validation, display effects and the sender at every write boundary | **Agreed:** the parity set covers all eight user baselines and both trailer branches (R2-15); the sender's tests use timestamped fake writes |
+| 18 | The soak must cover the handler's display effects and real input | **Agreed** (R2-16) |
+| 19 | One frame for both lines is right; no wire content id needed with local generations and source ownership | **Noted, agreed** |
+| 20 | Say "no wrong commit observed", not "never commits wrong"; the dongle's cliff is 6-7 ms, BLE's 7-10 ms | **Agreed;** corrected here |
+| 21 | Keep playback unsupported until it has a sampling contract; reject the bit in the first handler | **Agreed** (R2-9) |
+
+**R2-1. Restoring the user's lights.** Every frame ends, and every abandon
+ends, with a **restore**: read the locks fresh (R2-2), write them, read them
+again, and if they changed during the write, write again (at most three
+times, each spaced). After an abandon the restore waits first for the
+receiver to expire the frame (more than 500 ms since our last write, plus
+100 ms), so the restore can never complete an abandoned frame's trailer.
+After a normal trailer the restore is a check: if the fresh locks equal the
+trailer's, nothing is written. Best effort on removal, process death or a
+stuck write (R2-8).
+
+**R2-2. The user's locks, fresh.** `GetKeyState` reflects the calling
+thread's input-queue state, so its freshness on a sender thread is measured
+before the Windows half is built: a thread with no message loop, then one
+that pumps (`PeekMessage`) before each read, against lock changes made with
+`SendInput` and by hand, from this keyboard and another. The implementation
+uses whatever the measurement shows is fresh; if nothing is, the sender
+reads the locks on the daemon's main thread and passes them in. **Unknown
+locks suppress sending** (no all-off baseline). Lock and unlock of the
+session are tested too.
+
+**R2-3. Generations.** A monotonic **content generation** per distinct
+`(type, payload)` and a **transport generation** per acquisition of the
+channel. A frame carries both; a completion, a repeat and a refresh are acted
+on only if both are still current. **A newer content cancels the frame in
+flight** at the next write boundary: abandon, restore (R2-1), then the new
+frame. So the board never newly commits content that was obsolete when its
+frame started.
+
+**R2-4. The latencies, stated honestly.**
+- **No loss:** a change reaches the board in at most one poll (0.5 s) + an
+  abandon and restore (~0.7 s) + the warm-up and quiet (~0.9 s) + a frame
+  (up to ~4 s at 16 ms, 249 writes for 42 bytes): **~6 s**; typically 3-4 s.
+- **Every later frame lost:** the board shows the last title it applied
+  until its own expiry, **180 s after that frame** (`DISPLAY_TEXT_TIMEOUT_MS`).
+  That is the true bound; the 60 s refresh and the 2 s repeat make it
+  unlikely, not impossible.
+- **CLEAR:** sent on the change, repeated at 2 s, then every 60 s until 180
+  s after the last title frame was sent (by then the board's own expiry has
+  cleared it), then silence. Startup and every acquisition send the current
+  state, CLEAR included.
+
+**R2-5. Ownership.** The channel has an **owner generation**. It is granted
+only when the USB opener says `Absent` (not busy, refused or a discovery
+failure) **and** the radio is not qualified; every USB evidence (media,
+clock or health opens, as `USB_SEEN` today) and the radio's qualification
+revoke it **before** their first push. The sender checks it between writes and
+after every blocking call; a revoked frame is abandoned and restored.
+
+**R2-6. The board's source ownership (firmware).** A committed lock-light
+frame is **applied only if raw HID's text channel has been silent for 10 s**
+(the USB or radio daemon pushes playback every 3 s, so 10 s of silence means
+neither is publishing). Raw-HID text always applies. So a late Bluetooth
+frame can never overwrite what USB or the radio just showed, whatever the
+host's races. The receiver's existing reset on cable mode stays.
+
+**R2-7. Handover.** Entering the channel (from USB or the radio) sends the
+full current state at once, unchanged content included. Leaving it (to USB
+or the radio) bumps the transport generation, so its repeats, refreshes and
+late completions are dropped; USB and the radio refresh on entry as they do
+today (`Publisher::refresh`). The channel's bookkeeping is its own (attempted,
+sent, last sent generation), never `Publisher`'s; the status file says
+"sent", never "shown".
+
+**R2-8. I/O and shutdown.** The handle opens with `FILE_FLAG_OVERLAPPED`;
+each `DeviceIoControl` has a 1 s deadline, then `CancelIoEx`, then a bounded
+wait for the completion. An operation that does not retire **poisons the
+channel for the life of the process** (raw81's pattern): the handle and its
+buffers are kept, nothing reopens. Waits are on a condvar with the stop flag,
+so shutdown and `--once` are bounded; no lock is held across I/O or a wait.
+**One writer per board, machine-wide:** a lock file beside raw81's
+(`%ProgramData%\ak820pro\lockchan.lock`), which `ledchannel_test.py` takes
+too.
+
+**R2-9. The contract, version 0's types, frozen for the first release.**
+
+| Field/rule | Definition |
+|---|---|
+| Type 1 length | `2 <= len <= 42` |
+| Lines | `n0 <= 19`, `n0 <= len - 2`, `n1 = len - 2 - n0 <= 21` |
+| Icon | the ids 0-3 exactly (none, play, pause, stop); any other bit, the reserved playback bit 7 included, rejects the frame |
+| Text | printable ASCII `0x20-0x7E` only; any other byte rejects the frame |
+| Update | both lines replaced, the icon set, **playback turned off**; an empty line clears that line |
+| Type 2 | exactly zero bytes; the host text cleared and **playback turned off** |
+| Anything else | no change to the display and no refresh of its expiry |
+
+The handler validates the whole payload before any display call. Playback
+over the channel waits for its own sampling contract (codex note 21); a
+future extension takes a new type, never a reinterpretation.
+
+**R2-10. A stale media source.** Every send is gated on the observation's
+age (`Health::stale_for`), not on when the loop copied the snapshot. Past 30
+s (10 polls) without a fresh observation, the content becomes CLEAR, as a
+failed read already does: a wedged SMTC read cannot keep a title alive.
+
+**R2-11. Retries.** A failed attempt keeps the content pending and retries at
+1, 2, 4 ... 30 s, never marking it sent. Absence (no BLE keyboard listed) is
+not a failure: the channel idles until the list changes. A discovery error,
+an ambiguous match or a failed open is logged and retried on the backoff.
+`UnitId` comes from `IOCTL_KEYBOARD_QUERY_INDICATORS` on each new handle;
+the flags never do.
+
+**R2-12. Phase deadlines.** The receiver's rules (quiet >= 150 ms, preamble
+continuations < 150 ms, gaps <= 500 ms, lifetime <= 12 s) become the
+sender's deadlines with margins: a write that completes more than 300 ms
+after the previous one, or a frame past 10 s, abandons and restores rather
+than finishing a frame the receiver has already dropped. Spacing and the lock
+check apply to warm-up and restore writes too. Timing is monotonic, kept
+across a reopen, and starts from "unknown history" (the full recovery wait).
+Windows accepting a write is not the board receiving it: the margins are
+measured choices, not proof.
+
+**R2-13. Resends.** Reasons: startup, an acquisition, a resume or unlock, and
+the wake guess. The wake guess keeps an **idle-armed** state: armed once
+`GetLastInputInfo` shows more than 30 s idle, fired on the first newer
+input, so a wake during a frame is not missed; it handles tick wrap and a
+failed call (no guess). It is per session. A resend forces the current
+content through the slot even when unchanged and coalesces with pending
+work.
+
+**R2-14. The optimistic icon.** The board flips its play/pause icon on the
+media key; if the player ignores the key, nothing on the host changes and the
+channel sends nothing, so the wrong icon can stay until the next refresh,
+**up to 60 s** over BT (3 s on raw HID). Accepted for v1 and checked in the
+soak.
+
+**R2-15. Tests.** The parity set adds every user baseline (0-7) for every
+profile and checks both trailer branches are exercised; the sender's tests
+run on a fake `LockLights` with timestamped writes and completion delays, a
+fake clock, and a change, error, revocation or cancellation at every write
+boundary (both trailer writes in particular), A to B mid-frame, every
+handover, a lost wake, a superseded repeat and a stuck write at shutdown. The
+handler's tests: every row of R2-9's table, invalid frames leaving the state
+and the expiry untouched.
+
+**R2-16. The soak** (Gremlin, over BT): maximum-length frames while typing,
+media keys, each lock from this keyboard and another, the overlays, sleep and
+wake, removal, every handover; checked: keys delivered, passes >= 25 ms, UART
+errors, the final lights and the final text.
