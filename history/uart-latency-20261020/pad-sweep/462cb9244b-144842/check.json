@@ -1,0 +1,56 @@
+{
+ "control": false,
+ "board": "normal",
+ "complete": true,
+ "gates": true,
+ "strict_pass": true,
+ "failing": [],
+ "unexplained": [],
+ "advance": true,
+ "summary": {
+  "cycles": 2,
+  "passed": 2,
+  "stopped": null,
+  "path": "ladder",
+  "mac_latency_ms": {
+   "median": 50.4,
+   "max": 50.4
+  },
+  "clock_before_abs_ms": null,
+  "timed_out": {}
+ },
+ "ring": [
+  {
+   "seq": 0,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 30,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 32189,
+   "strays": 0,
+   "written": 2
+  },
+  {
+   "seq": 1,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 34,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 62260,
+   "strays": 0,
+   "written": 2
+  }
+ ],
+ "artifact": "via-dev-462cb9244b-20261020-142555.bin",
+ "head": "462cb9244b08dd52ba1594dabc3171d4aa5bac42",
+ "token": "0x7e5a8f85",
+ "lines": [
+  "2026-10-20 14:49:31 cycle   1: asleep 36.0 s (PCF 36, counted 30), woke key, p2 0x100, seq 1, key 1, Mac 50 ms, link sent 4 timeouts 1  ok",
+  "2026-10-20 14:50:43 cycle   2: asleep 42.0 s (PCF 42, counted 34), woke key, p2 0x100, seq 2, key 1, Mac 50 ms, link sent 9 timeouts 1  ok",
+  "deep cycles: PASS {\"cycles\": 2, \"passed\": 2, \"stopped\": null, \"path\": \"ladder\", \"mac_latency_ms\": {\"median\": 50.4, \"max\": 50.4}, \"clock_before_abs_ms\": null, \"timed_out\": {}}"
+ ]
+}

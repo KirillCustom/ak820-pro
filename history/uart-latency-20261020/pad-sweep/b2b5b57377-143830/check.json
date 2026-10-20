@@ -1,0 +1,136 @@
+{
+ "artifact": "via-dev-b2b5b57377-20261020-141153.bin",
+ "head": "b2b5b57377d343b6cafe4ef1a6c143e5813071be",
+ "token": "0x135aa5ff",
+ "control": false,
+ "board": "regression",
+ "complete": true,
+ "strict_pass": false,
+ "logger_only": false,
+ "failing": [
+  [
+   "asleep",
+   "fresh"
+  ],
+  [
+   "asleep",
+   "fresh"
+  ]
+ ],
+ "advance": true,
+ "summary": {
+  "cycles": 2,
+  "passed": 0,
+  "stopped": null,
+  "path": "ladder",
+  "mac_latency_ms": {
+   "median": 31.8,
+   "max": 31.8
+  },
+  "clock_before_abs_ms": null,
+  "timed_out": {}
+ },
+ "ring": [
+  {
+   "seq": 17,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 134552,
+   "strays": 0,
+   "written": 25
+  },
+  {
+   "seq": 18,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 137661,
+   "strays": 0,
+   "written": 25
+  },
+  {
+   "seq": 19,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 140770,
+   "strays": 0,
+   "written": 25
+  },
+  {
+   "seq": 20,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 143876,
+   "strays": 0,
+   "written": 25
+  },
+  {
+   "seq": 21,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 150532,
+   "strays": 0,
+   "written": 25
+  },
+  {
+   "seq": 22,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 153644,
+   "strays": 0,
+   "written": 25
+  },
+  {
+   "seq": 23,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 156755,
+   "strays": 0,
+   "written": 25
+  },
+  {
+   "seq": 24,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 0,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x100",
+   "ms": 159862,
+   "strays": 0,
+   "written": 25
+  }
+ ],
+ "lines": [
+  "2026-10-20 14:39:53 cycle   1: asleep 1.0 s (PCF 1, counted 1), woke charge, p2 0x0, seq 14, key 1, Mac 24 ms, link sent 22 timeouts 0  FAIL",
+  "2026-10-20 14:41:09 cycle   2: asleep 2.0 s (PCF 0, counted 0), woke key, p2 0x100, seq 25, key 1, Mac 32 ms, link sent 21 timeouts 1  FAIL",
+  "deep cycles: FAIL {\"cycles\": 2, \"passed\": 0, \"stopped\": null, \"path\": \"ladder\", \"mac_latency_ms\": {\"median\": 31.8, \"max\": 31.8}, \"clock_before_abs_ms\": null, \"timed_out\": {}}"
+ ]
+}

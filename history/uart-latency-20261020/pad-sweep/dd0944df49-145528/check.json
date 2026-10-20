@@ -1,0 +1,64 @@
+{
+ "control": false,
+ "board": "other",
+ "complete": true,
+ "gates": false,
+ "strict_pass": false,
+ "failing": [
+  [
+   "new_ge25"
+  ]
+ ],
+ "unexplained": [
+  [
+   "new_ge25"
+  ]
+ ],
+ "advance": false,
+ "summary": {
+  "cycles": 2,
+  "passed": 1,
+  "stopped": null,
+  "path": "ladder",
+  "mac_latency_ms": {
+   "median": 39.9,
+   "max": 39.9
+  },
+  "clock_before_abs_ms": null,
+  "timed_out": {}
+ },
+ "ring": [
+  {
+   "seq": 0,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 7,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 30007,
+   "strays": 0,
+   "written": 2
+  },
+  {
+   "seq": 1,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 40,
+   "p0": "0x0",
+   "p1": "0x0",
+   "p2": "0x100",
+   "ms": 60087,
+   "strays": 0,
+   "written": 2
+  }
+ ],
+ "artifact": "via-dev-dd0944df49-20261020-141355.bin",
+ "head": "dd0944df494aa8749fc80642cebe26edaf7cf826",
+ "token": "0x45f0b36d",
+ "lines": [
+  "2026-10-20 14:55:58 cycle   1: asleep 8.0 s (PCF 8, counted 7), woke key, p2 0x100, seq 1, key 1, Mac 40 ms, link sent 5 timeouts 1 ge25 +1  FAIL",
+  "2026-10-20 14:57:09 cycle   2: asleep 49.0 s (PCF 50, counted 40), woke key, p2 0x100, seq 2, key 1, Mac 38 ms, link sent 8 timeouts 1  ok",
+  "deep cycles: FAIL {\"cycles\": 2, \"passed\": 1, \"stopped\": null, \"path\": \"ladder\", \"mac_latency_ms\": {\"median\": 39.9, \"max\": 39.9}, \"clock_before_abs_ms\": null, \"timed_out\": {}}"
+ ]
+}

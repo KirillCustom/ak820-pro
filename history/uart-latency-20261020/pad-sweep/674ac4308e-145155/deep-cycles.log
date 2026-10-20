@@ -1,0 +1,5 @@
+2026-10-20 14:51:55 2 cycles through the ladder: Minimal, the bench sleep time 30 s; relay 2 off; light sleep off; the mode was 1
+2026-10-20 14:53:17 cycle   1: asleep 1.0 s (PCF 0, counted 0), woke key, p2 0x100, seq 16, key 1, Mac 27 ms, link sent 23 timeouts 0  FAIL
+2026-10-20 14:54:34 cycle   2: asleep 1.0 s (PCF 0, counted 0), woke key, p2 0x100, seq 27, key 1, Mac 26 ms, link sent 21 timeouts 1  FAIL
+2026-10-20 14:54:36 restored: relay 1 open, relay 2 on, data on, the arm cancelled, the bench sleep time cleared, the mode put back, stage released
+deep cycles: FAIL {"cycles": 2, "passed": 0, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 26.9, "max": 26.9}, "clock_before_abs_ms": null, "timed_out": {}}

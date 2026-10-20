@@ -1,0 +1,137 @@
+{
+ "control": false,
+ "board": "regression",
+ "complete": true,
+ "gates": true,
+ "strict_pass": false,
+ "failing": [
+  [
+   "asleep",
+   "fresh"
+  ],
+  [
+   "asleep",
+   "fresh"
+  ]
+ ],
+ "unexplained": [],
+ "advance": true,
+ "summary": {
+  "cycles": 2,
+  "passed": 0,
+  "stopped": null,
+  "path": "ladder",
+  "mac_latency_ms": {
+   "median": 26.9,
+   "max": 26.9
+  },
+  "clock_before_abs_ms": null,
+  "timed_out": {}
+ },
+ "ring": [
+  {
+   "seq": 19,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 128985,
+   "strays": 0,
+   "written": 27
+  },
+  {
+   "seq": 20,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 135812,
+   "strays": 0,
+   "written": 27
+  },
+  {
+   "seq": 21,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 138922,
+   "strays": 0,
+   "written": 27
+  },
+  {
+   "seq": 22,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 142028,
+   "strays": 0,
+   "written": 27
+  },
+  {
+   "seq": 23,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 145139,
+   "strays": 0,
+   "written": 27
+  },
+  {
+   "seq": 24,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 151987,
+   "strays": 0,
+   "written": 27
+  },
+  {
+   "seq": 25,
+   "reason": "charge",
+   "flags": 64,
+   "counted_s": 1,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x0",
+   "ms": 155099,
+   "strays": 0,
+   "written": 27
+  },
+  {
+   "seq": 26,
+   "reason": "key",
+   "flags": 64,
+   "counted_s": 0,
+   "p0": "0x0",
+   "p1": "0xbd102000",
+   "p2": "0x100",
+   "ms": 158208,
+   "strays": 0,
+   "written": 27
+  }
+ ],
+ "artifact": "via-dev-674ac4308e-20261020-141331.bin",
+ "head": "674ac4308e54f9a677b9f9a109fb7248406bbc25",
+ "token": "0xac94daf3",
+ "lines": [
+  "2026-10-20 14:53:17 cycle   1: asleep 1.0 s (PCF 0, counted 0), woke key, p2 0x100, seq 16, key 1, Mac 27 ms, link sent 23 timeouts 0  FAIL",
+  "2026-10-20 14:54:34 cycle   2: asleep 1.0 s (PCF 0, counted 0), woke key, p2 0x100, seq 27, key 1, Mac 26 ms, link sent 21 timeouts 1  FAIL",
+  "deep cycles: FAIL {\"cycles\": 2, \"passed\": 0, \"stopped\": null, \"path\": \"ladder\", \"mac_latency_ms\": {\"median\": 26.9, \"max\": 26.9}, \"clock_before_abs_ms\": null, \"timed_out\": {}}"
+ ]
+}

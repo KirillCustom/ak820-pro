@@ -1,0 +1,78 @@
+b2a07e0d37: board regression, complete, deep_cycles FAIL [['asleep', 'fresh'], ['asleep', 'fresh']] -> ADVANCE
+    2026-10-20 14:36:17 cycle   1: asleep 2.0 s (PCF 1, counted 1), woke charge, p2 0x0, seq 15, key 1, Mac 26 ms, link sent 21 timeouts 0  FAIL
+    2026-10-20 14:37:33 cycle   2: asleep 1.0 s (PCF 0, counted 0), woke key, p2 0x100, seq 26, key 1, Mac 29 ms, link sent 21 timeouts 2  FAIL
+    deep cycles: FAIL {"cycles": 2, "passed": 0, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 28.9, "max": 28.9}, "clock_before_abs_ms": null, "timed_out": {}}
+    ring: {"seq": 18, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 130369, "strays": 0, "written": 26}
+    ring: {"seq": 19, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 137320, "strays": 0, "written": 26}
+    ring: {"seq": 20, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 140429, "strays": 0, "written": 26}
+    ring: {"seq": 21, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 143540, "strays": 0, "written": 26}
+    ring: {"seq": 22, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 146648, "strays": 0, "written": 26}
+    ring: {"seq": 23, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 153616, "strays": 0, "written": 26}
+    ring: {"seq": 24, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 156724, "strays": 0, "written": 26}
+    ring: {"seq": 25, "reason": "key", "flags": 64, "counted_s": 0, "p0": "0x0", "p1": "0xbd102000", "p2": "0x100", "ms": 159835, "strays": 0, "written": 26}
+b2b5b57377: board regression, complete, deep_cycles FAIL [['asleep', 'fresh'], ['asleep', 'fresh']] -> ADVANCE
+    2026-10-20 14:39:53 cycle   1: asleep 1.0 s (PCF 1, counted 1), woke charge, p2 0x0, seq 14, key 1, Mac 24 ms, link sent 22 timeouts 0  FAIL
+    2026-10-20 14:41:09 cycle   2: asleep 2.0 s (PCF 0, counted 0), woke key, p2 0x100, seq 25, key 1, Mac 32 ms, link sent 21 timeouts 1  FAIL
+    deep cycles: FAIL {"cycles": 2, "passed": 0, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 31.8, "max": 31.8}, "clock_before_abs_ms": null, "timed_out": {}}
+    ring: {"seq": 17, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 134552, "strays": 0, "written": 25}
+    ring: {"seq": 18, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 137661, "strays": 0, "written": 25}
+    ring: {"seq": 19, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 140770, "strays": 0, "written": 25}
+    ring: {"seq": 20, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 143876, "strays": 0, "written": 25}
+    ring: {"seq": 21, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 150532, "strays": 0, "written": 25}
+    ring: {"seq": 22, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 153644, "strays": 0, "written": 25}
+    ring: {"seq": 23, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 156755, "strays": 0, "written": 25}
+    ring: {"seq": 24, "reason": "key", "flags": 64, "counted_s": 0, "p0": "0x0", "p1": "0xbd102000", "p2": "0x100", "ms": 159862, "strays": 0, "written": 25}
+eba26f6c6e: board normal, complete, gates ok, deep_cycles FAIL -> ADVANCE
+    2026-10-20 14:43:03 cycle   1: asleep None s (PCF 39, counted 32), woke key, p2 0x100, seq 1, key 1, Mac 54 ms, link sent 4 timeouts 1  FAIL
+    2026-10-20 14:44:08 cycle   2: asleep 35.0 s (PCF 35, counted 29), woke key, p2 0x100, seq 2, key 1, Mac 52 ms, link sent 9 timeouts 1  ok
+    deep cycles: FAIL {"cycles": 2, "passed": 1, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 53.6, "max": 53.6}, "clock_before_abs_ms": null, "timed_out": {}}
+    ring: {"seq": 0, "reason": "key", "flags": 64, "counted_s": 32, "p0": "0x0", "p1": "0x0", "p2": "0x100", "ms": 32184, "strays": 0, "written": 2}
+    ring: {"seq": 1, "reason": "key", "flags": 64, "counted_s": 29, "p0": "0x0", "p1": "0x0", "p2": "0x100", "ms": 62259, "strays": 0, "written": 2}
+8268166476: board regression, complete, gates ok, deep_cycles FAIL -> ADVANCE
+    2026-10-20 14:46:30 cycle   1: asleep 1.0 s (PCF 1, counted 1), woke charge, p2 0x0, seq 15, key 1, Mac 27 ms, link sent 22 timeouts 0  FAIL
+    2026-10-20 14:47:46 cycle   2: asleep 1.0 s (PCF 0, counted 0), woke key, p2 0x100, seq 26, key 1, Mac 18 ms, link sent 21 timeouts 1  FAIL
+    deep cycles: FAIL {"cycles": 2, "passed": 0, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 27.0, "max": 27.0}, "clock_before_abs_ms": null, "timed_out": {}}
+    ring: {"seq": 18, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 134985, "strays": 0, "written": 26}
+    ring: {"seq": 19, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 138094, "strays": 0, "written": 26}
+    ring: {"seq": 20, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 141201, "strays": 0, "written": 26}
+    ring: {"seq": 21, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 144309, "strays": 0, "written": 26}
+    ring: {"seq": 22, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 150849, "strays": 0, "written": 26}
+    ring: {"seq": 23, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 153957, "strays": 0, "written": 26}
+    ring: {"seq": 24, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 157068, "strays": 0, "written": 26}
+    ring: {"seq": 25, "reason": "key", "flags": 64, "counted_s": 0, "p0": "0x0", "p1": "0xbd102000", "p2": "0x100", "ms": 160175, "strays": 0, "written": 26}
+462cb9244b: board normal, complete, gates ok, deep_cycles PASS -> ADVANCE
+    2026-10-20 14:49:31 cycle   1: asleep 36.0 s (PCF 36, counted 30), woke key, p2 0x100, seq 1, key 1, Mac 50 ms, link sent 4 timeouts 1  ok
+    2026-10-20 14:50:43 cycle   2: asleep 42.0 s (PCF 42, counted 34), woke key, p2 0x100, seq 2, key 1, Mac 50 ms, link sent 9 timeouts 1  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 50.4, "max": 50.4}, "clock_before_abs_ms": null, "timed_out": {}}
+    ring: {"seq": 0, "reason": "key", "flags": 64, "counted_s": 30, "p0": "0x0", "p1": "0x0", "p2": "0x100", "ms": 32189, "strays": 0, "written": 2}
+    ring: {"seq": 1, "reason": "key", "flags": 64, "counted_s": 34, "p0": "0x0", "p1": "0x0", "p2": "0x100", "ms": 62260, "strays": 0, "written": 2}
+674ac4308e: board regression, complete, gates ok, deep_cycles FAIL -> ADVANCE
+    2026-10-20 14:53:17 cycle   1: asleep 1.0 s (PCF 0, counted 0), woke key, p2 0x100, seq 16, key 1, Mac 27 ms, link sent 23 timeouts 0  FAIL
+    2026-10-20 14:54:34 cycle   2: asleep 1.0 s (PCF 0, counted 0), woke key, p2 0x100, seq 27, key 1, Mac 26 ms, link sent 21 timeouts 1  FAIL
+    deep cycles: FAIL {"cycles": 2, "passed": 0, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 26.9, "max": 26.9}, "clock_before_abs_ms": null, "timed_out": {}}
+    ring: {"seq": 19, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 128985, "strays": 0, "written": 27}
+    ring: {"seq": 20, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 135812, "strays": 0, "written": 27}
+    ring: {"seq": 21, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 138922, "strays": 0, "written": 27}
+    ring: {"seq": 22, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 142028, "strays": 0, "written": 27}
+    ring: {"seq": 23, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 145139, "strays": 0, "written": 27}
+    ring: {"seq": 24, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 151987, "strays": 0, "written": 27}
+    ring: {"seq": 25, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 155099, "strays": 0, "written": 27}
+    ring: {"seq": 26, "reason": "key", "flags": 64, "counted_s": 0, "p0": "0x0", "p1": "0xbd102000", "p2": "0x100", "ms": 158208, "strays": 0, "written": 27}
+dd0944df49: board other, complete, gates FAILED, deep_cycles FAIL, unexplained [['new_ge25']] -> STOP
+    2026-10-20 14:55:58 cycle   1: asleep 8.0 s (PCF 8, counted 7), woke key, p2 0x100, seq 1, key 1, Mac 40 ms, link sent 5 timeouts 1 ge25 +1  FAIL
+    2026-10-20 14:57:09 cycle   2: asleep 49.0 s (PCF 50, counted 40), woke key, p2 0x100, seq 2, key 1, Mac 38 ms, link sent 8 timeouts 1  ok
+    deep cycles: FAIL {"cycles": 2, "passed": 1, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 39.9, "max": 39.9}, "clock_before_abs_ms": null, "timed_out": {}}
+    ring: {"seq": 0, "reason": "key", "flags": 64, "counted_s": 7, "p0": "0x0", "p1": "0x0", "p2": "0x100", "ms": 30007, "strays": 0, "written": 2}
+    ring: {"seq": 1, "reason": "key", "flags": 64, "counted_s": 40, "p0": "0x0", "p1": "0x0", "p2": "0x100", "ms": 60087, "strays": 0, "written": 2}
+b2a07e0d37: board regression, complete, gates ok, deep_cycles FAIL -> ADVANCE
+    2026-10-20 15:00:06 cycle   1: asleep 1.0 s (PCF 1, counted 1), woke charge, p2 0x0, seq 14, key 1, Mac 29 ms, link sent 22 timeouts 0  FAIL
+    2026-10-20 15:01:23 cycle   2: asleep 1.0 s (PCF 1, counted 0), woke key, p2 0x100, seq 24, key 1, Mac 26 ms, link sent 21 timeouts 0  FAIL
+    deep cycles: FAIL {"cycles": 2, "passed": 0, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 28.7, "max": 28.7}, "clock_before_abs_ms": null, "timed_out": {}}
+    ring: {"seq": 16, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 130339, "strays": 0, "written": 24}
+    ring: {"seq": 17, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 133449, "strays": 0, "written": 24}
+    ring: {"seq": 18, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 136558, "strays": 0, "written": 24}
+    ring: {"seq": 19, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 139669, "strays": 0, "written": 24}
+    ring: {"seq": 20, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 146754, "strays": 0, "written": 24}
+    ring: {"seq": 21, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 149864, "strays": 0, "written": 24}
+    ring: {"seq": 22, "reason": "charge", "flags": 64, "counted_s": 1, "p0": "0x0", "p1": "0xbd102000", "p2": "0x0", "ms": 152973, "strays": 0, "written": 24}
+    ring: {"seq": 23, "reason": "key", "flags": 64, "counted_s": 0, "p0": "0x0", "p1": "0xbd102000", "p2": "0x100", "ms": 160094, "strays": 0, "written": 24}

@@ -298,3 +298,113 @@ bytes. `scripts/layout_diff.py` checks each against b2a0:
 
 `scripts/pad_sweep.py` flashes them in turn. b2a0 itself goes first as the
 control, and the WFI diagnostic is left on the board at the end.
+
+## The padding series (10-20, 14:34-15:02): every placement as predicted
+
+`mac/sleep-pad`: b2a0 with DS_PAD bytes ahead of `sleep.o`, so b2a0's own
+instructions move by exactly that much and the RAM stays as it was. Codex
+checked each image byte by byte
+(`review-codex-sleep-pad-2026-10-20.md`, `-pad-verify-`): every difference
+is a relocated BL, literal, vector, `.rodata` or `.data` word, or the
+token. Flashing stayed with this session, in the foreground, after
+`pgrep -x sonixflasher` and a relay check. `scripts/pad_check.py` gives the
+board verdict (codex's verify of it:
+`review-codex-sleep-padcheck-2026-10-20.md`, its four P2s taken).
+
+| pad | commit | WFI | mod 8 | board |
+|---:|---|---:|---:|---|
+| 0 (control) | `b2a07e0d37` | `0x120d2` | 2 | regression |
+| 16 | `b2b5b57377` | `0x120e2` | 2 | regression |
+| 4 | `eba26f6c6e` | `0x120d6` | 6 | sleeps |
+| 8 | `8268166476` | `0x120da` | 2 | regression |
+| 12 | `462cb9244b` | `0x120de` | 6 | sleeps |
+| 64 | `674ac4308e` | `0x12112` | 2 | regression |
+| 228 | `dd0944df49` | `0x121b6` | 6 | sleeps (one 8 s sleep, one 28 ms blit) |
+| 0 (repeat) | `b2a07e0d37` | `0x120d2` | 2 | regression |
+
+`history/uart-latency-20261020/pad-sweep/`, `pad-sweep.log`.
+- **Every failing placement keeps the ring's p1 at `0xbd102000`.** That
+  matches `r7 = 0xbf30`, because `0xbf30` lies below every pad.
+- **Pad 228's 28 ms pass was a blit,** with 2 passes of 25 ms or more since
+  its boot. It is unrelated to the WFI's placement, and is probably the
+  redraw at the first wake after a flash. It is open and to be looked at.
+- **The board's uptime excludes deep sleep.** The system timer stops
+  across it. That is not a reset.
+
+**The mechanism (a hypothesis; the register capture would prove it).**
+b2a0's WFI at `0x120d2` is the second half of the block
+`0x120d0-0x120d7`: `0xbf308f4f`, then `0x64032300` (the DSB's tail, the
+WFI, `movs r3,#0`, `str r3,[r0,#64]`). Straight-line code follows. Suppose
+the fetch of the next block (`0x120d8`) after the wake returns that same
+stale block. Then the core runs:
+- `ldrh r7, [r1, #58]`, with `r1 = 0x5afa0000`, LPCTRL's key, written
+  just before. Bit 1 of `0x5afa003a` takes the stale word's upper half, so
+  `r7 = 0xbf30`.
+- `wfi`, which returns at once with the wake pending, then `movs r3,#0`
+  and `str r3,[r0,#64]`.
+
+It skips `mov r3,fp; ldr r6,[r3,#28]; ldr r3,[sp,#20]; ldr r1,[sp,#16]`.
+Then:
+- `ands r6, r3` with `r3 = 0`, so **p0 = 0**;
+- `ands r1, r2` with `r1` still `0x5afa0000` (port 1's mask never loaded),
+  so **p1 = RIS1 & 0x5afa0000**: a stray port-1 bit gives a wake with no
+  column or knob bit, which is **"charge"**;
+- the store `str r0, [r7]` goes to flash at `0xbf30` and is lost, so the
+  record's **p1 = 0**;
+- the ring reads p1 through `r7` and gets the flash word at `0xbf30`,
+  which is **`0xbd102000`**.
+
+A one-word replay would leave `r6 = 0x241e4` and predict a key wake with
+p0 `0xe0` (codex, fix review, P2). The whole-block replay explains p0, p2,
+the reason, the record and the ring.
+- A WFI at 6 mod 8 sits in the block's second word, so the next block was
+  fetched before the sleep.
+- The sweep's 2 mod 8 variants branched right after the wake, and held.
+- The probe's first flash read came at least ~7 cycles after the wake. It
+  says nothing about an instruction fetch within the first cycle or two.
+
+## The fix (`mac/sleep-wake-sram`, `8b06e4dcc4`)
+
+The Deep-sleep entry and exit run from SRAM (`ds_deep_wfi`, `.ramtext`),
+in every build:
+1. CTRL set to 2, then DSB and WFI.
+2. CTRL set to 0.
+3. A 260-pass wait, 1,298 cycles, ~108 µs at 12 MHz.
+4. One flash word read and dropped.
+5. The return to flash.
+
+Built as `via-dev-8b06e4dcc4-20261020-150215.bin` (token `0x3e1c880c`) and
+`via-daily-8b06e4dcc4-20261020-150240.bin` (`0xbd635765`). The code is
+byte-identical to `b3f48e9c5a`, which codex reviewed; only the comment
+changed, softened per codex's P3, and the token bytes differ.
+
+**Codex (`review-codex-sleep-fix-2026-10-20.md`): clear for an attended dev
+bench flash on JD's go. No P1.** It checked both ELFs:
+- the helper and both its literals sit in SRAM, inside the startup copy;
+- no flash fetch or flash literal load comes between the WFI and the
+  dropped read;
+- only r2, r3 and the flags change, and PRIMASK stays held;
+- the daily build carries the fix;
+- RAM: the dev gap is 144 B, the daily 2,192 B.
+
+Its findings:
+- **P2, the one-word replay predicts the wrong p0.** **Taken:** the
+  whole-block replay above, still marked a hypothesis.
+- **P2, the dev light-sleep hook still runs a WFI from flash in PMU Sleep
+  (4).** It is off by default. **Taken:** it stays off, and gets its own
+  SRAM path and validation before it is ever promoted.
+- **P2, `deep_cycles`' PASS alone is not acceptance.** **Taken:** the
+  validation gates on the records, the ring, the recovery's timeouts,
+  resets and stalls.
+- **P3, the hazard's width is unmeasured.** **Taken:** the comment says so,
+  and the wait stays until it is measured and swept.
+- **Validation, which codex would require:**
+  - a few cycles on each transport, then 100 or more each, with the keys
+    reaching the host;
+  - an hour asleep with the power logger;
+  - P0 and P2 keys, the knob, a charge wake, and settings persisting after
+    a wake;
+  - a daily smoke test;
+  - the fix with its flash caller padded, and its SRAM WFI moved to 2 mod 8
+    (both builds put it at 6 mod 8);
+  - an overnight soak and a backstop test.
