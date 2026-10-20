@@ -1,0 +1,12 @@
+2026-10-19 19:47:44 mode 3: tapped and data off; waiting for the sleep (want 30 s)
+2026-10-19 19:48:20 asleep 30.0 s after the tap; waking in 3600 s
+2026-10-19 20:48:39 asleep 3558.0 s by the logger, PCF 45, counted 38; woke key; keys 2; clock +347.9 ms at the first sync (enumerated, 13 s after data on)
+2026-10-19 20:48:39   ok   asleep at the mode's time
+2026-10-19 20:48:39   ok   woke on key
+2026-10-19 20:48:39   FAIL the PCF within 2 s of the logger
+2026-10-19 20:48:39   ok   the recovery closed, nothing timed out
+2026-10-19 20:48:39   ok   2 keys (the taps)
+2026-10-19 20:48:39   ok   no reset
+2026-10-19 20:48:39   ok   no pass of 25 ms or more
+2026-10-19 20:48:41 restored
+ladder sleep: FAIL
