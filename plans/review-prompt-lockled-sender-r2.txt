@@ -1,0 +1,10 @@
+Verify a design revision. In plans/LOCK-LED-CHANNEL-PLAN.md, read "The daemon's sender: design (Gremlin, 10-20, for codex)" and then "Codex on the sender design (10-20) and revision 2" (its disposition table and R2-1 to R2-16). Your previous review is plans/review-codex-lockled-sender-2026-10-20.md; the same sources apply (scripts/lockchan.py, scripts/ledchannel_test.py, the board's lockchan.c/.h and ch582f_ajazz.c, display.c's text slot and playback, ak820-agent's agent.rs, radio.rs, media.rs, smtc).
+
+For each of your 21 findings: is the disposition and the revision adequate? Then look for anything the revision introduces or still leaves open, in particular:
+- R2-1's restore: can it itself be mistaken for a frame start or a data transition; does waiting >600 ms before a repair interact badly with a user typing or the board's Scroll hold; is three tries enough.
+- R2-3's cancel-on-supersede against rapid track skipping (does anything ever finish?).
+- R2-5/R2-6: is a 10 s raw-HID silence rule on the board right (the USB daemon pushes PLAYBACK every 3 s; what about a USB daemon with nothing playing, or the Python agents; is a "last raw-HID text" timestamp the right signal), and does it close the late-commit race.
+- R2-8's poisoning and the machine-wide lock.
+- R2-9's contract as a firmware handler.
+- R2-10's 30 s observation age against the SMTC worker's 0.5 s polling.
+Classify findings must-fix / should-fix / note, with file:line where they apply. Say plainly whether implementation can start.

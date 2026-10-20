@@ -308,7 +308,9 @@ contract (`LOCK-LED-CHANNEL-PLAN.md`, R2-2):
 - **JD's real Caps Lock presses on the AK820 over BT** (watch mode, plain
   `GetKeyState`, second thread): all 8 changes seen at his pace (~200 ms
   apart), ending on his final state.
+- **JD's real Scroll Lock presses** (Fn+[ on the AK820 over BT, mapped in
+  VIA): all 6 changes seen, ~1 s apart.
 - So the sender reads the locks with plain `GetKeyState` on its own thread.
-  Not yet: Num and Scroll from a real keyboard (the AK820 has neither key),
+  Not yet: Num from a real keyboard (the AK820 has no Num key),
   another keyboard, and the daemon's own context (a Task Scheduler process in
   the session, not a console): the soak checks those.

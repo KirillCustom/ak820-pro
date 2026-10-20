@@ -760,3 +760,132 @@ and the expiry untouched.
 media keys, each lock from this keyboard and another, the overlays, sleep and
 wake, removal, every handover; checked: keys delivered, passes >= 25 ms, UART
 errors, the final lights and the final text.
+
+### Codex's verification of revision 2 (10-20) and revision 3
+
+[Verbatim](review-codex-lockled-sender-r2-2026-10-20.md), prompt
+[`review-prompt-lockled-sender-r2.txt`](review-prompt-lockled-sender-r2.txt).
+Verdict: R2 is not yet an implementation specification. The encoder, the
+payload validator and the display handler (R2-9) can start; the sender and the
+transport integration wait for four must-fixes. Five should-fixes and a note
+follow. **All agreed**; revision 3 replaces R2's text where they differ.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | R2-1's wait does not guarantee cancellation (the receiver's gap runs on its own clock; a repair can start a preamble); three tries bound the work, not the outcome | **Agreed.** R3-1: a `restore_pending` state, and the guarantee restated as conditional |
+| 2 | R2-6's 10 s rule is a lease, not ownership; it must count every raw-HID media command at ingress, not text alone; a late frame after the lease is possible; handover can lose both first attempts | **Agreed.** R3-2 |
+| 3 | Poisoning must keep the machine-wide lock; numeric shutdown budget; a stuck open; `--once`; the owner lock is held across I/O, only the slot mutex is not | **Agreed.** R3-3 |
+| 4 | The main-thread fallback is not a freshness contract; unknown must be explicit in the trait | **Agreed.** R3-4: the fallback is dropped (the measurement made it unnecessary) and `user()` returns `Option` |
+| 5 | Cancel-on-supersede can starve during continuous changes | **Agreed:** latest-state is the policy, stated (R3-5) |
+| 6 | Separate deadlines for the preamble (< 150 ms) and the data, checked before each write | **Agreed** (R3-6) |
+| 7 | 30 s is ~60 polls at 0.5 s, not 10; crossing it must schedule a CLEAR at once | **Agreed** (R3-7) |
+| 8 | ~6 s is nominal, not a maximum; the CLEAR cutoff is host time; the icon is corrected by the 30 s text keepalive on raw HID, not by PLAYBACK; input timestamps can go backwards; discovery needs a re-list | **Agreed** (R3-8) |
+| 9 | R2-9 is ready as the handler's contract; validate and pass the ownership gate before any mutation | **Agreed;** the handler starts now |
+
+**R3-1. Restore.** The restore of R2-1 stays, with its guarantee stated as
+conditional: the recovery wait (more than 500 ms plus 100 ms since our last
+completion) makes a repair harmless **if** the receiver saw the same silence;
+a report delayed in the stack, or the user's own Num/Scroll change, is outside
+the host's clock. A repair is a single transition: it can start a preamble
+(`0x05 -> 0x00` is a P0 preamble's first edge), which with no continuation
+expires in 150 ms and commits nothing. After three repairs that still
+disagree with a fresh read, or a recoverable write error, the channel enters
+**`restore_pending`**: no new payload is sent, a fresh restore is tried every
+1 s, and the status says "lights not restored". A repair is never written
+over an operation that has not retired (R3-3). Shutdown makes one bounded
+attempt and stops. Tests: a repair that starts a preamble, a lock change
+during recovery, a mismatch after the third repair. Known cost: during the
+wait the board's Caps and Scroll indication can be wrong for ~0.6 s, and the
+board's settled Scroll needs 1.5 s after the last frame.
+
+**R3-2. Source ownership on the board: a lease, stated as one.**
+- **The signal:** a timestamp `rawhid_media_at`, set at the raw-HID ingress
+  of the text channel (`hid_protocol.c`'s `text_command`, which raw81's
+  dispatch shares) for **every accepted command**: SET, SET_LINE, PLAYBACK
+  (state 0 included) and CLEAR. Never in the display's setters, which the
+  lock-light handler also calls, and never `text_stamp`.
+- **The lease:** a committed lock-light frame is applied only if
+  `rawhid_media_at` is more than 10 s old. The Rust daemon sends PLAYBACK
+  every media cycle, idle included (3 s by default), and so does the Windows
+  Python agent; **the daemon refuses `--lockchan` with `--interval` over 5
+  s**, and the legacy macOS shell agent (30 s keepalives after playback
+  stops) is not a supported companion: the daemon replaces it.
+- **Stated residual risk:** a lock-light frame delayed by more than the lease
+  after the host stopped it could still apply. Windows completes a
+  `SET_INDICATORS` in milliseconds and the receiver's 12 s lifetime bounds a
+  frame once it starts arriving; a frame held more than 10 s before its first
+  report reaches the board is accepted as a risk, not designed away.
+- **Handover from raw HID to the lock lights:** the daemon knows when it last
+  pushed on raw HID (USB or radio). The channel's **first frame waits until
+  12 s after that push**, so the board's lease has expired before it arrives
+  and the first attempt and its repeat are not thrown away.
+
+**R3-3. I/O, the lock and shutdown.**
+- The **machine-wide lock** is raw81's mechanism, reused (`radio_lock.rs`: a
+  byte-range lock with no delete sharing) on its own file,
+  `%ProgramData%\ak820pro\lockchan.lock`. It is taken when the channel is
+  granted and held through warm-up, frames, recovery, restores and
+  `restore_pending`; released only when the channel is released with no
+  operation outstanding. **Poisoning keeps it** with the handle, the
+  `OVERLAPPED`, the event and the buffers, for the life of the process (the
+  guard is forgotten, as `radio.rs` does).
+- Numbers: each `DeviceIoControl` 1 s, then `CancelIoEx` and 1 s more for the
+  completion; not retired by then: poisoned. Shutdown sets the stop flag,
+  waits up to 3 s for the sender thread (one write and one restore), and
+  then exits regardless; a sender stuck in `CreateFileW` (which overlapped
+  I/O cannot bound) is left detached, holding its lock, and process exit
+  ends it.
+- `--once` does not run the channel (it is one diagnostic pass over raw HID).
+- "No lock across I/O" means the latest-content slot's mutex, never the
+  owner lock.
+
+**R3-4. The user's locks.** `user()` returns `Option<u8>`. On Windows it is
+plain `GetKeyState` on the sender thread: measured fresh (GREMLIN-RESULTS
+section 9: software toggles seen in 1-8 ms; JD's real Caps over BT, all of
+them) — and checked again in the daemon's own context by the soak. It returns
+`None` when the input desktop cannot be opened (`OpenInputDesktop` fails
+while the session is locked or on the secure desktop), and `None` stops the
+channel before the next write (abandon, no restore until known again). The
+main-thread fallback is dropped.
+
+**R3-5. Supersession: latest state.** A newer content cancels the frame in
+flight at the next write boundary; content is coalesced through recovery,
+restore and warm-up, and the newest generation is taken only when the payload
+starts. Under changes faster than a frame, nothing need finish until they
+stop; then the last one goes. Intermediate tracks are never guaranteed.
+Supersession is not a failure and does not back off. A change after the
+trailer's last write is issued can still be followed by that frame's commit;
+the next frame corrects it.
+
+**R3-6. Phase deadlines,** checked before each write is submitted and again
+on its completion:
+- recovery: at least 600 ms of our silence (above);
+- quiet: at least 300 ms after the warm-up (the receiver needs 150);
+- preamble: each continuation submitted within 100 ms of the previous
+  completion (the receiver needs < 150);
+- header, payload and trailer: each write within 300 ms of the previous
+  completion (the receiver allows 500);
+- the whole frame within 10 s (the receiver allows 12).
+A deadline missed (a suspension, a slow write) abandons and restores. The
+deliberate waits are outside the inter-write rule.
+
+**R3-7. A stale source.** The threshold stays 30 s, about 60 polls at the
+worker's 0.5 s, as a grace period. Crossing it **creates a CLEAR generation
+at once** (cancelling pending work for the stale content), not at the next
+refresh. The sender carries the observation instant, so age keeps growing
+while content waits; fresh observations of identical content renew it
+without a new generation; a failed read is idle at once, as today.
+
+**R3-8. Wording and the rest.**
+- Latency: ~6 s is a nominal figure for prompt I/O, not a maximum.
+- CLEAR's repeats continue until 180 s after the last title frame was
+  **sent** (host time; the board's own expiry is board time, and the two are
+  not the same clock): a bounded retry policy, not a proof the board cleared.
+  Startup sends the current state, CLEAR included, with no history.
+- The optimistic icon: on raw HID the 30 s text keepalive corrects it (PLAYBACK
+  does not touch the icon); over BT the next refresh plus its frame, if it
+  arrives.
+- The wake guess: armed when `GetTickCount() - dwTime` (wrapping) passes 30
+  s; fired on **any change** of `dwTime` while armed, forwards or backwards.
+- Discovery: while the BLE keyboard is absent, the Configuration Manager's
+  list is read again every 10 s (it opens nothing).
