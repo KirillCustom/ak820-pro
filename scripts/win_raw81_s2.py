@@ -61,23 +61,38 @@ class Owner:
             msvcrt.locking(self.lf.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError:
             sys.exit("another raw81 owner holds the dongle on this machine")
+        self._open()
+
+    def _open(self):
+        # Fail closed: an existing state file that cannot be read or parsed
+        # would otherwise restart allocation at 1 and drop the 1 s guard
+        # (codex, stage-2 implementation review, must-fix 2). Absent is fine.
         st = {"session": 0, "opened": 0.0}
-        try:
-            st = json.load(open(STATE))
-        except Exception:
-            pass
-        wait = st.get("opened", 0.0) + 1.0 - time.time()
+        if os.path.exists(STATE):
+            try:
+                st = json.load(open(STATE))
+                assert 0 <= int(st["session"]) <= 255 and float(st["opened"]) >= 0
+            except Exception as e:
+                sys.exit(f"{STATE} is unreadable ({e}): refusing to allocate a session; delete it only "
+                         "if no raw81 owner has run in the last second")
+        wait = float(st["opened"]) + 1.0 - time.time()
         if wait > 0:
             time.sleep(wait)               # no reuse inside the 1 s lifetime
-        self.session = (st.get("session", 0) % 255) + 1
+        self.session = (int(st["session"]) % 255) + 1
         self.opened = time.time()
-        json.dump({"session": self.session, "opened": self.opened}, open(STATE, "w"))   # before any send
+        tmp = STATE + ".tmp"               # persisted atomically, before any send
+        with open(tmp, "w") as f:
+            json.dump({"session": self.session, "opened": self.opened}, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, STATE)
         self.seq = 0
         self.issued = 0
 
     def next(self):
         if self.issued >= ROTATE_SPAN:
-            raise RuntimeError("session span used up: reopen (rotation)")
+            time.sleep(1.0)                # the session idles 1 s, then a new one (R4-2)
+            self._open()
         self.seq = (self.seq + 1) & 0xFFFF
         self.issued += 1
         return self.seq
@@ -106,9 +121,16 @@ class Radio:
         self.drain()
         t0 = time.perf_counter()
         self.d.write(bytes([0]) + req)
-        while not t.feed(self.d.read(33, max(1, int((DEADLINE_S - (time.perf_counter() - t0)) * 1000))) or b""):
-            if time.perf_counter() - t0 >= DEADLINE_S:
+        while True:
+            left = DEADLINE_S - (time.perf_counter() - t0)
+            if left <= 0:
                 t.timeout()
+                break
+            rep = self.d.read(33, max(1, int(left * 1000)))
+            if time.perf_counter() - t0 >= DEADLINE_S:   # checked before feeding: no late completion
+                t.timeout()
+                break
+            if rep and t.feed(rep):
                 break
         rtt = (time.perf_counter() - t0) * 1000
         if t.result in ("ok", "nak", "incomplete"):
@@ -180,17 +202,21 @@ def test_text(r, h):
               (icon is None or st[5] == icon), (t.result, got, st[5]))
     t, _ = r.xact(b"\x07\x12\x04\x01\x00\x10\x00\xf0")
     pb = devhook(h, 18, 2)
-    check("text playback", t.result == "ok" and pb[4] == 1 and struct.unpack_from("<HH", pb, 6) == (0x10, 0xF0),
-          (t.result, pb[4:10].hex()))
+    pos, dur = struct.unpack_from("<HH", pb, 6)
+    check("text playback", t.result == "ok" and pb[4] == 1 and pos in (0x10, 0x11) and dur == 0xF0,
+          (t.result, pb[4:10].hex()))   # the 1 Hz tick may advance it once
     r.xact(b"\x07\x12\x04\x00")
     r.xact(b"\x07\x12\x02")
 
 
 def test_health(r, h):
-    for inner in (b"\x07\x13\x01", b"\x07\x13\x02", b"\x07\x13\x04", b"\x07\x13\x06", b"\x07\x13\x07",
-                  b"\x07\x13\x0e\x00", b"\x07\x13\x0e\x21", b"\x07\x13\x0e\x2a"):
+    pages = [bytes([0x07, 0x13, 0x0E, p]) for p in [0x00] + list(range(0x21, 0x2B))]
+    for inner in [b"\x07\x13\x01", b"\x07\x13\x02", b"\x07\x13\x04", b"\x07\x13\x06", b"\x07\x13\x07"] + pages:
         t, rtt = r.xact(inner)
-        u = usb_xfer(h, list(inner), match=len(inner))
+        # HC_LINK page 0 answers with the protocol version in byte 3, not the
+        # page; the profile pages echo theirs (codex, stage-2 implementation
+        # review, must-fix 1). Match on the command header, then compare.
+        u = usb_xfer(h, list(inner), match=3)
         same_shape = t.reply is not None and t.reply[:4] == u[:4]
         check(f"health {inner.hex()}: {t.result} in {rtt:.1f} ms", t.result == "ok" and same_shape,
               (t.result, t.reply[:6].hex() if t.reply else None, u[:6].hex()))
@@ -201,9 +227,11 @@ def test_nak(r, h):
     check("forbidden -> NAK 2", t.result == "nak" and t.status == 2, (t.result, t.status))
     t, _ = r.xact(b"\x07\x13\x79BOOT")                     # the bootloader jump
     check("bootloader jump -> NAK 2", t.result == "nak" and t.status == 2, (t.result, t.status))
+    t, _ = r.xact(b"\x07\x13\x01")                         # admitted: freshness advances to it
     s = r.owner.seq
-    t, _ = r.xact(b"\x07\x13\x01", seq=s)                  # the last admitted seq again
-    check("repeated seq -> NAK 3", t.result == "nak" and t.status == 3, (t.result, t.status))
+    t2, _ = r.xact(b"\x07\x13\x01", seq=s)                 # the last ADMITTED seq again
+    check("repeated admitted seq -> NAK 3", t.result == "ok" and t2.result == "nak" and t2.status == 3,
+          (t.result, t2.result, t2.status))
     bad = bytearray(P.envelope(r.owner.session, r.owner.next(), b"\x07\x13\x01")); bad[10] ^= 0x55
     t, _ = r.xact(b"\x07\x13\x01", raw=bytes(bad), seq=(bad[2] << 8) | bad[3])
     check("corrupted envelope -> NAK 1", t.result == "nak" and t.status == 1, (t.result, t.status))
