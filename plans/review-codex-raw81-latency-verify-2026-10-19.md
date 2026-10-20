@@ -1,0 +1,13 @@
+**The must-fix is closed. Nothing in this follow-up blocks the flash. No new must-fix or should-fix findings.**
+
+- **Elapsed clock:** [`r81_long_now()`](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:674) accumulates system ticks, sampled [every task pass](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:1461), at commit, and at admission. The threshold is `CH_CFG_ST_FREQUENCY` ticks. Neither RTC phase adjustments nor wake corrections affect it.
+
+- **Wrap correctness:** [`chTimeDiffX`](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/lib/chibios/os/rt/include/chtime.h:461) computes the unsigned 16-bit difference. Sampling less than one wrap apart counts exactly, including crossing zero. Longer gaps lose whole 65,536-tick periods: they can only **under-count**, delaying turnover. The [unsigned 32-bit idle subtraction](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/raw81.c:164) also handles rollover. **Note:** after a full accumulated-counter period (~6.36 hours), an untouched session can briefly appear BUSY again; that is conservative.
+
+- **Sleep/reset:** deep sleep [stops and resumes the counter without resetting it](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/sleep.c:397), so sleeping time is omitted, never added spuriously. Wake/resync [clears session ownership](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:1491). [`raw81_reset()`](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/raw81.c:59) leaves no live admission against an incompatible baseline; cold boot initializes both counter state and session state.
+
+- **Daily unaffected:** the helper and added task call are under [`AK820_DEV_HOOKS`](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:632), which [daily does not enable](C:/Users/jdlien/code/ak820-pro/build.sh:24). Unused raw81 functions are removed by section garbage collection.
+
+- **Host should-fix closed:** [opens wait 1 second](C:/Users/jdlien/code/ak820-pro/scripts/win_raw81_s2.py:78); [own-session BUSY waits 1.1 seconds and retries once](C:/Users/jdlien/code/ak820-pro/scripts/win_raw81_s2.py:136). This covers restarting immediately after a long active run. Foreign-session BUSY remains visible.
+
+Static review of `135db8d2 → b4b6662f` and the host script only; no builds or tests run.

@@ -715,3 +715,30 @@ order they would be tried: one bulk `chnReadTimeout` for the drain instead of
 on the request path (the commit's session idle and the admission, each a
 software 64-bit divide). No keystroke is at risk (no pass reached 25 ms); it
 is latency.
+
+## The latency follow-up: done (10-19, ~22:45)
+
+`b4b6662f` (stage 2 rebased onto the Mac session's `e7f6890e`, plus): the
+drain's bulk read (dev builds), a table CRC-16, and the session idle on an
+elapsed count that extends the 16-bit system tick each pass. The first try put
+the idle on `rtc_seconds_since_boot()`;
+[codex's review](review-codex-raw81-latency-2026-10-19.md) found that count is
+not elapsed time (a phase set or a wake correction moves it), so it was
+replaced; [the verify](review-codex-raw81-latency-verify-2026-10-19.md) closed
+it with no new finding. The daily build differs from the base's only in
+`health_fill6`, by the per-build `AK820_BUILD_TOKEN` constant (4 bytes of
+encoding), no stage-2 symbol.
+
+**The same 1000-transaction stream on gremlin, before and after:**
+
+| | `6f5292e1` | `b4b6662f` |
+|---|---|---|
+| passes >= 10 ms | 251 | **13** |
+| slow `ch582_task` calls (>= 4 ms) | ~one per transaction, ~6 ms | **none** |
+| ok / lost (lost = the board's counted overrun taints) | 999 / 1 | 998 / 2 |
+| RTT median / p95 / max, ms | 26.0 / 28.0 / 35.0 | 25.0 / 29.0 / 35.0 |
+| passes >= 25 ms; drops, deferral overruns, short writes | 0; 0, 0, 0 | 0; 0, 0, 0 |
+
+The remaining 13 slow passes have ch582 as the largest share in 3: they are
+the board's background, not the radio path. **Stage 2 goes onto
+`ak820pro-jdlien` at `b4b6662f`.**
