@@ -348,3 +348,117 @@ next drain ignores the budget and reads to the queue's end (at most the 128
 bytes queued, now ~microseconds a byte), and the pump runs. With the tick fix
 a collection already takes 2 passes and the budget rarely binds; the bound
 is the guarantee, not the common path.
+
+## Stage 2, revision 2: after codex's plan review (10-19)
+
+[Review](review-codex-rawhid-stage2-plan-2026-10-19.md), verbatim (prompt
+beside it): not ready unchanged; ready to build as a dev experiment once its
+must-fixes are in. Revision 2 replaces the stage-2 sections above where they
+differ.
+
+### What changes
+
+**1. No drain budget (must-fix 1).** The budget existed because reading an
+81 took 8-9 ms; that was `timer_read()` per byte, and with ticks a byte costs
+microseconds (an 81 now takes 6-7 ms of the *module's* pacing, over 2 passes,
+with the drain reaching an empty queue each time). So `RAW81_DRAIN_MS`,
+`rx_left` and the skipped pump go: the drain is back to its pre-stage-1
+shape (empty queue or the 64-byte cap), and the TX pump runs every pass as it
+always did. The 64-byte cap's old limit (codex, drain verify) is unchanged
+and pre-dates all of this. `RAW81_LIFETIME_MS` returns to 20 (3x the
+measured 6-7 ms; codex's note that 40 extends a false start's damage).
+
+**2. Dispatch never nests (must-fix 2).** `ch582_tx_drain()` sets a flag for
+its whole loop, and dispatch runs only when it is clear and `ch582_task()` is
+at depth 0. A request stays in its slot until a top-level pass.
+
+**3. One response slot, reserved before anything runs (must-fixes 3, 4).**
+A committed, CRC-valid request is admitted only if both the request slot and
+the response slot are free; otherwise it is dropped and counted (the host
+retries on its timeout). Dispatch writes the response into the reserved slot,
+so a reply can never be overwritten and nothing is written to the UART from
+the RX path. A request that cannot be answered (the link not 2.4G and up) is
+dropped and counted, not NAK'd: there is no path to say so. Both slots are
+cleared by `r81_reset()` (resync, wake) and `r81_link_lost()` (every link
+change), eligibility (2.4G, linked) is checked again before dispatch and
+before sending, and `ch582_tx_idle()` counts both for sleep admission.
+
+**4. Integrity failure quarantines (must-fix 5).** A collection commits to
+the protocol only with a good outer sum, magic `0xC7` and a good CRC-16.
+An outer-sum-valid collection that fails the magic or the CRC is treated as
+corruption: the line goes to quarantine (no trusted boundary, no tail into
+the window), counted, and a NAK "bad CRC" is queued if the response slot is
+free (its seq is as received, and may itself be wrong). A CRC-valid request
+that is not on the allow-list is a well-formed frame: boundary kept, NAK
+"not allowed". Stage 1's echo is retired.
+
+**5. Every response is two reports: the reply, then a receipt (must-fix 6,
+note 10).**
+
+```
+report 1 (only for status 0): the handler's 32-byte reply, verbatim
+report 2, the receipt:
+  [0] 0xC7  [1] seq  [2] status: 0 ok, 1 bad CRC, 2 not allowed, 3 stale seq
+  [3] the board's last accepted seq  [4..5] CRC-16 of report 1 (status 0)
+  [6..31] 0
+```
+
+Both go as `91` frames from the one response slot, back to back. The host
+accepts a reply only when the receipt that follows it carries the request's
+seq and that reply's CRC: a delayed reply to an older request is followed by
+the older seq and is discarded, whatever its header says; two lines of text
+can no longer be confused; and the CRC covers the board's own TX leg, which
+the radio's and USB's CRCs do not.
+
+**6. Sequence freshness on the board (must-fix 6).** The board keeps the
+last accepted seq (none after a reset or link change). A request is fresh if
+`(seq - last) mod 256` is 1..127, or if there is no last; otherwise status 3,
+stale, with the board's last seq in byte 3 so the host continues from
+`last + 1`. A host never reuses a seq: a retry is a new request with a new
+seq. So a radio-level duplicate is rejected as stale instead of executed
+twice, and a replayed old text cannot overwrite newer state.
+
+**7. HC_LINK pages exactly 0 and 0x21-0x2A (should-fix 7).** The receipt
+does the correlation, so the header-match quirks (page 0 answers with the
+protocol version in byte 3) no longer matter to the host.
+
+**8. The collector and the envelope as a pure module (should-fix 8).**
+`raw81.c` holds the collector (boundary, silence, lifetime, quarantine, taint),
+the envelope check, the freshness rule and the allow-list, as functions of
+bytes, ticks and flags with no hardware calls; `ch582f_ajazz.c` feeds it and
+acts on its verdicts. `scripts/raw81_test.py` compiles it on the host (as
+`lockchan_test.py` does `lockchan.c`) and runs the cases codex listed: every
+split of a frame across drains, a deleted byte at every position, truncation,
+an 81 inside a 5A payload, `5C 25 | 81`, a pending `61 0D` across a frame,
+CRC-valid forbidden commands, stale and wrapped seqs, back-to-back requests
+with the slots full.
+
+**9. The reply window goes (note 10).** No ACK was counted in any 91's window
+over 430 echoes: the module does not ACK 91. Holding the A-frame pump 15 ms
+after every response delays keys for nothing, so the window is removed; an
+ACK arriving with nothing in flight is counted as an orphan (as the console
+build already does), which would show it if the module ever did.
+
+**10. VIA builds only (note 9).** Dispatch goes through
+`via_custom_value_command_kb()`, which exists only with `VIA_ENABLE`; the
+radio path compiles out without it.
+
+### The acceptance matrix (should-fix 8)
+
+On the host, `raw81_test.py`: the cases in 8, all passing, and planted bugs
+caught (as lockchan's suite did).
+
+On gremlin (Windows, no hands): text set/line/playback/clear over the dongle,
+each read back over USB (the band's state through health or a text echo);
+every health read compared with the same read over USB; every NAK and status
+provoked (bad CRC by a corrupted request, forbidden commands, a stale seq, the
+slots full); a stream at full rate with USB raw-HID requests interleaved,
+each reply on its own transport; loss and latency at full rate (p95 under
+30 ms, losses 0 in 1,000); no pass >= 25 ms and no A1 drop, replacement or
+give-up throughout; fresh counter baselines for each run.
+
+On the Mac (the Mac session's rig, no hands): the same protocol from macOS;
+a relay-driven typing burst under a full-rate request stream, every press
+and release seen at the host; a power cut with a request in flight, then
+recovery with no stale answer; deep sleep with requests arriving, answered
+after a key wake and never before.
