@@ -18,10 +18,14 @@ import fcntl, os, sys, types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-sys.modules.setdefault("msvcrt", types.ModuleType("msvcrt"))   # the Windows script imports it; unused here
-import win_raw81_s2 as w  # noqa: E402
 import deep_sleep as ds  # noqa: E402
 import mac_raw81_echo as me  # noqa: E402
+# The Windows script imports msvcrt (its lock, replaced below). A stand-in
+# only for that import, and gone again after: subprocess takes msvcrt's
+# presence to mean Windows, so everything else is imported first.
+sys.modules["msvcrt"] = types.ModuleType("msvcrt")
+import win_raw81_s2 as w  # noqa: E402
+del sys.modules["msvcrt"]
 
 cm = ds.cm
 LOCK = "/Users/Shared/ak820pro/raw81.lock"
