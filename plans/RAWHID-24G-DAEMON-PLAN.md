@@ -234,3 +234,74 @@ that exact sum; the cost at worst one bogus battery sample, which the gauge's
 trimmed mean absorbs. Accepted as the probe's residual and not reduced
 further; the collector in every build (the raw-HID plan) removes it at the
 source.
+
+## Revision 3: after codex's verify of revision 2 (10-19)
+
+[Verify](review-codex-rawhid-daemon-plan-verify-2026-10-19.md), verbatim:
+must-fixes 2, 6 closed, 4 and 5 closed in principle; 1, 3 and 7 open. Two of
+them undo revision 2's foundations, so revision 3 changes the foundations
+rather than adding rules.
+
+**R3-1. Every request inert to a board without stage 2 (must-fix 1).**
+Codex: qualification cannot bind to the target over time (the dongle re-paired
+to another board, or the board reflashed through another host, gives this
+host no event; the next text request reaches the old firmware before any
+timeout revokes it). So safety moves out of host state and into the frame:
+- **Envelope v2** (a change to stage 2, dev-only and in no daemon yet):
+  ```
+  [0] 0xC6 (v2 magic)  [1] session  [2..3] seq  [4..5] CRC-16 over [0..3]
+  and [6..31]  [6] mask  [7..31] inner[1..25] XOR mask (25 bytes)
+  ```
+  Every allow-listed command begins `0x07`, so it is not sent; the board puts
+  it back. The host picks a **mask** under which none of the 25 masked bytes is
+  0x5A, 0x5B, 0x5C or 0x61, and the mask itself is none of them: each inner
+  byte excludes at most 4 masks, so at most 100 of 256 are excluded and one
+  always exists. The session (chosen from the safe set) and the seq, stepped
+  as for the probe, keep the header, the CRC bytes and the module's sum free
+  of them too; a skipped seq counts toward the session's span.
+- So **every** request's 34 bytes hold no window byte, and an older board's
+  window can act on none of them, whatever the dongle is paired to and
+  whatever the text says. Qualification remains, as an optimisation only (no
+  traffic to a board that never answers), with no safety role.
+- The board (raw81.c): `0xC6` envelopes are unmasked and the `0x07` restored
+  before the CRC'd inner reaches the allow-list; `0xC7` (v1) is retired.
+  The receipt is unchanged (it goes to the host, not through a window).
+
+**R3-1's residual, corrected (codex).** The leading `0x81` cannot be masked.
+After a module frame cut short, a pending `<type> <d>` can be completed by it
+(one valid match at most: `C6` cannot complete `5A/5B/5C 81`), and a pending
+`5A 5B` followed by `81 C6` can count two malformed frames. Effects: `5C 25`
+a bogus battery sample (the 5-7-sample filter does not necessarily absorb
+one); `5B 26` and `5C 25` the board's own ACK write; `5A 27` reaches the
+dev build's 5A trace and lock channel before the LED guard rejects it. The
+exposure is **per request**, needing a pending cut frame at that instant with
+that exact sum. Accepted as the residual for dev builds; the collector in
+every build removes it.
+
+**R3-2. Ownership without persistent state (must-fix 3).** Revision 2's
+session file is dropped. A new session (an open, a rotation, a recovery)
+always waits **1 s on the monotonic clock with nothing sent** before its first
+request: under the stated 1 s lifetime, no packet of any earlier session,
+this host's or another's, can then arrive, so session ids may repeat and are
+chosen at random from the safe set; nothing persisted can be lost, deleted
+or rolled back. Ownership is a machine-wide lock
+(`%ProgramData%\ak820pro\raw81.lock`, a byte-range lock on byte 0 of a file
+kept empty, taken without blocking), so two users' daemons, or a daemon and
+a test script, cannot interleave; contention defers radio work. The board's
+`BUSY` remains, as a check. `win_raw81_s2.py` moves to the same lock and drops
+its state file.
+
+**R3-3. The rest.** `BUSY` restart grace is decided from this process's own
+lifecycle (a session it opened under a second ago), then backs off on
+continued contention (codex 4). The drain and write budgets are the
+exchange's (`DRAIN_BUDGET`, `WRITE_TIMEOUT`); the 100 ms read deadline starts
+after the write completes, and reads get only what remains (codex 5). The
+qualification probe is the one health read the radio makes, stated as the
+exception (codex 6). Probe and request construction count skipped seqs
+toward the span and rotate on exhaustion (codex 1's should-fix). Injected
+time reaches the drain (a clock parameter, not `Instant::now`) and the fake
+honours timeouts; the tests add arbitrary initial windows, stage-1 echoes,
+unobserved target changes (an older board appearing on the radio: no window
+action, by R3-1), equal-session and cross-user collisions under the lock,
+restarts, and search exhaustion (codex 7). Session recovery and rotation
+trigger a full text refresh like a transport change (codex 9).
