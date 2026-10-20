@@ -550,3 +550,23 @@ Waiting on Gremlin's `4c5cb496` (the raw81 drain's 2 ms give-back) to land on
 `ak820pro-jdlien`; this branch rebases onto it before codex's review of the
 diff and the build.
 
+## Codex's implementation review (10-19): dispositions
+
+[`review-codex-overrun-caps-impl-2026-10-19.md`](review-codex-overrun-caps-impl-2026-10-19.md),
+verbatim. It found the LLD's lock handling, the driver repair, the lock queue
+and the Fn+D deviation correct.
+
+| # | finding | disposition |
+|---|---|---|
+| 1 | must: the burst's last read drops `burst_active()`, so the reference check or the pre-sleep read could follow it in the same pass | **Taken** (`a6d0bbb` below): both skip a pass with `rtc_pass_used_bus()`, in every build (the check stays due; the sleep waits a pass). |
+| 2 | must: `build.sh` is zsh, so the scalar symbol list iterated once | **Taken:** an array, `"${od_syms[@]}"`. |
+| 3 | must: `mac_raw81_echo.py` lacked Gremlin's new op 17 fields (a `KeyError` before its JSON); the runner ignored a failed child | **Taken:** the Mac decoder carries `last_collect_ms`, `last_passes`, `max_passes`; a failed run or a missing report ends the arm. |
+| 4 | must: the A/B ran a request count, not time; stopped an unfinished burst; started the burst before the load; idle time estimated; no cleanup | **Taken:** echo runs back to back by elapsed time until `--secs` and one whole run after the burst is seen done; the burst starts 3 s into the load; idle intervals recorded (between runs and each loss's wait); every arm stops any burst first; a `finally` stops the burst and restores per-transaction. |
+| 5 | must (pre-existing): the animation's resume still clears the panel synchronously (43-44 ms), and ordinary PCF paths keep the 20 ms timeout | **Not taken in this build:** unchanged by it, and stated in part 2's "Not claimed". It goes to `BACKLOG.md` as its own item. |
+| 6 | should: SysTick can slip a maximum between the OE entry's copy and clear | **Taken:** the entry is written under `chSysLockFromISR`. |
+| 7 | should: OE timestamps stale (`ms_now` only refreshed by activities) | **Taken already** (`99efdd6784`): the RTC's seconds since boot, one volatile read. |
+| 8 | should: the host's ring readers accept unwritten slots, never check sequences, and ignore the wrap | **Taken:** the expected sequence window, each slot checked; the OE ring re-read if it moved during the readout; modular arithmetic. |
+| 9 | should: a line that lost a glyph is skipped by `retire_line()`; playback overwrote the clock's retry | **Taken:** a `dropped` mark clears the row whole on retirement; the clock's retry is a flag housekeeping turns into `clock_force_repaint`. |
+| N1 | note: receiver-off count only, 16 bits on the wire | **Accepted** as is: the count; the sleep's own accounting has its seconds. |
+| N2 | note: whole-call timing ends before the restart; the phase write's completion can pass the lateness check | **Accepted:** the A/B's comparison list (release and boundary errors, restarts, the daemon's residuals) is how it is judged. |
+

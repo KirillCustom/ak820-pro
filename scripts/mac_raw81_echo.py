@@ -50,7 +50,9 @@ def board_counters():
     names = ["committed", "bad_sum", "lifetime", "uart_taint", "sent_91", "dropped", "acks_in_window"]
     c = {n: int.from_bytes(p0[4 + 4 * i:8 + 4 * i], "little") for i, n in enumerate(names)}
     c.update(state=p1[4], boundary=p1[5], pending=p1[6], ack_window=p1[7],
-             quarantined_bytes=int.from_bytes(p1[8:12], "little"))
+             quarantined_bytes=int.from_bytes(p1[8:12], "little"),
+             # as win_raw81_echo.py: zeros on 7387d189, filled by the drain-bounded build
+             last_collect_ms=int.from_bytes(p1[12:14], "little"), last_passes=p1[14], max_passes=p1[15])
     return c
 
 

@@ -161,9 +161,9 @@ for fn in i2c_write_byte i2c_read_byte; do
   grep -q "cpsie" <<<"$body" && grep -q "cpsid" <<<"$body" ||
     { echo "FAIL: $fn does not release the lock between bytes" >&2; fail=1; }
 done
-od_syms="od_mask_begin od_uart_oe od_fill_summary rtc_burst_start sleep_wake_ring_fill"
-for sym in $od_syms; do
-  have=$(awk -v s=$sym '$3 == s' <<<"$nm_out")
+od_syms=(od_mask_begin od_uart_oe od_fill_summary rtc_burst_start sleep_wake_ring_fill)
+for sym in "${od_syms[@]}"; do
+  have=$(awk -v s="$sym" '$3 == s' <<<"$nm_out")
   case "$FLAVOR" in
     dev)       [[ -n "$have" ]] || { echo "FAIL: the dev build lacks $sym" >&2; fail=1; } ;;
     daily|fpb) [[ -z "$have" ]] || { echo "FAIL: a $FLAVOR build carries $sym" >&2; fail=1; } ;;

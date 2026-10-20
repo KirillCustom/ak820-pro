@@ -64,17 +64,31 @@ def kinds(h):
 
 
 def ring(h, seq):
-    slots = {}
-    for page in range(16):
-        b = op(h, 21, [page])
-        for j in range(2):
-            e = b[14 * j:14 * j + 14]
-            slots[2 * page + j] = {"seq": U16(e, 0), "secs": U32(e, 2), "act": e[6], "kind": e[7] & 3,
-                                   "in_drain": bool(e[7] & 0x40), "byte_mode": bool(e[7] & 0x80),
-                                   "span_ms": ms(U16(e, 8)), "usb_max_ms": ms(U16(e, 10)),
-                                   "st_max_ms": ms(U16(e, 12))}
-    n = min(seq, 32)
-    return [slots[s % 32] for s in range(seq - n, seq)]
+    """The last min(seq, 32) entries, each checked against the sequence it
+    should carry; re-read if an OE landed during the 16 pages. Assumes fewer
+    than 65,536 entries since the last reset (the A/B resets every arm)."""
+    for _ in range(3):
+        slots = {}
+        for page in range(16):
+            b = op(h, 21, [page])
+            for j in range(2):
+                e = b[14 * j:14 * j + 14]
+                slots[2 * page + j] = {"seq": U16(e, 0), "secs": U32(e, 2), "act": e[6], "kind": e[7] & 3,
+                                       "in_drain": bool(e[7] & 0x40), "byte_mode": bool(e[7] & 0x80),
+                                       "span_ms": ms(U16(e, 8)), "usb_max_ms": ms(U16(e, 10)),
+                                       "st_max_ms": ms(U16(e, 12))}
+        now = summary(h)["ring_seq"]
+        if now == seq:
+            break
+        seq = now
+    else:
+        sys.exit("the OE ring kept moving during its readout")
+    want = [(seq - n) & 0xFFFF for n in range(min(seq, 32), 0, -1)]
+    out = [slots[s % 32] for s in want]
+    bad = [e["seq"] for e, s in zip(out, want) if e["seq"] != s]
+    if bad:
+        sys.exit(f"the OE ring's slots carry the wrong sequence numbers: {bad[:4]}")
+    return out
 
 
 def burst(h, sub=0, n=0, lo=40, hi=80):
@@ -91,7 +105,9 @@ def wakes(h):
                     "counted_s": U32(b, 4), "p0": hex(U32(b, 8)), "p1": hex(U32(b, 12)), "p2": hex(U32(b, 16)),
                     "ms": U32(b, 20), "strays": U16(b, 24), "written": U16(b, 26)})
     written = out[0]["written"]
-    return sorted([w for w in out if w["seq"] < written], key=lambda w: w["seq"])[-8:] if written else []
+    by_slot = {i: w for i, w in enumerate(out)}
+    want = [(written - n) & 0xFFFF for n in range(min(written, 8), 0, -1)]
+    return [by_slot[s % 8] for s in want if by_slot[s % 8]["seq"] == s]
 
 
 def snapshot(h):
@@ -127,40 +143,89 @@ def show(d):
 
 
 ARMS = {"a": (False, False), "b": (False, True), "c": (True, True), "d": (True, False)}
+CHUNK = 1000   # echoes a run, ~20 s back to back; the load comes in runs of this
+
+
+def echo_start(n):
+    out = tempfile.mktemp(suffix=".json")
+    p = subprocess.Popen([sys.executable, os.path.join(HERE, "mac_raw81_echo.py"), str(n), "--gap-ms", "0",
+                          "--json", out])
+    return p, out, time.time()
+
+
+def echo_finish(p, out, t0):
+    rc = p.wait()
+    t1 = time.time()
+    if rc != 0 or not os.path.exists(out):
+        raise SystemExit(f"the echo run failed (exit {rc}): the arm's load is unknown")
+    with open(out) as f:
+        e = json.load(f)
+    os.unlink(out)
+    return {"start": round(t0, 3), "end": round(t1, 3), "n": e["n"], "replied": e["replied"], "lost": e["lost"],
+            "lost_at": e["lost_at"], "timeout_ms": e["timeout_ms"], "rtt_ms": e["rtt_ms"]}
+
+
+def run_arm(name, a):
+    """Load from start to end: echo runs back to back, by elapsed time, until
+    --secs have passed and, in a burst arm, one whole run after the burst was
+    seen finished (>= ~20 s of margin). The burst starts 3 s into the first
+    run, so its first read has the load behind it."""
+    byte_mode, with_burst = ARMS[name]
+
+    def prep(h):
+        burst(h, 2)                                # nothing left from before
+        summary(h, 3 if byte_mode else 2)
+        summary(h, 1)                              # zero the counts, ring and kinds
+    ds.with_dev(prep)
+    cm.say(f"arm {name}: {'per byte' if byte_mode else 'per transaction'}, "
+           f"{'a burst of ' + str(a.n) if with_burst else 'no burst'}, at least {a.secs:.0f} s of echo")
+    t_arm, runs, b0, burst_done_at, margin_runs = time.time(), [], None, None, 0
+    p, out, t0 = echo_start(CHUNK)
+    if with_burst:
+        time.sleep(3)
+        b0 = ds.with_dev(lambda h: burst(h, 1, a.n, a.lo, a.hi))
+        b0["host_t"] = round(time.time(), 3)
+    while True:
+        runs.append(echo_finish(p, out, t0))
+        if with_burst and burst_done_at is None:
+            if not ds.with_dev(burst)["active"]:
+                burst_done_at = time.time()
+        elif with_burst:
+            margin_runs += 1
+        elapsed = time.time() - t_arm
+        if elapsed >= a.secs and (not with_burst or margin_runs >= 1):
+            break
+        if elapsed > a.secs + 900:
+            raise SystemExit(f"arm {name} ran 15 minutes past --secs: the burst never finished?")
+        p, out, t0 = echo_start(CHUNK)
+    d = ds.with_dev(snapshot)
+    # Time with nothing in flight: between runs, and each loss's wait.
+    idle = [[r0["end"], r1["start"]] for r0, r1 in zip(runs, runs[1:])]
+    idle += [[t, round(t + r["timeout_ms"] / 1000.0, 3)] for r in runs for t in r["lost_at"]]
+    arm = {"arm": name, "byte_mode": byte_mode, "burst_asked": a.n if with_burst else 0,
+           "start": round(t_arm, 3), "end": round(time.time(), 3), "burst_start": b0,
+           "burst_done_seen": round(burst_done_at, 3) if burst_done_at else None, "board": d, "echo_runs": runs,
+           "echo_sent": sum(r["n"] for r in runs), "echo_lost": sum(r["lost"] for r in runs),
+           "idle_intervals": sorted(idle), "idle_s": round(sum(b - a_ for a_, b in idle), 2)}
+    s = d["summary"]
+    cm.say(f"  OE {s['oe_obs']} (+{s['oe_drain']} in the drain), refused {s['rx_drop']}, with PCF {s['ctx_pcf']}; "
+           f"burst {d['burst']['done']} done of {arm['burst_asked']}; echo lost {arm['echo_lost']} of "
+           f"{arm['echo_sent']}, {arm['idle_s']} s with nothing in flight")
+    return arm
 
 
 def run_ab(a):
     arms = []
-    for name in a.arms:
-        byte_mode, with_burst = ARMS[name]
-
-        def start(h):
-            summary(h, 3 if byte_mode else 2)
-            summary(h, 1)                          # zero everything
-            return burst(h, 1, a.n, a.lo, a.hi) if with_burst else None
-        b0 = ds.with_dev(start)
-        secs = a.secs
-        if with_burst:                             # the burst's expected length, plus margin
-            secs = max(secs, a.n * (a.lo + a.hi) / 2000.0 + 10)
-        out = tempfile.mktemp(suffix=".json")
-        cm.say(f"arm {name}: {'per byte' if byte_mode else 'per transaction'}, "
-               f"{'a burst of ' + str(a.n) if with_burst else 'no burst'}, ~{secs:.0f} s of echo")
-        t0 = time.time()
-        subprocess.run([sys.executable, os.path.join(HERE, "mac_raw81_echo.py"), str(int(secs * 50)),
-                        "--gap-ms", "0", "--json", out], check=False)
-        echo = json.load(open(out)) if os.path.exists(out) else None
-        d = ds.with_dev(snapshot)
-        if with_burst and d["burst"]["active"]:
-            ds.with_dev(lambda h: burst(h, 2))
-        arms.append({"arm": name, "byte_mode": byte_mode, "burst_asked": a.n if with_burst else 0,
-                     "seconds": round(time.time() - t0, 1), "burst_start": b0, "board": d,
-                     "echo": {k: echo[k] for k in ("n", "replied", "lost", "lost_at", "rtt_ms")} if echo else None,
-                     "echo_idle_s": round(echo["lost"] * echo["timeout_ms"] / 1000.0, 2) if echo else None})
-        s = d["summary"]
-        cm.say(f"  OE {s['oe_obs']} (+{s['oe_drain']}), refused {s['rx_drop']}, with PCF {s['ctx_pcf']}; "
-               f"burst {d['burst']['done']}/{a.n if with_burst else 0}; echo lost "
-               f"{echo['lost'] if echo else '?'} of {echo['n'] if echo else '?'}")
-    ds.with_dev(lambda h: summary(h, 2))           # back to per transaction, as the board boots
+    try:
+        for name in a.arms:
+            arms.append(run_arm(name, a))
+    finally:
+        # Whatever happened: no burst left running, and the lock span back to
+        # per transaction, as the board boots.
+        def cleanup(h):
+            burst(h, 2)
+            summary(h, 2)
+        ds.with_dev(cleanup)
     return arms
 
 

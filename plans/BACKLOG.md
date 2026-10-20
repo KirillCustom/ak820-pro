@@ -32,6 +32,16 @@ on the pack showed no pass of 25 ms or more. On the board since 16:16 10-19
 but the bezel clipping the slot at an angle, noted. The record:
 [`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
 
+## The animation's resume clears the whole panel synchronously (43-44 ms) (2026-10-19)
+
+`display_redraw_dashboard()` (`display.c`), the path the animation's resume
+and the boot take, still does one `lcd_clear_rect()` of the full panel:
+43-44 ms on the loop that scans the matrix, over the 25 ms line (codex, the
+overrun/Caps implementation review, finding 5). It fires on a timer, so
+nobody is usually mid-word, which is why it was left whole when the Fn+D
+restore was staged. **To do:** route it through the staged restore, or clear
+in bands one per pass, as the restore does.
+
 ## UART overruns on the radio link, ~1-2 an hour, likely the PCF's I2C (2026-10-19)
 
 The module-to-board link loses a byte now and then: **92 overruns in 51.9 h
