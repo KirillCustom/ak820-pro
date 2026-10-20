@@ -56,6 +56,11 @@ in use:
 | Saver | 30 s | 2 min | **3 min** (was 5) | **3 min** |
 | Minimal | at once | at once | at once | **30 s** |
 
+> Revised 2026-10-20 (Normal dim 10 min, dark and asleep 20; Saver dim 1 min,
+> asleep 3; Minimal asleep after 1 min):
+> [`POWER-MODES-REVISION-PLAN.md`](POWER-MODES-REVISION-PLAN.md). The table
+> is what this build shipped.
+
 - **Low battery** shortens Normal's sleep to Saver's 3 minutes. Minimal's is
   already shorter.
 - **Full never sleeps, even at low battery.** In Full the low cap stays a

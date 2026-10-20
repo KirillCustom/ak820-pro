@@ -218,9 +218,10 @@ only their red component.
 
 ## RGB effects
 
-Enabled: `solid_color alphas_mods RAINFALL cycle_all cycle_left_right
-cycle_up_down rainbow_moving_chevron cycle_pinwheel jellybean_raindrops
-typing_heatmap`.
+Enabled (keyboard.json, then the two board-local ones; `Fn`+`\` steps
+through them in this order): `solid_color alphas_mods cycle_all
+cycle_left_right cycle_up_down jellybean_raindrops typing_heatmap RAINFALL
+DRIFT`.
 
 - **Alphas/Mods needed LED FLAGS**: keyboard.json splits 48 alphas from 33
   frame keys (`flags: 5`); without it the effect looks like solid_color.
@@ -231,6 +232,21 @@ typing_heatmap`.
   fades a random key out — `PIXEL_RAIN` is a static scatter,
   `STARLIGHT*` keep the whole board lit. Do not swap it out expecting the
   same look.
+- **`DRIFT` is board-local too**: a slow plasma, a scrolling value-noise
+  field mapped onto a hand-picked ramp (dark indigo, violet, slate, warm
+  grey), weighted dark, so a few soft blobs drift across a mostly dark
+  board. Hue rotates the whole ramp and saturation washes it toward grey;
+  speed runs from minutes to cross the board to ~7 s. Its palette is cached
+  and converted once per hue or saturation change, and **the user's value
+  scales the colours after the conversion**, linearly, unlike every other
+  effect.
+- **The power ladder's ceilings** (the dim's 64, Power saver's 128 while
+  typing, [battery.md](battery.md), "The idle ladder and the power modes")
+  act in the conversion, `rgb_matrix_hsv_to_rgb`, so every effect is capped
+  there, RAINFALL included. DRIFT is the exception: its palette is built
+  uncapped and it caps its own value knob instead, so a capped DRIFT looks
+  like DRIFT with the knob at the ceiling (`scripts/battery_sim/colour.c`
+  checks it frame for frame).
 - Traps: custom effects are `RGB_MATRIX_CUSTOM_<NAME>` in the enum; reactive
   effects need `RGB_MATRIX_KEYPRESSES` or they compile out **silently**;
   `nm` LIES about whether an effect got built (static + inlined) — the proof

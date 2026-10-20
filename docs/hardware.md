@@ -450,8 +450,10 @@ The idle ladder's last stage, in every build (`SN32F2XX_DEEP_SLEEP` in
 [`plans/DEEP-SLEEP-BUILD-PLAN.md`](../plans/DEEP-SLEEP-BUILD-PLAN.md); the
 MCU's side: [sn32f299.md](sn32f299.md), section 4.
 
-**When.** On battery only, after the mode's idle time: **Balanced 7 min,
-Power saver 3, Lights out 30 s, Always on never** (at low battery too). Below
+**When.** On battery only, after the mode's idle time: **Balanced 20 min,
+Power saver 3, Lights out 1, Always on never** (at low battery too;
+[`plans/POWER-MODES-REVISION-PLAN.md`](../plans/POWER-MODES-REVISION-PLAN.md),
+before which Balanced slept at 7 min and Lights out after 30 s). Below
 15% Balanced sleeps at Power saver's 3 min. `power_sleep_wanted()` asks; `sleep_task()`, at the very end of
 each main-loop pass, sleeps at the first pass where every precondition holds.
 The ones that failed the last time a sleep was wanted are on `HC_POWER` page
@@ -520,7 +522,8 @@ clock SET, and every PCF transaction under the wake's arbiter
   key with exactly that key counted, no reset, no pass of 25 ms or more, and
   the PCF's slept seconds within 1 s of the power logger's edges. The Mac's
   key-down a median 64 ms after the relay, worst 115.
-- **Balanced** slept 421 s after the last key (the ladder's 420).
+- **Balanced** slept 421 s after the last key (the ladder's 420 then; 1200
+  since the modes' revision).
 - **Over 2.4G, 10 cycles on the Mac's dongle:** all pass on the same
   checks, the key-down a median 48 ms after the relay, worst 56. ⚠️ In 2.4G
   the pack's draw does not fall in one step: ~15 mA for ~5 s after the MCU

@@ -49,6 +49,10 @@ seen at an angle is noted, not one for software yet.
 | Power saver | Power saver | 11 | dim 30 s, lights off 2 min, screen off and asleep 3 |
 | Minimal mode | Lights out | 10 | lights and screen off even typing; asleep after a 30 s pause |
 
+The timings as of this plan; revised 2026-10-20 in
+[`POWER-MODES-REVISION-PLAN.md`](POWER-MODES-REVISION-PLAN.md). The names
+and the bulbs are unchanged.
+
 All fit the overlay's 11 cells (`TEXT_BIG_MAX`). The names live in:
 `power.c` (`mode_names`); `hostagent/ak820battery.py` (`POWER_MODES`); the
 overlay checks in `scripts/battery_sim/ladder.c` ("Normal power", "Minimal

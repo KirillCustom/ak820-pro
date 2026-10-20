@@ -11,6 +11,11 @@ reviews and every disposition:
 [`plans/BATTERY-GAUGE-REFINE-PLAN.md`](../plans/BATTERY-GAUGE-REFINE-PLAN.md)
 ("As built" holds every measurement).
 
+> **State (2026-10-20): the power modes are revised** ("The idle ladder and
+> the power modes", below; [`plans/POWER-MODES-REVISION-PLAN.md`](../plans/POWER-MODES-REVISION-PLAN.md)):
+> Balanced dims at 10 min and sleeps at 20, Power saver types at value 128
+> and dims at 1 min, sleeps at 3, and Lights out sleeps after 1 min.
+>
 > **State (2026-10-18): Phase 2 is built** (`d3e8389858`, "The gauge as
 > built, Phase 2" and "The idle ladder and the power modes", below): an
 > accurate gauge, a time-left estimate and the power ladder
@@ -1291,20 +1296,38 @@ datablock byte 6; a flash resets it to Balanced and says so once). The enum
 keeps the first names, `POWER_MODE_FULL`, `NORMAL`, `SAVER` and `MINIMAL`
 (Full power, Normal power, Power saver and Minimal mode until `26fcafaeca`).
 On battery the bolt's slot shows the mode as a bulb ([display.md](display.md),
-"Battery row"). On battery only:
+"Battery row"). On battery only, with the timings and Power saver's ceiling
+of [`plans/POWER-MODES-REVISION-PLAN.md`](../plans/POWER-MODES-REVISION-PLAN.md):
 
 | | Always on | Balanced | Power saver | Lights out |
 |---|---|---|---|---|
-| RGB dimmed (its value capped at 64 of 255) | never | 1 min idle | 30 s | -- |
-| RGB off, screen capped at level 4 | never | 5 min | 2 min | -- |
-| screen backlight off | never | 7 min | 3 min | always, typing too |
-| deep sleep (the deep-sleep build) | never | 7 min | 3 min | 30 s |
+| RGB while typing | as set | as set | value capped at 128 | off |
+| RGB dimmed (its value capped at 64 of 255) | never | 10 min idle | 1 min | -- |
+| RGB and backlight off, deep sleep | never | 20 min | 3 min | 1 min |
 
 The screen goes off when the board sleeps (its dim needs the 20 kHz tick the
-sleep stops), so the screen-off times moved from 15 and 5 min to the sleep's.
-Below 15% Balanced sleeps at Power saver's 3 min; Always on never sleeps, at
-low battery too. Deep sleep and what holds it off: [hardware.md](hardware.md), "Deep
-sleep"; the gauge across it: "The gauge across a deep sleep", above.
+sleep stops), and the RGB with it: no mode passes through the RGB-off,
+screen-at-level-4 stage (`POWER_STAGE_LIGHTS_OFF`) any more. It stays in the
+enum, because the stage numbers are on the wire, and the bench can still hold
+it (op 14 sub 2).
+- **Before the revision** (`26fcafaeca` to `8b06e4dcc4`): Balanced dimmed at
+  1 min, went RGB-off at 5 and slept at 7; Power saver at 30 s, 2 and 3; Lights
+  out slept after 30 s; and Power saver typed at full brightness.
+- **Below 15%** every mode but Lights out takes Power saver's lighting, its
+  128 while typing included, and Balanced sleeps at Power saver's 3 min.
+  Always on never sleeps, at low battery too.
+- **Deep sleep** and what holds it off: [hardware.md](hardware.md), "Deep
+  sleep"; the gauge across it: "The gauge across a deep sleep", above.
+
+**Power saver's ceiling** is applied as the dim's is, in
+`rgb_matrix_hsv_to_rgb`, while typing: a value over 128 becomes 128. Under
+QMK's CIE curve that is a drive of 48 of 255, about half as bright to the eye
+and a quarter of the LEDs' power. A board already at 128 or below is not
+changed, which is why it is a ceiling and not half the user's value: halving
+a dim board again can move its colours (a dim magenta toward red). DRIFT,
+whose brightness scales its colours after the conversion, caps its own
+value knob instead, so it saves about half its LED power, not three
+quarters.
 
 **Lights out** keeps the RGB and the backlight off even while typing (~107 mW,
 ~6 days a charge by the model), and lights the backlight at the user's level
@@ -1312,20 +1335,29 @@ for 4 s after a message appears in the status band (a setting's overlay, an
 alert, a new link state with words, the pair gesture) and while `Fn`+`D`'s
 pages are open, so a key that shows state never seems dead.
 
-Any key or knob turn restores everything within a tenth of a second, and the
-key types as normal. Every stage is a cap, never a change to the user's
-settings. The dim caps the lighting's own value (`rgb_matrix_hsv_to_rgb`), so
-a colour keeps its hue; every stage change re-runs the effect's init pass
-(`rgb_matrix_reinit_effect`, a local hook in `quantum/rgb_matrix/`), so effects
-that redraw only some LEDs a frame go dark at once and come back whole. Below
-15% the lighting follows Power saver whatever the mode, and says so once a
-discharge ("Saving power", on a lit screen; a real charge re-arms it); the
-bulb shows Power saver's then, except in Lights out (`power_lights_mode()`).
+Any key or knob turn restores the mode's typing state within a tenth of a
+second, and the key types as normal: Always on's and Balanced's full
+lighting, Power saver's 128. Every stage is a cap, never a change to the
+user's settings. The dim caps the lighting's own value
+(`rgb_matrix_hsv_to_rgb`), so a colour keeps its hue. Whenever what is
+applied changes, the effect's init pass re-runs (`rgb_matrix_reinit_effect`,
+a local hook in `quantum/rgb_matrix/`), so effects that redraw only some LEDs
+a frame go dark at once and come back whole:
+- at a stage change;
+- when the typing ceiling moves with no stage change: `Fn`+`B` into or out of
+  Power saver, the cable in or out, the low cap's start and end.
+
+Below 15% the lighting follows Power saver whatever the mode, and says so
+once a discharge ("Saving power", on a lit screen; a real charge re-arms it);
+the bulb shows Power saver's then, except in Lights out
+(`power_lights_mode()`).
 
 Measured (R1, A8): the RGB is 189 of the board's 306 mW at JD's settings,
-and JD's keyboard sits idle ~88% of the time, so Balanced should roughly double
-a charge's runtime (a model estimate; R5 measures it). Deep sleep is built
-(above); light sleep and the radio's own idle are not.
+and JD's keyboard sits idle ~88% of the time. With deep sleep, the model puts
+Balanced at ~12½ days a charge at JD's use against Always on's ~2.7, and
+Power saver at ~21 ([power.md](power.md), "The power modes at JD's use"; R5
+measures it). Deep sleep is built (above); light sleep and the radio's own
+idle are not.
 
 ## Open questions
 

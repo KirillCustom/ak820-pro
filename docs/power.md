@@ -36,9 +36,10 @@ at the second:
 - **The office worst case:** 8 hours of nonstop typing a day at full white,
   asleep the rest. That is about 6 days on a charge, or a charge a week
   counting the weekend asleep (modelled).
-- **JD's own logged use:** about 2¾ hours a day with a key pressed, in the
-  default mode. That comes to roughly **two weeks** a charge (modelled, from
-  two days of logged typing; not yet run as a drain).
+- **JD's own logged use:** about 2¾ hours a day with a key pressed. In the
+  default mode that comes to about **12½ days** a charge, and about **three
+  weeks** in Power saver, which types at half brightness (modelled, from two
+  days of logged typing; not yet run as a drain).
 
 The rest of the short version:
 
@@ -129,8 +130,15 @@ not been measured.
 ### Modelled: a day of use
 
 **Days per charge = 15,579 mWh ÷ (awake mW × awake hours + 13.35 mW × asleep
-hours).** The minutes the board spends dimming before each sleep add well
-under 1% a day.
+hours).**
+
+Each pause also costs what the mode spends before it sleeps. At full white:
+- **Balanced:** 20 minutes, 10 lit and 10 dimmed, ~67 mWh more than asleep,
+  0.4% of the pack;
+- **Power saver:** 3 minutes, ~6 mWh.
+
+A few long breaks a day stay under 1%. Many short breaks in Balanced do not
+("The power modes at JD's use", below).
 
 The office worst case, 8 h of nonstop typing a day and asleep the other 16:
 
@@ -148,25 +156,45 @@ From two days of JD's logged typing (10-15 to 10-18: a key in 11.5% of the
 5-minute intervals, about 2¾ h a day; six of the nine idle stretches lasted
 2 h or more), at full white with the screen at level 5:
 
-- **Always on:** ~300 mW on average, ~2.2 days.
-- **Balanced** (the default): ~49 mW, **~13 days**.
-- **Power saver:** ~47 mW, ~14 days.
-- **Lights out:** ~24 mW, ~27 days.
+- **Always on:** ~2.7 days.
+- **Balanced** (the default): **~12½ days**.
+- **Power saver:** ~21 days.
+- **Lights out:** ~27 days.
 
-**The method.** Every 5-minute interval with a key in it counts as fully lit,
-which charges short pauses at full draw (pessimistic). Each idle stretch then
-steps through the mode's stages at their measured draws. Moving every
-stretch's length by ±5 minutes (the log's resolution) changes the result by
-about 1%. The logged drain in Balanced (R5,
+Two other days, for comparison:
+- **The office worst case** (8 h nonstop, asleep the rest): Always on ~2.6,
+  Balanced ~6.6, Power saver ~10.7, Lights out ~14.6 days.
+- **A stop-start day** (4 h of typing, twenty 15-minute breaks): Always on
+  ~2.7, Balanced ~7.3, Power saver ~15.4, Lights out ~21.4 days.
+
+**The method.**
+- Every 5-minute interval with a key in it counts as fully lit, which charges
+  short pauses at full draw (pessimistic).
+- Each idle stretch then steps through the mode's stages at their measured
+  draws.
+- The last 15% of the charge runs under the low-battery rule: every mode
+  but Lights out at Power saver's lighting, its half brightness while typing
+  included.
+- Moving every stretch's length by ±5 minutes (the log's resolution) changes
+  the result by about 1%.
+
+The logged drain in Balanced (R5,
 [`plans/POWER-CAMPAIGN-PLAN.md`](../plans/POWER-CAMPAIGN-PLAN.md)) will
 measure what this models.
 
-**Balanced and Power saver come out within ~4% of each other.** Nearly all of
-JD's idle time is in stretches of hours, and both modes spend those asleep.
-What costs is the lit typing. Power saver dims and sleeps sooner, which saves
-~9 mWh an idle stretch (0.06% of the pack). That shows only with many short
-breaks: at 4 h of typing and twenty 15-minute breaks a day, Power saver lasts
-~9.7 days against Balanced's ~8.8, about 10% longer.
+**What separates Balanced from Power saver is the typing, not the timing.**
+- **Power saver types at half brightness**, a quarter of the LEDs' power,
+  which is where most of a day's energy goes.
+- **Balanced stays lit for 10 minutes into every pause**, so short breaks
+  cost: ~67 mWh each at full white. That is why its stop-start day comes out
+  well under its logged one.
+- **Nearly all of JD's idle time is in stretches of hours**, which both modes
+  spend asleep.
+- **Below 15% the two behave alike**, so Balanced's office day gains from
+  the half brightness there.
+
+The log cannot see pauses of 1-5 minutes, where Balanced now stays lit and
+Power saver dims, so the real gap is probably a little wider than modelled.
 
 ## Where the power goes
 
@@ -229,32 +257,37 @@ mode, 4 h of typing a day:
 
 - **awake:** 106.9 + 6.5 (backlight, 8 of 48) + 42.7 (LEDs) = 156 mW, × 4 h
   = 624 mWh;
-- **the ladder before each sleep,** say three a day: ~7 min at ~125 mW each,
-  ~44 mWh;
-- **asleep:** 20 h × 13.35 mW = 267 mWh;
-- **total:** ~935 mWh a day, so 15,579 ÷ 935 = **~16.7 days**.
+- **the ladder before each sleep,** say three absences a day: 10 min more at
+  156 mW, then 10 dimmed at ~131 mW, ~48 mWh each, ~143 mWh;
+- **asleep:** the other 19 h × 13.35 mW = 254 mWh;
+- **total:** ~1,021 mWh a day, so 15,579 ÷ 1,021 = **~15.3 days**.
 
 ## The power modes
 
 `Fn`+`B` cycles four modes, shown on battery as a bulb on the battery row.
 They apply on battery only; on USB the board stays fully on.
 
-|                                    | Always on | Balanced   | Power saver | Lights out |
-| ---------------------------------- | --------- | ---------- | ----------- | ---------- |
-| LEDs dimmed (value capped at 64)   | never     | 1 min idle | 30 s        | --         |
-| LEDs off, screen capped at level 4 | never     | 5 min      | 2 min       | always     |
-| screen backlight off               | never     | 7 min      | 3 min       | always     |
-| deep sleep                         | never     | 7 min      | 3 min       | 30 s       |
+|                                  | Always on | Balanced    | Power saver | Lights out |
+| -------------------------------- | --------- | ----------- | ----------- | ---------- |
+| LEDs while typing                | as set    | as set      | capped, 128 | off        |
+| LEDs dimmed (value capped at 64) | never     | 10 min idle | 1 min       | --         |
+| LEDs and screen off, deep sleep  | never     | 20 min      | 3 min       | 1 min      |
 
-- **Balanced is the default.**
-- **Below 15%, the lighting follows Power saver's stages in every mode**
-  (Lights out stays darker), and Balanced sleeps at Power saver's 3 minutes.
-  Always on still never sleeps.
+- **Balanced is the default.** It works as if plugged in unless you are
+  most likely away, or watching something.
+- **Power saver caps the lighting's value at 128 while typing.** That is
+  about half as bright to the eye under QMK's brightness curve, and a quarter
+  of the LEDs' power. It is a ceiling, so a board already at 128 or below
+  looks the same as on USB. With bright settings on the cable, it gives a
+  dimmer board on battery for free.
+- **Below 15%, every mode takes Power saver's lighting**, its 128 while
+  typing included (Lights out stays darker), and Balanced sleeps at Power
+  saver's 3 minutes. Always on still never sleeps.
 - **Lights out keeps the LEDs and the backlight off even while typing.** It
   lights the screen for 4 s when a message appears.
-- **A key or the knob brings everything back** within a tenth of a second,
-  and the key types. Each stage only caps the lighting; your settings are
-  never changed.
+- **A key or the knob brings back the mode's typing state** within a tenth
+  of a second, and the key types. Each stage only caps the lighting; your
+  settings are never changed.
 - **Waking from deep sleep keeps the waking key.** It was never lost in over
   350 measured wakes. The key reached the Mac a median 64 ms after the press on
   BT (worst 115 ms), and 48 ms on 2.4G (worst 56).
@@ -399,7 +432,7 @@ one way only, so charging work stays on the INA228.
 
 - **R5, a drain in Balanced at real use.** It measures the modes' runtimes
   modelled above, the sleep's energy across a whole drain, and the gauge live
-  under a changing load. At JD's use, probably about two weeks.
+  under a changing load. At JD's use, about 12½ days modelled.
 - **2.4G with the lights on,** and everything at maximum measured directly: a
   load map of about 15 minutes.
 - **What ends the reserve:** whether the board's regulator or the pack's
