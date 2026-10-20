@@ -305,3 +305,48 @@ unobserved target changes (an older board appearing on the radio: no window
 action, by R3-1), equal-session and cross-user collisions under the lock,
 restarts, and search exhaustion (codex 7). Session recovery and rotation
 trigger a full text refresh like a transport change (codex 9).
+
+## Revision 4: after codex's verify of revision 3 (10-19)
+
+[Verify](review-codex-rawhid-daemon-plan-verify2-2026-10-19.md), verbatim:
+**R3-1 (envelope v2) closed**: at least 152 masks always remain; padding is
+masked to the safe mask; restoring `0x07` is sound. One must-fix (the session
+lifecycle), the residual's elimination claim corrected, and the tests.
+
+**R4-1. The session lifecycle, end to end (must-fix 1).**
+- **The board: after the idle, any request starts afresh.** In `raw81.c`, a
+  request arriving when no admission has happened for `idle` is accepted as a
+  new session, whatever its id and seq; freshness is judged only within a
+  live session. So a host that restarts and draws its previous id is not
+  stuck `STALE`, and needs no persisted state.
+- **The board: a response TTL.** A response not written to the UART within
+  **250 ms** of its dispatch is dropped and counted (`resp_expired`); it can no
+  longer wait indefinitely behind keyboard traffic.
+- **The bound on a transaction's traffic:** a request's delivery (the 1 s
+  lifetime assumption) + the response's wait (<= 250 ms) + its delivery (the
+  same 1 s) < **3 s**. So the host's quiet wait before a new session (an
+  open, a rotation, a recovery) is **3 s on the monotonic clock**, with the
+  machine-wide lock held throughout and for all outstanding I/O. After it, no
+  reply, receipt or request of any earlier session, this host's or another
+  participant's, can arrive, and a reused id cannot meet an old answer.
+- **The host: an initial-admission grace.** Until the session's first
+  admission, a `BUSY` (an old request admitted near the end of the quiet,
+  restarting the board's idle) waits 1.1 s and retries, up to 3 times;
+  `BUSY` after the session has had an admission is real contention and backs
+  off 30 s. `STALE` within a live session rotates (3 s quiet, new id).
+
+**R4-2. The residual, corrected.** For an intact, contiguous frame: at most
+one valid boundary match (by the leading `0x81`), up to two malformed counts
+(no exact sum needed), no forged inbound ACK, with the effects listed in
+revision 3. Putting the collector in every build does **not** remove it: the
+collector deliberately lets a pending `5C 25 | 81` reach the window when no
+boundary has been established. It stays an accepted residual.
+
+**R4-3. Tests (must-fix 4).** Added: the board's idle-restart rule (same id,
+different id, before and after the idle), the response TTL (a response held
+behind A-frames expires and is counted), the host's initial-admission grace
+and its bound, late responses after a quiet wait (none can match), full-v2
+encode/decode across every allowed command, and the search and span
+boundaries (a bad high byte, the span limit not crossed, no wrap reuse).
+Arbitrary-window tests assert the **permitted residual**, not "no window
+action".
