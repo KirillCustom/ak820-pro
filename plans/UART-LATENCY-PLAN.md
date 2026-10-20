@@ -1,6 +1,6 @@
 # UART2's one-byte receiver: keeping its latency under a byte
 
-Status: **revision 2 (10-19), after codex's plan review** ([`review-codex-uart-latency-plan-2026-10-19.md`](review-codex-uart-latency-plan-2026-10-19.md), dispositions at the end). Nothing built. Follows
+Status: **revision 3 (10-19), after codex's plan review and verify** ([`review-codex-uart-latency-plan-2026-10-19.md`](review-codex-uart-latency-plan-2026-10-19.md), dispositions at the end). Nothing built. Follows
 [`OVERRUN-CAPS-PLAN.md`](OVERRUN-CAPS-PLAN.md), whose measurements found the
 problem (`history/overrun-ab-20261019/`, `history/overrun-depth-20261019/`).
 Owner: the Mac session.
@@ -202,4 +202,28 @@ is.
 
 **The base:** this build goes on `e7f6890e06` (stage 1, whose echo is the
 A/B's load) and is rebased onto stage 2 v2 when that lands.
+
+## Revision 3: codex's verify, dispositions
+
+[`review-codex-uart-latency-plan-verify-2026-10-19.md`](review-codex-uart-latency-plan-verify-2026-10-19.md):
+with these, nothing blocks building the dev firmware; the measurements gate
+daily and R5. **Where revision 2's prose above disagrees with this table,
+the table wins:**
+- **PendSV is at 0,** and the port runs its context switch through the NMI.
+  `CORTEX_SIMPLIFIED_PRIORITY` is not the rule.
+- **The handler bound:** the UART handler's per-byte time is no bound, since
+  it loops over RX and TX.
+- **The lock also protects HAL's state,** which the round trip keeps.
+- **The monitor** is a service-gap monitor with an observed context, never
+  UART2's latency or a named culprit.
+
+| # | finding | disposition |
+|---|---|---|
+| V1 | must: fix 4 needs an ownership rule; the animation stops on a key (`anim_toggle`), not a timer; the boot redraws through `defer_exec(1500)` (main loop); the pump runs the restore before checking `display_paused` | **Taken.** Both callers become requests: `display_redraw_dashboard()` starts the staged restore at stage 1 and returns 0. The pump checks `display_paused` **before** the restore, so an animation that starts mid-restore suspends it, and its stop requests a restore again from stage 1. The boot's splash and its 1500 ms hold stay; the clear then runs in bands. `splash_cleared` stays at its stage. The bootloader splash is separate and unchanged. |
+| V2 | must: 10 ms covers every transaction, not the pass: a legacy HID set before the fast task allows two transactions in a pass; no ordinary admission or deferral; an absent address NACKs early and a stuck SDA fails arbitration at once, so neither tests the deadline; `OD_PCF_END` precedes the restart | **Taken.** (a) Ordinary `rtc_fast_task` transactions skip a pass whose earlier handlers used the bus, and a pass that ran one defers its display work, as the recovery's do. (b) The legacy synchronous set stays as it is, and its worst pass (two sets drained in one pass) is a release-matrix item. (c) A dev injection, `SW_I2C_INJECT_STUCK()` in the LLD's clock wait, makes the next transaction's SCL read low until its deadline: the real timeout path, through the restart. (d) The kind's whole-call time ends after the restart. |
+| V3 | must: the observed context set on entry only goes stale | **Taken.** `ACCT()` publishes its scope on entry and puts `ACCT_UNACCOUNTED` back on exit, in both of its branches; the byte boots as that sentinel. |
+| V4 | should: the run-time priority write's procedure | **Taken.** Main thread, under the lock: save UART2's enable bit, `NVIC_DisableIRQ` (its barriers), `NVIC_SetPriority` with the logical 0 or 1, put the enable bit back, unlock. The reply carries `NVIC_GetPriority()`. No ChibiOS vector helpers; the serial driver is not restarted. |
+| V5 | should: the prose | **Taken** (the note above this table). Fix 4 is in both builds. |
+| V6 | should: re-prime on the monitor's enable too; label the timing boundaries | **Taken.** |
+| V7 | should: keep the link's retry, give-up, replacement and queue-drop counters beside the delivered presses | **Taken.** |
 
