@@ -461,6 +461,7 @@ fn lockchan_check() -> Result<(), String> {
     let cands: Vec<_> = listed.iter().map(|(c, _)| c.clone()).collect();
     println!("chosen             {:?}", ll::choose(&cands));
     println!("session active     {}", ll::session_active());
+    println!("caps lock          {:?}", ll::caps());
     println!("idle               {:?}", ll::idle());
     Ok(())
 }
@@ -512,5 +513,18 @@ fn lockchan_send(artist: &str, title: &str) -> Result<(), String> {
         t0.elapsed().as_secs_f64(),
         if line.restore_pending { " (restore pending)" } else { "" }
     );
-    Ok(())
+    // A stuck write keeps the owner lock and the device for the life of the
+    // process, as the sender does (R3-3); the process ends just after.
+    if out == frame::Outcome::Poisoned {
+        std::mem::forget(lights);
+        std::mem::forget(_owner);
+        return Err("a write did not retire: the channel is poisoned".into());
+    }
+    // "Sent" is every write accepted, not the board's commit, which nothing
+    // acknowledges; anything else is a failure to a script (codex, P2 3).
+    match (out, line.restore_pending) {
+        (frame::Outcome::Sent, false) => Ok(()),
+        (_, true) => Err("the lights' restore is pending: the user's locks may be wrong on the board".into()),
+        (other, false) => Err(format!("the frame did not go: {other:?}")),
+    }
 }

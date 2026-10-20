@@ -81,15 +81,33 @@ pub fn session_active() -> bool {
     let Some(dict) = Cf::owned(unsafe { CGSessionCopyCurrentDictionary() }) else {
         return false; // no GUI session: a daemon outside the user's login
     };
-    let flag = |key: &str| -> Option<bool> {
+    let flag = |key: &str| -> Flag {
         let k = Cf::string(key);
         let v = unsafe { CFDictionaryGetValue(dict.as_ptr(), k.as_ptr()) };
         if v.is_null() {
-            return None;
+            return Flag::Absent;
         }
-        unsafe { (CFGetTypeID(v) == CFBooleanGetTypeID()).then(|| CFBooleanGetValue(v) != 0) }
+        if unsafe { CFGetTypeID(v) } != unsafe { CFBooleanGetTypeID() } {
+            return Flag::Malformed;
+        }
+        Flag::Is(unsafe { CFBooleanGetValue(v) } != 0)
     };
-    flag("kCGSSessionOnConsoleKey") == Some(true) && flag("CGSSessionScreenIsLocked") != Some(true)
+    active(flag("kCGSSessionOnConsoleKey"), flag("CGSSessionScreenIsLocked"))
+}
+
+/// A session dictionary's boolean: there, not there, or not a boolean.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Flag {
+    Absent,
+    Is(bool),
+    Malformed,
+}
+
+/// On the console, and the screen-lock key absent (as it is when unlocked:
+/// `keydrop_test.py`) or false. Anything malformed is not active (codex, the
+/// macOS writer's review, P3 5).
+fn active(on_console: Flag, locked: Flag) -> bool {
+    on_console == Flag::Is(true) && matches!(locked, Flag::Absent | Flag::Is(false))
 }
 
 /// The HID system's service, for the Caps state and the idle time.
@@ -101,6 +119,20 @@ fn hid_system() -> Option<Io> {
     // Consumes `matching`.
     let s = unsafe { IOServiceGetMatchingService(0, matching as CFDictionaryRef) };
     (s != 0).then(|| Io(s))
+}
+
+/// The HID system's Caps Lock, read through a connection of its own: for
+/// `ak820 lockchan check` (BleLights reads it through the one it holds).
+pub fn caps() -> Option<bool> {
+    let sys = hid_system()?;
+    let mut hid: io_connect_t = 0;
+    if unsafe { IOServiceOpen(sys.0, mach_task_self_, kIOHIDParamConnectType, &mut hid) } != 0 {
+        return None;
+    }
+    let mut caps = false;
+    let kr = unsafe { IOHIDGetModifierLockState(hid, kIOHIDCapsLockState, &mut caps) };
+    unsafe { IOServiceClose(hid) };
+    (kr == 0).then_some(caps)
 }
 
 /// How long since the last input on this machine, any device (the HID
@@ -264,16 +296,30 @@ impl Drop for BleLights {
 }
 
 /// The sender's platform on macOS.
-#[derive(Default)]
 pub struct Mac {
-    start: Option<Instant>,
+    start: Instant,
     last: Cell<Option<u32>>,
 }
 
 impl Mac {
     pub fn new() -> Mac {
-        Mac { start: Some(Instant::now()), last: Cell::new(None) }
+        Mac { start: Instant::now(), last: Cell::new(None) }
     }
+}
+
+/// The same as [`Mac::new`]: a `start` left unset would have switched the wake
+/// guess off for good (codex, the macOS writer's review, P2 2).
+impl Default for Mac {
+    fn default() -> Mac {
+        Mac::new()
+    }
+}
+
+/// Now and the idle time as the sender's u32 millisecond ticks, both modulo
+/// 2^32: the idle time wraps as the clock does, so a long idle never moves
+/// the last input's tick (codex, P3 4: a saturated idle did, after ~49.7 days).
+fn ticks(since_start: Duration, idle: Duration) -> (u32, u32) {
+    (since_start.as_millis() as u32, idle.as_millis() as u32)
 }
 
 /// The last input's tick from "now" and the idle time: a jitter of a few ms
@@ -298,8 +344,7 @@ impl crate::lockchan::sender::Platform for Mac {
         Ok(super::radio_lock::try_take_lockchan()?.map(|l| Box::new(l) as Box<dyn std::any::Any + Send>))
     }
     fn input(&self) -> Option<(u32, u32)> {
-        let now = self.start?.elapsed().as_millis() as u32;
-        let idle = idle()?.as_millis().min(u32::MAX as u128) as u32;
+        let (now, idle) = ticks(self.start.elapsed(), idle()?);
         let last = last_tick(self.last.get(), now, idle);
         self.last.set(Some(last));
         Some((last, now))
@@ -326,6 +371,42 @@ mod tests {
         assert_eq!(choose(&[cand(1, 6, "USB")]), Ok(None), "the cable's keyboard is raw HID's, not ours");
         assert_eq!(choose(&[]), Ok(None));
         assert!(choose(&[cand(1, 6, TRANSPORT), cand(1, 6, TRANSPORT)]).is_err(), "two: refuse to guess");
+    }
+
+    #[test]
+    fn a_session_is_active_only_on_the_console_and_surely_unlocked() {
+        use Flag::*;
+        assert!(active(Is(true), Absent), "unlocked: the key is absent");
+        assert!(active(Is(true), Is(false)));
+        assert!(!active(Is(true), Is(true)), "locked");
+        assert!(!active(Is(true), Malformed), "a lock flag of another type is not unlocked");
+        assert!(!active(Is(false), Absent), "another user on the console");
+        assert!(!active(Absent, Absent));
+        assert!(!active(Malformed, Absent));
+    }
+
+    #[test]
+    fn both_constructors_arm_the_wake_guess() {
+        assert!(Mac::default().start.elapsed() < Duration::from_secs(5));
+        assert!(Mac::new().last.get().is_none());
+    }
+
+    #[test]
+    fn a_long_idle_wraps_with_the_clock_and_never_moves_the_last_input() {
+        // 60 days without input: past u32's 49.7 days of milliseconds.
+        let day = Duration::from_secs(86_400);
+        let start_idle = 60 * day;
+        let mut prev = None;
+        let mut firsts = Vec::new();
+        for step in 0..5u64 {
+            let since = 60 * day + Duration::from_millis(step * 500);
+            let idle = start_idle + Duration::from_millis(step * 500);
+            let (now, idle_ms) = ticks(since, idle);
+            let last = last_tick(prev, now, idle_ms);
+            prev = Some(last);
+            firsts.push(last);
+        }
+        assert!(firsts.windows(2).all(|w| w[0] == w[1]), "the last input's tick held: {firsts:?}");
     }
 
     #[test]

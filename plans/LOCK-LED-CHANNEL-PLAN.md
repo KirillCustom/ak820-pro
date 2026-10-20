@@ -936,3 +936,74 @@ channel: only the opener's `Absent` does.
 accepts a media command (`lockchan_link_lost`, which also drops the LED
 baseline; the next report only sets it), so no assembly can straddle a raw-HID
 update. The lease at commit stays.
+
+## The macOS writer (the Mac session, 10-20)
+
+`ak820-agent/src/platform/macos/lock_lights.rs`:
+- `BleLights` (the `LockLights` writer) and `Mac` (the sender's
+  `Platform`);
+- the dev commands `ak820 lockchan check | send | clear`.
+
+**The route,** as the probe measured it on 10-18:
+- the BLE keyboard `0C45:FEFE`, its usage-1:6 collection, taken from the
+  registry with nothing else opened;
+- output report 2, sent as `[2, leds]` through
+  `SetReportWithCallback`, on the opening thread's run loop, with a 1 s
+  deadline (in milliseconds) plus 250 ms of grace;
+- P3, with zero spacing, because each write returns at its completion.
+
+**The user's locks:** Caps from `IOHIDGetModifierLockState`, only while
+CGSession is on the console and not locked. Num and Scroll read as 0.
+
+**The owner lock:** an `flock` on `/Users/Shared/ak820pro/lockchan.lock`.
+
+**The wake guess:** `HIDIdleTime`, turned into u32 ticks. A 250 ms slack
+absorbs read jitter.
+
+**First frame through the Rust stack from the Mac:** 51 writes in 2.76 s,
+committed exactly on the board (P3, type 1, 20 bytes).
+
+**Codex** (`review-codex-lockchan-macos-2026-10-20.md`) found no P1. It
+confirmed the FFI's ownership, the report layout, the millisecond timeout
+and the poison path, and that thread affinity is enforced by the types.
+- **P2, the Swift probe and its harness skip the owner lock.**
+  **Deferred to the wiring:** the probe takes the lock in its write modes
+  before the daemon sends frames. Until then nothing else sends.
+- **P2, `Mac::default()` turned the wake guess off.** **Fixed:** `start`
+  is not optional, `Default` is `new()`, and both are tested.
+- **P2, the CLI exited 0 on failures and released the lock on poison.**
+  **Fixed:**
+  - only `Sent` with no restore pending is success;
+  - on poison the lock and the device are kept for the life of the
+    process.
+- **P3, a saturated idle made false wakes after ~49.7 days.** **Fixed:**
+  both ticks are taken modulo 2^32, with a 60-day test.
+- **P3, a malformed screen-lock value counted as unlocked.** **Fixed:**
+  absent, boolean and malformed are told apart, and malformed is not
+  active. Tested.
+
+### Caps while frames go (resume item 3), 10-20: first look
+
+`scripts/mac_lockchan_caps.py`, with frames sent back to back while JD
+tapped Caps twice (`history/lockchan-mac-caps-20261020/`):
+- **Caps on:** the sender saw it and abandoned the frame
+  (`Abandoned(UserChanged)`) after 3 writes. macOS's own report reached
+  the board clean, `0x02` with bits 3-7 clear, and the board ended on Caps
+  on.
+  - But 3 of our writes went out with the old Caps state after macOS's
+    report: the board's Caps showed off for ~1.5 s until the restore. That
+    is the known read-then-write race, a few writes wide.
+- **Caps off:** the tap landed just before a frame's baseline, so that
+  frame went out whole with Caps off. macOS's report fell before the
+  board's 52-byte trace.
+- **Not answered yet:** a tap while bits 3-7 are set mid-frame. Both taps
+  landed at frame edges. Each LED byte reaches the board 3 times (the
+  module repeats it).
+
+**⚠️ The receiver aborted 15 of 40 complete frames for a gap**, a pause
+over 500 ms between two writes, while the sender called them sent. The
+10-18 probe frames (24/24) and today's single frame committed. Under study
+before the Mac's sender is wired in. The suspects:
+- the BLE link's latency (the module's slave latency) after the host has
+  counted a write complete;
+- the daemon's 2.4G dongle probing on the same band.

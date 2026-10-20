@@ -1,0 +1,6 @@
+sending frames for up to 180 s: tap Caps Lock 2 times, a few seconds apart
+frame 40: Caps False -> True; AK820 5.1-1 (Bluetooth Low Energy): type 1, 20 payload bytes: Abandoned(UserChanged), 3 writes in 1.78 s
+    macOS's report on the board: {'n': 0, 'byte': 2, 'gap_ms': None}; bits 3-7 0x0; host_leds 0x02, matches the Mac's Caps
+frame 41: Caps True -> False; AK820 5.1-1 (Bluetooth Low Energy): type 1, 20 payload bytes: Sent, 51 writes in 2.67 s
+    macOS's report on the board: {'n': 104, 'byte': 88, 'gap_ms': 0}; bits 3-7 0x58; host_leds 0x00, matches the Mac's Caps
+2 Caps change(s) in 41 frames: CHECK (history/lockchan-mac-caps-20261020)
