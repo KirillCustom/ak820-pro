@@ -6,12 +6,21 @@
 //! below, so this, the Python, and (through `scripts/raw81_test.py`) the
 //! board's `raw81.c` agree byte for byte. Pure: no I/O.
 //!
-//! A request is one 32-byte output report on the dongle's FF60 interface:
+//! A request is one 32-byte output report on the dongle's FF60 interface,
+//! envelope v2 (`plans/RAWHID-24G-DAEMON-PLAN.md`, R3-1):
 //!
 //! ```text
-//! [0] 0xC7  [1] session (nonzero)  [2..3] seq, big-endian
-//! [4..5] CRC-16/CCITT-FALSE over [0..3] and [6..31]  [6..31] inner (26 bytes)
+//! [0] 0xC6  [1] session (nonzero)  [2..3] seq, big-endian
+//! [4..5] CRC-16/CCITT-FALSE over [0..3] and [6..31]
+//! [6] mask  [7..31] the inner command's bytes 1..25, XOR mask
 //! ```
+//!
+//! Every allowed inner command starts `0x07`; it is not sent, and the board
+//! restores it. The mask keeps every masked byte off the four values an older
+//! board's 3-byte window could act on, and [`safe_request`] steps the seq
+//! until the header, the CRC and the module's sum are off them too, so no
+//! request can be misread by a board without stage 2, whatever the dongle is
+//! paired to.
 //!
 //! The board answers with two 32-byte input reports: the handler's reply
 //! (byte for byte the USB reply; status 0 only), then a receipt:
@@ -21,9 +30,11 @@
 //! [7..8] CRC-16 of the reply (status 0)  [9..10] CRC-16 of [0..8]  [11..31] 0
 //! ```
 
-/// The envelope's and the receipt's first byte: never a first byte any reply
-/// on this board starts with (those are `0x07`, or VIA's `0xFF` unhandled).
+/// The receipt's first byte: never a first byte any reply on this board
+/// starts with (those are `0x07`, or VIA's `0xFF` unhandled).
 pub const MAGIC: u8 = 0xC7;
+/// A request's first byte, envelope v2. (v1, `0xC7` and unmasked, is retired.)
+pub const MAGIC_REQ: u8 = 0xC6;
 /// The envelope's header: magic, session, seq (2), CRC (2).
 pub const HEAD: usize = 6;
 /// The inner command's room: every allow-listed command fits (a text line is
@@ -50,10 +61,28 @@ pub enum EnvelopeError {
     ZeroSession,
     /// The inner command is longer than [`INNER`] bytes.
     TooLong(usize),
+    /// Every allowed command starts `0x07`, which v2 does not send.
+    NotCustomValue,
 }
 
-/// The 32-byte request for one inner command (at most [`INNER`] bytes,
-/// zero-padded).
+/// Bytes an older board's 3-byte window could act on: a frame type
+/// (`5A`/`5B`/`5C`) or the start of the `61 0D 0A` ACK. A frame without
+/// them can match nothing in any alignment from a cleared window
+/// (`plans/RAWHID-24G-DAEMON-PLAN.md`, R2-1; the leading `0x81` is the
+/// stated residual, R4-2).
+pub const WINDOW_BYTES: [u8; 4] = [0x5A, 0x5B, 0x5C, 0x61];
+
+/// The lowest mask under which no byte of `rest` (inner[1..25]) nor the mask
+/// itself is a window byte. One always exists: each byte excludes at most 4
+/// masks (<= 100 of 256), the mask's own exclusion 4 more.
+pub fn pick_mask(rest: &[u8]) -> u8 {
+    (0u8..=255)
+        .find(|&m| !WINDOW_BYTES.contains(&m) && rest.iter().all(|&b| !WINDOW_BYTES.contains(&(b ^ m))))
+        .expect("a mask exists for 25 bytes")
+}
+
+/// The 32-byte request (envelope v2) for one inner command: at most
+/// [`INNER`] bytes, starting `0x07`, zero-padded before masking.
 pub fn envelope(session: u8, seq: u16, inner: &[u8]) -> Result<[u8; PAYLOAD], EnvelopeError> {
     if session == 0 {
         return Err(EnvelopeError::ZeroSession);
@@ -61,55 +90,82 @@ pub fn envelope(session: u8, seq: u16, inner: &[u8]) -> Result<[u8; PAYLOAD], En
     if inner.len() > INNER {
         return Err(EnvelopeError::TooLong(inner.len()));
     }
+    if inner.first() != Some(&0x07) {
+        return Err(EnvelopeError::NotCustomValue);
+    }
+    let mut padded = [0u8; INNER];
+    padded[..inner.len()].copy_from_slice(inner);
+    let m = pick_mask(&padded[1..]);
     let mut out = [0u8; PAYLOAD];
-    out[0] = MAGIC;
+    out[0] = MAGIC_REQ;
     out[1] = session;
     out[2..4].copy_from_slice(&seq.to_be_bytes());
-    out[HEAD..HEAD + inner.len()].copy_from_slice(inner);
+    out[HEAD] = m;
+    for (o, &b) in out[HEAD + 1..].iter_mut().zip(&padded[1..]) {
+        *o = b ^ m;
+    }
     let crc = crc16(&out[HEAD..], crc16(&out[..4], 0xFFFF));
     out[4..6].copy_from_slice(&crc.to_be_bytes());
     Ok(out)
 }
-
-/// Bytes an older board's 3-byte window could act on: a frame type
-/// (`5A`/`5B`/`5C`) or the start of the `61 0D 0A` ACK. A frame without
-/// them can match nothing in any alignment (`plans/RAWHID-24G-DAEMON-PLAN.md`,
-/// R2-1).
-pub const WINDOW_BYTES: [u8; 4] = [0x5A, 0x5B, 0x5C, 0x61];
-
-/// The probe's inner command: the health read (`HC_GET`), on every stage-2
-/// board's allow-list.
-pub const PROBE_INNER: [u8; 3] = [0x07, 0x13, 0x01];
 
 /// The sum the module puts after an `81` frame's 32 bytes.
 pub fn wire_sum(payload: &[u8; PAYLOAD]) -> u8 {
     payload.iter().fold(0x81u8, |s, &b| s.wrapping_add(b))
 }
 
-/// Is this session id usable for a probe (and so for the radio at all)?
-pub fn probe_safe_session(session: u8) -> bool {
+/// No byte of the whole wire frame (`81`, the 32 bytes, the sum) is a
+/// window byte.
+pub fn frame_is_inert(payload: &[u8; PAYLOAD]) -> bool {
+    !payload.iter().chain(std::iter::once(&wire_sum(payload))).any(|b| WINDOW_BYTES.contains(b))
+}
+
+/// Is this session id usable on the radio (nonzero, not a window byte, not
+/// `0x81`)?
+pub fn safe_session(session: u8) -> bool {
     session != 0 && session != 0x81 && !WINDOW_BYTES.contains(&session)
 }
 
-/// The probe for `session`, at the first seq from `from` (counting up, at most
-/// `tries` of them) whose whole wire frame -- the `81`, the 32 bytes, and the
-/// module's sum -- holds no [`WINDOW_BYTES`]. Returns the seq used and the
-/// payload, or `None` if the session itself is unusable or no seq in range
-/// qualifies (vanishingly rare: each candidate fails with p ~ 1 - (252/256)^7).
-pub fn probe(session: u8, from: u16, tries: u16) -> Option<(u16, [u8; PAYLOAD])> {
-    if !probe_safe_session(session) {
+/// The first seq at or after `seq` (mod 2^16) whose two bytes are not window
+/// bytes: a bad high byte jumps to the next high byte's start (stepping one at
+/// a time from 0x5A00 would never leave it).
+pub fn clean_seq(mut seq: u16) -> u16 {
+    loop {
+        let [hi, lo] = seq.to_be_bytes();
+        if WINDOW_BYTES.contains(&hi) {
+            seq = u16::from(hi.wrapping_add(1)) << 8;
+        } else if WINDOW_BYTES.contains(&lo) {
+            seq = seq.wrapping_add(1);
+        } else {
+            return seq;
+        }
+    }
+}
+
+/// The first seq from `from` (counting up, skipping seqs with a window byte,
+/// at most `tries` candidates) whose v2 request is inert, header, CRC and sum
+/// included: `(seq, payload)`, or `None` (an unusable session, a bad inner
+/// command, or the search exhausted). Every seq skipped counts toward the
+/// session's span: the caller's seq moves past them.
+pub fn safe_request(session: u8, from: u16, inner: &[u8], tries: u16) -> Option<(u16, [u8; PAYLOAD])> {
+    if !safe_session(session) {
         return None;
     }
-    let mut seq = from;
+    let mut seq = clean_seq(from);
     for _ in 0..tries {
-        let p = envelope(session, seq, &PROBE_INNER).ok()?;
-        if !p.iter().chain(std::iter::once(&wire_sum(&p))).any(|b| WINDOW_BYTES.contains(b)) {
+        let p = envelope(session, seq, inner).ok()?;
+        if frame_is_inert(&p) {
             return Some((seq, p));
         }
-        seq = seq.wrapping_add(1);
+        seq = clean_seq(seq.wrapping_add(1));
     }
     None
 }
+
+/// The qualification probe's inner command: the health read (`HC_GET`), on
+/// every stage-2 board's allow-list. (With v2 every request is inert; the
+/// probe only tells whether anything answers.)
+pub const PROBE_INNER: [u8; 3] = [0x07, 0x13, 0x01];
 
 /// A well-formed receipt's fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -291,21 +347,50 @@ mod tests {
     #[test]
     fn envelopes_match_the_python() {
         let golden = [
-            ("071301", 1u8, 1u16, "c7010001cf410713010000000000000000000000000000000000000000000000"),
-            ("0712030001526164696f207469746c65", 90, 4660, "c75a1234679e0712030001526164696f207469746c6500000000000000000000"),
-            ("071202", 255, 65535, "c7ffffffcdb80712020000000000000000000000000000000000000000000000"),
-            ("07120401001000f0", 9, 0, "c70900006bd707120401001000f0000000000000000000000000000000000000"),
+            ("071301", 1u8, 1u16, "c6010001b31a0013010000000000000000000000000000000000000000000000"),
+            ("0712030001526164696f207469746c65", 90, 4660, "c65a1234061e0113020100536065686e217568756d6401010101010101010101"),
+            ("071202", 255, 65535, "c6ffffffb1e30012020000000000000000000000000000000000000000000000"),
+            ("07120401001000f0", 9, 0, "c6090000178c00120401001000f0000000000000000000000000000000000000"),
+            ("07120301005a7a615b5c", 3, 7, "c60300075ada0210010302587863595e02020202020202020202020202020202"),
         ];
         for (inner, s, q, want) in golden {
             assert_eq!(envelope(s, q, &hex(inner)).unwrap().to_vec(), hex(want), "{inner}");
+        }
+        // safe_request: a window high byte jumps, a clean start is kept.
+        let safe = [
+            (0x5A00u16, 0x5D00u16, "c6015d00f9120013010000000000000000000000000000000000000000000000"),
+            (0, 0, "c6010000a67c0013010000000000000000000000000000000000000000000000"),
+            (0x1234, 0x1234, "c6011234190d0013010000000000000000000000000000000000000000000000"),
+        ];
+        for (from, seq, want) in safe {
+            let (q, p) = safe_request(1, from, &PROBE_INNER, 64).unwrap();
+            assert_eq!((q, p.to_vec()), (seq, hex(want)), "{from:#x}");
         }
     }
 
     #[test]
     fn envelope_refusals() {
         assert_eq!(envelope(0, 1, b"\x07\x13\x01"), Err(EnvelopeError::ZeroSession));
-        assert_eq!(envelope(1, 1, &[0u8; 27]), Err(EnvelopeError::TooLong(27)));
-        assert!(envelope(1, 1, &[0u8; 26]).is_ok());
+        let mut long = [0u8; 27];
+        long[0] = 0x07;
+        assert_eq!(envelope(1, 1, &long), Err(EnvelopeError::TooLong(27)));
+        assert_eq!(envelope(1, 1, &[0u8; 26]), Err(EnvelopeError::NotCustomValue));
+        assert_eq!(envelope(1, 1, &[]), Err(EnvelopeError::NotCustomValue));
+        assert!(envelope(1, 1, &long[..26]).is_ok());
+    }
+
+    #[test]
+    fn clean_seq_skips_window_bytes() {
+        assert_eq!(clean_seq(0x5A00), 0x5D00);
+        assert_eq!(clean_seq(0x5BFF), 0x5D00);
+        assert_eq!(clean_seq(0x615A), 0x6200);
+        assert_eq!(clean_seq(0x125A), 0x125D);
+        assert_eq!(clean_seq(0x1261), 0x1262);
+        assert_eq!(clean_seq(0x1234), 0x1234);
+        for s in 0..=u16::MAX {
+            let [h, l] = clean_seq(s).to_be_bytes();
+            assert!(!WINDOW_BYTES.contains(&h) && !WINDOW_BYTES.contains(&l), "{s:#x}");
+        }
     }
 
     #[test]
@@ -430,17 +515,16 @@ mod tests {
     /// `61 0D 0A`; a frame is `5A|5B|5C <d> <type + d>`. A model of it, run
     /// over the probe's whole wire frame from a cleared window.
     fn window_matches(bytes: &[u8]) -> usize {
-        let (mut b2, mut b1, mut b0) = (0u8, 0u8, 0u8);
+        let (mut b1, mut b0) = (0u8, 0u8);
         let mut n = 0;
         for &c in bytes {
-            b2 = b1;
+            let b2 = b1;
             b1 = b0;
             b0 = c;
             let ack = (b2, b1, b0) == (0x61, 0x0D, 0x0A);
             let frame = matches!(b2, 0x5A | 0x5B | 0x5C) && b0 == b2.wrapping_add(b1);
             if ack || frame {
                 n += 1;
-                b2 = 0;
                 b1 = 0;
                 b0 = 0;
             }
@@ -448,13 +532,47 @@ mod tests {
         n
     }
 
+    /// What a stage-2 board does with a v2 payload: check the CRC, unmask,
+    /// restore the 0x07.
+    fn board_unwrap(p: &[u8; PAYLOAD]) -> Option<[u8; INNER]> {
+        if p[0] != MAGIC_REQ || p[1] == 0 {
+            return None;
+        }
+        if crc16(&p[HEAD..], crc16(&p[..4], 0xFFFF)) != u16::from_be_bytes([p[4], p[5]]) {
+            return None;
+        }
+        let mut inner = [0u8; INNER];
+        inner[0] = 0x07;
+        for (o, &b) in inner[1..].iter_mut().zip(&p[HEAD + 1..]) {
+            *o = b ^ p[HEAD];
+        }
+        Some(inner)
+    }
+
     #[test]
-    fn every_probe_is_inert_to_an_older_board() {
+    fn every_request_is_inert_to_an_older_board() {
+        // A fixed LCG: random text lines and playback values, every byte value.
+        let mut x = 0x2545_F491u32;
+        let mut rnd = move || {
+            x = x.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            (x >> 16) as u8
+        };
+        let mut inners: Vec<Vec<u8>> = vec![PROBE_INNER.to_vec(), vec![0x07, 0x12, 0x02]];
+        for _ in 0..300 {
+            let mut v = vec![0x07, 0x12, 0x03, rnd() & 3, 0];
+            let n = usize::from(rnd()) % 22;
+            v.extend((0..n).map(|_| rnd()));
+            inners.push(v);
+            let mut w = vec![0x07, 0x12, 0x04];
+            w.extend((0..5).map(|_| rnd()));
+            inners.push(w);
+        }
         let mut built = 0;
-        for session in 1..=255u8 {
-            for from in [0u16, 1, 0x1234, 0x7FFF, 0xFFF0] {
-                let Some((seq, p)) = probe(session, from, 64) else {
-                    assert!(!probe_safe_session(session), "session {session} from {from}");
+        for (i, inner) in inners.iter().enumerate() {
+            for session in 1..=255u8 {
+                let from = [0u16, 0x5A00, 0x1234, 0x7FFF, 0xFFF0][(i + usize::from(session)) % 5];
+                let Some((seq, p)) = safe_request(session, from, inner, 256) else {
+                    assert!(!safe_session(session), "session {session} from {from}");
                     continue;
                 };
                 let mut wire = vec![0x81];
@@ -462,20 +580,23 @@ mod tests {
                 wire.push(wire_sum(&p));
                 assert!(!wire.iter().any(|b| WINDOW_BYTES.contains(b)), "{session} {seq}");
                 assert_eq!(window_matches(&wire), 0, "{session} {seq}");
-                // And a stage-2 board reads it as a fresh health read.
-                assert_eq!(&p[HEAD..HEAD + 3], &PROBE_INNER);
-                assert_eq!(crc16(&p[HEAD..], crc16(&p[..4], 0xFFFF)), u16::from_be_bytes([p[4], p[5]]));
+                // And a stage-2 board reads back exactly the inner command.
+                let got = board_unwrap(&p).expect("crc");
+                assert_eq!(&got[..inner.len()], &inner[..]);
+                assert!(got[inner.len()..].iter().all(|&b| b == 0));
                 built += 1;
             }
         }
-        assert!(built > 1000, "{built}");
+        assert!(built > 150_000, "{built}");
     }
 
     #[test]
-    fn unusable_probe_sessions() {
+    fn unusable_sessions() {
         for s in [0u8, 0x5A, 0x5B, 0x5C, 0x61, 0x81] {
-            assert!(probe(s, 0, 1000).is_none(), "{s:#x}");
+            assert!(!safe_session(s));
+            assert!(safe_request(s, 0, &PROBE_INNER, 1000).is_none(), "{s:#x}");
         }
+        assert!(safe_request(1, 0, &[0x13, 0x01], 1000).is_none());
     }
 
     #[test]
