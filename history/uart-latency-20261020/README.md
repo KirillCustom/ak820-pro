@@ -158,3 +158,20 @@ has the reviews. `mac_radio_cableout.py` ran with Music paused:
   - a track change while on the radio (driving Music from the shell could
     raise a consent dialog);
   - the deep sleep's backoff on the radio.
+
+## The morning of 10-20, with JD
+
+- **2.4G with the cable out:** play/pause reached the board over the radio.
+  The track change ("Pure Carbon") showed 4 s after the radio qualified.
+  The handback to USB was clean.
+- **BT with the data cut (uhubctl):** BT carries no raw HID, so the radio
+  went silent. The probes backed off, and the lock was released and
+  re-taken about every 34 s, two log lines a cycle. The handback was clean.
+- **Gremlin's pause fix (`28dc876`):** installed on the Mac at 08:17
+  (`v0.1.1-644-g28dc876-dirty`, `--clock --radio`). A pause shows on the
+  board after a small lag, which JD accepts.
+- **The deep sleep's backoff on the radio** found the deep-sleep
+  regression instead:
+  [`plans/DEEP-SLEEP-REGRESSION-2026-10-20.md`](../../plans/DEEP-SLEEP-REGRESSION-2026-10-20.md).
+  The runs are in `radio-sleep*/`, `deep-cycles-*/`, `vt-ab-*/`,
+  `b2a0-after-clean-boot/` and `wfi-sweep/`.
