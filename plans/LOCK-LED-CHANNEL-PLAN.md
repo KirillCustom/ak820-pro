@@ -1150,8 +1150,19 @@ sender's 300 ms.
   board's 500. **The Mac takes 450 ms:** its write completes at the ATT
   response, after the board has the byte, so the board's gap is at most
   450 ms plus that trail.
-- **Owed before the daemon is reinstalled with it:** the gap study at
-  450, cable in. Every `Sent` must still be a board commit.
+- **The gap study at 450** (`history/lockchan-mac-gaps-20261020/`,
+  `run-d-450-quiet.*`, cable in, on `1261ab2fa8`): **20/20 `Sent`, all 20
+  committed, no gap abort.** Six frames had a slowest write of 340-369 ms,
+  which under the 300 ms would have lost the frame in the data phase. Twenty
+  frames and no write of 400-450 ms, so the margin itself is not yet
+  exercised; the long soak will add more.
+- ⚠️ **A cable-in test must quiet the daemon's raw HID.** `run-c-450` ran
+  beside it: 7 of 20 `Sent` frames never committed and the gap count did not
+  move. R4-3 (`1261ab2fa8`) drops a frame being assembled on every raw-HID
+  media command, uncounted, and the daemon pushes now-playing over the cable
+  every few seconds. Run-d paused it (`kill -STOP`, then `-CONT`; it resyncs
+  the clock as after a sleep). In use there is no clash: with the cable in,
+  the lock lights are revoked.
 
 **The Mac daemon's orderly stop** (`63bc96d`, `stop.rs`): SIGTERM
 (launchd's bootout, run by `ak820 install` and `uninstall`) and SIGINT

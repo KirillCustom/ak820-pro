@@ -1,0 +1,21 @@
+ 0 Sent                   slowest 228 ms, 2 >100 ms -> board abort
+ 1 Sent                   slowest 331 ms, 2 >100 ms -> board nothing
+ 2 Sent                   slowest 367 ms, 2 >100 ms -> board nothing
+ 3 Sent                   slowest 160 ms, 2 >100 ms -> board nothing
+ 4 Sent                   slowest 139 ms, 1 >100 ms -> board commit
+ 5 Sent                   slowest 164 ms, 1 >100 ms -> board nothing
+ 6 Sent                   slowest 181 ms, 1 >100 ms -> board nothing
+ 7 Sent                   slowest 364 ms, 3 >100 ms -> board commit
+ 8 Sent                   slowest 159 ms, 1 >100 ms -> board commit
+ 9 Sent                   slowest 161 ms, 2 >100 ms -> board commit
+10 Sent                   slowest 346 ms, 3 >100 ms -> board commit
+11 Sent                   slowest 364 ms, 1 >100 ms -> board commit
+12 Sent                   slowest 169 ms, 2 >100 ms -> board commit
+13 Sent                   slowest 151 ms, 1 >100 ms -> board commit
+14 Sent                   slowest 150 ms, 1 >100 ms -> board commit
+15 Sent                   slowest 163 ms, 1 >100 ms -> board commit
+16 Sent                   slowest 134 ms, 1 >100 ms -> board commit
+17 Sent                   slowest 339 ms, 2 >100 ms -> board commit
+18 Sent                   slowest 142 ms, 2 >100 ms -> board commit
+19 Sent                   slowest 275 ms, 2 >100 ms -> board abort
+radio as is: 13/20 committed
