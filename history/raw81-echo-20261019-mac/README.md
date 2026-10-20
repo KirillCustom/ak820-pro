@@ -37,3 +37,22 @@ it: the ACK window and the lifetime are checks that return, and the
 34-byte `sdWrite` fits the 128-byte queue. A key pressed during such a pass
 waits for it, but is not lost below 25 ms. For Gremlin, before stage 2 puts
 real traffic on the path.
+
+**Where the pass goes (18:40, `acct-20-gap100.json`).**
+
+The run: HC_ACCT on, 20 echoes 100 ms apart, with the HC_LINK profile of
+slow `ch582_task` calls alongside.
+
+- **The pass:** 20 slow passes, one per echo, each 13-15 ms. Of each, `ch582`
+  took 9-11 ms and the rest was unaccounted. Nothing else ran long.
+- **Inside `ch582_task`, the `rx` section took 8.1-8.8 ms**, reading the
+  echo's 34 bytes in one call. Around it: `control` 0.3-0.6 ms, `tx_pump`
+  (the `91`) 0.5-0.8 ms, the `5C` hook and the ACK writes 0.
+- **Every slow `ch582_task` call since boot (471, at the 4 ms threshold) is
+  an echo**; no other frame comes near it.
+
+So it is ~250 µs per received byte, about one row-ISR period. The drain loop
+breaks only on an empty queue, so either the frame was already queued and
+each byte costs that much, or the bytes arrive at least that far apart and
+each costs more than the gap. Which one is Gremlin's next measurement
+(per-byte ticks, or the RX tap with timestamps).
