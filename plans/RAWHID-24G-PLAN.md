@@ -640,3 +640,36 @@ Real reset coverage stays outstanding. The earlier "2^-16 against
 deletion" figure is withdrawn: the CRC-16 bounds *random* corruption at that
 rate; for the structured deletions an overrun makes, the host suite's
 deletion-at-every-position cases are the evidence, not a probability.
+
+## Stage 2, revision 5: after codex's verify of revision 4 (10-19)
+
+[Verify](review-codex-rawhid-stage2-plan-verify3-2026-10-19.md), verbatim:
+the host state machine (must-fix 3) closed; the pair's synchronization
+closed; two design gaps and three smaller items. Revision 5 takes them all
+and goes to implementation; the next review is of the code.
+
+- **R5-1 (must-fix 1): the gate covers new-frame starts too.** Codex's
+  counterexample: a retransmitted A's first ACK consumed, a second still
+  queued at the cap, B started, the old ACK pops B. So while `rx_defer` holds,
+  the pump starts no new frame either (the same 50 ms cap past the moment it
+  would have started, the same counter). The window is cleared on *ordinary*
+  silence when it holds an ACK prefix, not only at a quarantine's end. The
+  counted override is an experimental overload policy that *permits* a
+  misattributed ACK, as codex says, not a harmless delay; its counter is read
+  in every acceptance run and must stay 0. A late ACK after a give-up (8
+  retries, ~90 ms) is the pre-existing hazard it always was, unchanged.
+- **R5-2 (must-fix 2): no reuse within the lifetime.** The host allocates its
+  session id under its owner lock and persists it **before** sending, and
+  refuses to open a new session within 1 s of its previous open: 255 opens
+  take at least 255 s, far beyond the 1 s lifetime, so an identity cannot be
+  recycled inside it. Rotation counts every seq issued, retries included.
+- **R5-3 (should-fix 4): the window's allowance.** The ACK window is 15 ms
+  plus the wire time of the queued bytes, the response, and the UART's
+  16-byte hardware FIFO (bytes the software queue no longer counts), rounded
+  up, plus 1 ms.
+- **R5-4 (should-fix 5).** R4-5's forced-same-id case is corrected: a request
+  in the *same* session is fresh or stale, never busy, and waiting does not
+  change that. The pure suite cannot test the glue (the drain cap, the
+  deferral, the reserved identity across a later frame): those are the
+  implementation review's and the board's, and the acceptance runs read the
+  new counters (deferral overruns, drops, short writes) for them.
