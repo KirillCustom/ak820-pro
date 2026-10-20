@@ -1,0 +1,14 @@
+You are reviewing a design before anything is built: a second transport for a Rust host daemon (ak820-agent/) that drives an AK820 Pro keyboard's LCD, so now-playing text reaches the board over its 2.4 GHz dongle when the USB cable is absent. Read only files inside the repository you were started in (the ak820-pro checkout); do not search or list anything outside it, and there is no AGENTS.md. You are read-only: do not modify, build or run anything.
+
+The plan: plans/RAWHID-24G-DAEMON-PLAN.md. The radio protocol it uses is stage 2 of plans/RAWHID-24G-PLAN.md (read revisions 2-5 and "Stage 2 built, reviewed and passing"; the board's side is qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/raw81.c and ch582f_ajazz.c; the host reference is scripts/raw81_proto.py and scripts/win_raw81_s2.py). The daemon: ak820-agent/src/ (agent.rs's cycle and Watch, media.rs's Publisher, hid/ and its exchange.rs, proto.rs, platform/windows/device.rs, path.rs, caps.rs, daemon.rs, cli.rs, task.rs, instance.rs; platform/macos/ for the other half), and plans/AK820-AGENT-PLAN.md for the daemon's rules (one clock owner, never enumerate HID, Windows delivers every input report to every open handle).
+
+Go wide and be adversarial. In particular:
+1. Isolation: can the clock or health ever reach the radio under this design? Is a second opener used only by the media cycle enough?
+2. Qualification (D6): is the stored (build token, stage-2) record a sound gate against sending 81 frames to a daily or older build (whose 3-byte window could turn payload bytes into 5B/5C frames)? Races: a reflash while the daemon is stopped; a second board; HC_GET6's availability on older builds; the dev hook op 17 read itself.
+3. Session ownership (D4) between the daemon and the test scripts, restarts, and the persisted state's failure modes.
+4. The error mapping (D3): stale resynchronisation, busy backoff, retries on new seqs, unknown vs incomplete, the 100 ms deadline.
+5. When to use the radio (D5): which USB states mean "absent"; flapping between transports; a board asleep; the cost of a CM list call per tick.
+6. Anything in the daemon's existing invariants (the drain/correlate rules, Stuck/Abandoned, the status file, install) that the design breaks.
+7. The tests: sufficient, and buildable without hardware given the map's finding that there is no fake Platform?
+
+Rank findings must-fix / should-fix / note, cite file:line, be brief, and say plainly whether the plan is ready to build once the must-fixes are taken.
