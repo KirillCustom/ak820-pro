@@ -32,9 +32,33 @@ on the pack showed no pass of 25 ms or more. On the board since 16:16 10-19
 but the bezel clipping the slot at an angle, noted. The record:
 [`POWER-MODE-ICONS-PLAN.md`](POWER-MODE-ICONS-PLAN.md).
 
-## Merge Balanced and Power saver? (2026-10-20, an idea, not decided)
+## Balanced and Power saver: widen the spread, or merge them? (2026-10-20, an idea, not decided)
 
-The model says the two are close in practice
+**Widening it, the option leaning ahead.** Today the two differ only in idle
+timings, and both run full brightness while typing, which is what costs.
+- **The change:** Power saver caps the LEDs at value 128 while typing too.
+  - Under QMK's CIE curve that is about half as bright to the eye, and a
+    quarter of the LED power (43 mW against 189).
+  - Its idle timings stay as they are.
+- **Modelled, in days a charge** (Balanced → Power saver now → Power saver
+  half-lit; Lights out for scale):
+  - JD's logged use: 13.2 → 13.7 → **21.3** (Lights out 26.8).
+  - Stop-start (4 h typing, twenty 15-min breaks): 8.7 → 9.7 → **15.6**
+    (21.9).
+  - The office worst case (8 h nonstop): 5.9 → 6.0 → **10.7** (14.6).
+- **What follows from it:**
+  - **Below 15%** every mode takes Power saver's stages (`power_task`), so
+    typing would drop to half brightness at low battery in Always on and
+    Balanced too. Probably right, given the "Saving power" notice, but a
+    choice.
+  - **Someone already at value 128 or less** gains nothing, since the cap
+    only lowers. A cap relative to the user's own value (half of it) would
+    reach them, but saves less for them anyway.
+  - **Relaxing Balanced instead** (dim at 2 min, sleep at 15) widens the
+    feel, not the runtime. It costs ~6% at JD's use, and ~17% for the
+    stop-start day, whose 15-minute breaks would never sleep.
+
+**Merging them** was the first idea. The model says the two are close in practice
 ([`../docs/power.md`](../docs/power.md), "The power modes at JD's use"):
 - **At JD's logged use:** Balanced ~13.2 days, Power saver ~13.7, within
   ~4%. Nearly all idle time is in stretches of hours, and both spend those
