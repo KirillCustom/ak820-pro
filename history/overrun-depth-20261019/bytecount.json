@@ -1,0 +1,82 @@
+[
+ {
+  "mask_us": 0,
+  "echo_sent": 1000,
+  "echo_replied": 996,
+  "tap_bytes": 34027,
+  "frames_seen": 1000,
+  "r81": {
+   "committed": 996,
+   "bad_sum": 0,
+   "lifetime": 0,
+   "uart_taint": 4,
+   "sent_91": 996,
+   "dropped": 0,
+   "acks_in_window": 0
+  },
+  "oe": 4,
+  "oe_drain": 1,
+  "probe_done": 500,
+  "deficit_vs_sent": -27
+ },
+ {
+  "mask_us": 1500,
+  "echo_sent": 1000,
+  "echo_replied": 950,
+  "tap_bytes": 33700,
+  "frames_seen": 1000,
+  "r81": {
+   "committed": 956,
+   "bad_sum": 0,
+   "lifetime": 0,
+   "uart_taint": 44,
+   "sent_91": 956,
+   "dropped": 0,
+   "acks_in_window": 0
+  },
+  "oe": 45,
+  "oe_drain": 1,
+  "probe_done": 500,
+  "deficit_vs_sent": 300
+ },
+ {
+  "mask_us": 0,
+  "echo_sent": 1000,
+  "echo_replied": 998,
+  "tap_bytes": 34024,
+  "frames_seen": 1000,
+  "r81": {
+   "committed": 998,
+   "bad_sum": 0,
+   "lifetime": 0,
+   "uart_taint": 2,
+   "sent_91": 998,
+   "dropped": 0,
+   "acks_in_window": 0
+  },
+  "oe": 2,
+  "oe_drain": 0,
+  "probe_done": 500,
+  "deficit_vs_sent": -24
+ },
+ {
+  "mask_us": 1500,
+  "echo_sent": 1000,
+  "echo_replied": 957,
+  "tap_bytes": 33694,
+  "frames_seen": 1000,
+  "r81": {
+   "committed": 960,
+   "bad_sum": 0,
+   "lifetime": 0,
+   "uart_taint": 40,
+   "sent_91": 960,
+   "dropped": 0,
+   "acks_in_window": 0
+  },
+  "oe": 40,
+  "oe_drain": 3,
+  "probe_done": 500,
+  "deficit_vs_sent": 306
+ }
+]

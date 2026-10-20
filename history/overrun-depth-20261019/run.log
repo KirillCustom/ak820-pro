@@ -1,0 +1,18 @@
+2026-10-19 22:19:50 arm b: per transaction, 500 masked spans of 50 us, at least 30 s of echo
+2026-10-19 22:20:51   OE 24 (+3 in the drain), refused 0, with PCF 0, with the probe 10; burst 500 done of 500; echo lost 24 of 3000 over 59.05 s of load, 6.98 s with nothing in flight
+2026-10-19 22:20:51 arm b: per transaction, 500 masked spans of 100 us, at least 30 s of echo
+2026-10-19 22:21:54   OE 35 (+5 in the drain), refused 0, with PCF 0, with the probe 24; burst 500 done of 500; echo lost 35 of 3000 over 61.59 s of load, 9.76 s with nothing in flight
+2026-10-19 22:21:54 arm b: per transaction, 500 masked spans of 150 us, at least 30 s of echo
+2026-10-19 22:22:57   OE 33 (+0 in the drain), refused 0, with PCF 2, with the probe 22; burst 500 done of 500; echo lost 33 of 3000 over 61.32 s of load, 9.27 s with nothing in flight
+2026-10-19 22:22:57 arm b: per transaction, 500 masked spans of 200 us, at least 30 s of echo
+2026-10-19 22:24:02   OE 42 (+2 in the drain), refused 0, with PCF 0, with the probe 29; burst 500 done of 500; echo lost 41 of 3000 over 63.07 s of load, 11.3 s with nothing in flight
+2026-10-19 22:24:02 arm b: per transaction, 500 masked spans of 300 us, at least 30 s of echo
+2026-10-19 22:25:08   OE 49 (+4 in the drain), refused 0, with PCF 0, with the probe 34; burst 500 done of 500; echo lost 49 of 3000 over 65.17 s of load, 13.32 s with nothing in flight
+2026-10-19 22:25:08 arm b: per transaction, 500 masked spans of 500 us, at least 30 s of echo
+2026-10-19 22:26:12   OE 37 (+4 in the drain), refused 0, with PCF 2, with the probe 29; burst 500 done of 500; echo lost 37 of 3000 over 61.68 s of load, 10.28 s with nothing in flight
+2026-10-19 22:26:12 arm b: per transaction, 500 masked spans of 1000 us, at least 30 s of echo
+2026-10-19 22:27:17   OE 47 (+2 in the drain), refused 0, with PCF 0, with the probe 39; burst 500 done of 500; echo lost 47 of 3000 over 64.2 s of load, 12.82 s with nothing in flight
+2026-10-19 22:27:17 arm b: per transaction, 500 masked spans of 1500 us, at least 30 s of echo
+2026-10-19 22:28:09   OE 54 (+2 in the drain), refused 0, with PCF 0, with the probe 51; burst 500 done of 500; echo lost 62 of 2000 over 50.61 s of load, 16.11 s with nothing in flight
+2026-10-19 22:28:09 arm a: per transaction, no burst, at least 60 s of echo
+2026-10-19 22:29:26   OE 16 (+3 in the drain), refused 0, with PCF 0, with the probe 0; burst 500 done of 0; echo lost 16 of 4000 over 75.14 s of load, 5.46 s with nothing in flight

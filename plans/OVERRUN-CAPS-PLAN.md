@@ -637,3 +637,23 @@ any masked stretch over ~87 us while bytes arrive can overrun.
   board runs `c9d1b8b4e7` per transaction, logging the natural overruns'
   contexts.
 
+## The depth, measured (10-19 22:19-22:40): about one byte
+
+[`history/overrun-depth-20261019/`](../history/overrun-depth-20261019/README.md).
+- **Masks as short as 50 us overrun** under the echo's load: 2% of spans,
+  rising to 10% at 1.5 ms.
+- **Every OE is a real loss:** the RX tap's byte count falls ~8 bytes short
+  per OE with 1.5 ms masks.
+
+So UART2's receiver holds about 1-2 bytes, whatever FIFOCTRL says, and must
+be served within about one byte's time (87 us).
+
+**The next plan (to write, then codex):**
+1. **The PCF's transaction runs unlocked.** It disables only the row ISR's
+   interrupt (the one other writer of port A's mode register), so UART2,
+   USB and the timers run throughout and the transaction stays ~3 ms.
+2. **UART2 above USB** in priority.
+3. **A hunt for the main loop's critical sections over ~80 us.**
+
+The per-byte release stays dev-only and off.
+
