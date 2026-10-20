@@ -261,3 +261,40 @@ Its findings:
   address and size between b2a0 and `981631b925`. So `981631b925` moved
   only the code, and it slept. The probe still runs first: it costs one
   flash, and a bad read would settle the lead.
+
+### The probe's result (10-20, 14:04-14:10): clean
+
+`83371a49f2` was flashed at 14:0x. The first run never slept, because
+relay 2 (the keyboard's 5 V) was off and `deep_cycles` refuses to start
+from the battery. It was on when the sweep ended at 13:10, and the cause is
+unknown. It was put back on and the run restarted.
+`wfi_sweep.py --variants 9,a --n 2` (`history/uart-latency-20261020/flash-probe/`, `flash-probe.log`):
+
+| variant | sleeps | wakes probed | wrong reads |
+|---|---|---|---|
+| 9, far word first | 2 slept, both woke on the key | 47 | 0 |
+| 10, near word first | 2/2 | 55 | 0 |
+
+- **Every read came back right, from the first one after each wake.**
+  That covers 102 wakes and both orders, with no stale word, no all-ones
+  and no zero.
+  - Per codex, that says only that these data reads returned the right
+    values. It doesn't show that instruction fetches straight after the
+    wake are safe, and it doesn't measure a readiness delay.
+- **Variant 9's first cycle counted as FAIL only on the host's timing.**
+  The host found no sleep edges in the power log (`asleep_s` None), likely
+  because the pack had just started charging again when relay 2 came on.
+  The board's own record was a normal sleep: 19 counted seconds, 23 by the
+  PCF, a key wake, no strays.
+- `wfi_sweep.py` now prints `deep_cycles`'s own error when it refuses.
+  Before, it threw that away, and the first run showed only "NO WAKES".
+
+**So the lead weakens further, and moving b2a0's own code is next (step
+2):** six builds on `mac/sleep-pad`, with pads of 16, 4, 8, 32, 64 and 228
+bytes. `scripts/layout_diff.py` checks each against b2a0:
+- all 860 RAM symbols are identical;
+- all 1,369 functions are identical as symbol + offset, apart from
+  `health_fill6`, whose immediates are the build token's bytes.
+
+`scripts/pad_sweep.py` flashes them in turn. b2a0 itself goes first as the
+control, and the WFI diagnostic is left on the board at the end.

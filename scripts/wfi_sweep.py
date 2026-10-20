@@ -74,6 +74,10 @@ def main():
             ring = ds.with_dev(od.wakes)[-a.n:]
             slept = r.returncode == 0
             row = {"variant": v, "wfi": offset(v), "slept": slept, "cycles": lines, "ring": ring}
+            if not slept:   # its own refusal or traceback, which the line filter drops
+                row["error"] = (r.stdout + r.stderr).strip().splitlines()[-3:]
+                for ln in row["error"]:
+                    print("    !", ln, flush=True)
             verdict = "PASS" if slept else "FAIL"
             if v in (9, 10):
                 # codex (flash-probe review, P2): the probe has its own verdict. A

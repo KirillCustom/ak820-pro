@@ -1,0 +1,113 @@
+{
+ "at": "2026-10-20 14:09:29",
+ "args": {
+  "variants": "9,a",
+  "n": 2,
+  "out": "history/uart-latency-20261020/flash-probe"
+ },
+ "results": [
+  {
+   "variant": 9,
+   "wfi": "probe, far first",
+   "slept": false,
+   "cycles": [
+    "2026-10-20 14:06:20 cycle   1: asleep None s (PCF 23, counted 19), woke key, p2 0x100, seq 1, key 1, Mac 44 ms, link sent 4 timeouts 1  FAIL",
+    "2026-10-20 14:07:22 cycle   2: asleep 32.0 s (PCF 32, counted 26), woke key, p2 0x100, seq 2, key 1, Mac 55 ms, link sent 9 timeouts 1  ok",
+    "deep cycles: FAIL {\"cycles\": 2, \"passed\": 1, \"stopped\": null, \"path\": \"ladder\", \"mac_latency_ms\": {\"median\": 55.0, \"max\": 55.0}, \"clock_before_abs_ms\": {\"median\": 157.7, \"max\": 157.7}, \"timed_out\": {}}"
+   ],
+   "ring": [
+    {
+     "seq": 0,
+     "reason": "key",
+     "flags": 64,
+     "counted_s": 19,
+     "p0": "0x0",
+     "p1": "0x0",
+     "p2": "0x100",
+     "ms": 70239,
+     "strays": 0,
+     "written": 2
+    },
+    {
+     "seq": 1,
+     "reason": "key",
+     "flags": 64,
+     "counted_s": 26,
+     "p0": "0x0",
+     "p1": "0x0",
+     "p2": "0x100",
+     "ms": 100309,
+     "strays": 0,
+     "written": 2
+    }
+   ],
+   "error": [
+    "2026-10-20 14:07:22 cycle   2: asleep 32.0 s (PCF 32, counted 26), woke key, p2 0x100, seq 2, key 1, Mac 55 ms, link sent 9 timeouts 1  ok",
+    "2026-10-20 14:07:24 restored: relay 1 open, relay 2 on, data on, the arm cancelled, the bench sleep time cleared, the mode put back, stage released",
+    "deep cycles: FAIL {\"cycles\": 2, \"passed\": 1, \"stopped\": null, \"path\": \"ladder\", \"mac_latency_ms\": {\"median\": 55.0, \"max\": 55.0}, \"clock_before_abs_ms\": {\"median\": 157.7, \"max\": 157.7}, \"timed_out\": {}}"
+   ],
+   "probe": {
+    "wakes": 47,
+    "bad_wakes": 0,
+    "bad_pos": "0x0000",
+    "as_last": 0,
+    "as_ones": 0,
+    "as_zero": 0,
+    "first_bad": "0x00000000",
+    "first_want": "0x00000000",
+    "first_pos": 0
+   },
+   "probe_verdict": "CLEAN",
+   "pass": false
+  },
+  {
+   "variant": 10,
+   "wfi": "probe, near first",
+   "slept": true,
+   "cycles": [
+    "2026-10-20 14:08:24 cycle   1: asleep 32.0 s (PCF 32, counted 26), woke key, p2 0x100, seq 3, key 1, Mac 51 ms, link sent 7 timeouts 3  ok",
+    "2026-10-20 14:09:27 cycle   2: asleep 33.0 s (PCF 33, counted 27), woke key, p2 0x100, seq 4, key 1, Mac 52 ms, link sent 8 timeouts 2  ok",
+    "deep cycles: PASS {\"cycles\": 2, \"passed\": 2, \"stopped\": null, \"path\": \"ladder\", \"mac_latency_ms\": {\"median\": 52.2, \"max\": 52.2}, \"clock_before_abs_ms\": {\"median\": 144.9, \"max\": 144.9}, \"timed_out\": {}}"
+   ],
+   "ring": [
+    {
+     "seq": 2,
+     "reason": "key",
+     "flags": 64,
+     "counted_s": 26,
+     "p0": "0x0",
+     "p1": "0x0",
+     "p2": "0x100",
+     "ms": 130386,
+     "strays": 0,
+     "written": 4
+    },
+    {
+     "seq": 3,
+     "reason": "key",
+     "flags": 64,
+     "counted_s": 27,
+     "p0": "0x0",
+     "p1": "0x0",
+     "p2": "0x100",
+     "ms": 160460,
+     "strays": 0,
+     "written": 4
+    }
+   ],
+   "probe": {
+    "wakes": 55,
+    "bad_wakes": 0,
+    "bad_pos": "0x0000",
+    "as_last": 0,
+    "as_ones": 0,
+    "as_zero": 0,
+    "first_bad": "0x00000000",
+    "first_want": "0x00000000",
+    "first_pos": 0
+   },
+   "probe_verdict": "CLEAN",
+   "pass": true
+  }
+ ]
+}

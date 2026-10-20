@@ -1,0 +1,15 @@
+    ! 2026-10-20 14:07:22 cycle   2: asleep 32.0 s (PCF 32, counted 26), woke key, p2 0x100, seq 2, key 1, Mac 55 ms, link sent 9 timeouts 1  ok
+    ! 2026-10-20 14:07:24 restored: relay 1 open, relay 2 on, data on, the arm cancelled, the bench sleep time cleared, the mode put back, stage released
+    ! deep cycles: FAIL {"cycles": 2, "passed": 1, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 55.0, "max": 55.0}, "clock_before_abs_ms": {"median": 157.7, "max": 157.7}, "timed_out": {}}
+variant 0x09 (probe, far first): sleep FAIL, probe CLEAN
+    probe: {"wakes": 47, "bad_wakes": 0, "bad_pos": "0x0000", "as_last": 0, "as_ones": 0, "as_zero": 0, "first_bad": "0x00000000", "first_want": "0x00000000", "first_pos": 0}
+    2026-10-20 14:06:20 cycle   1: asleep None s (PCF 23, counted 19), woke key, p2 0x100, seq 1, key 1, Mac 44 ms, link sent 4 timeouts 1  FAIL
+    2026-10-20 14:07:22 cycle   2: asleep 32.0 s (PCF 32, counted 26), woke key, p2 0x100, seq 2, key 1, Mac 55 ms, link sent 9 timeouts 1  ok
+    deep cycles: FAIL {"cycles": 2, "passed": 1, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 55.0, "max": 55.0}, "clock_before_abs_ms": {"median": 157.7, "max": 157.7}, "timed_out": {}}
+variant 0x0a (probe, near first): sleep PASS, probe CLEAN
+    probe: {"wakes": 55, "bad_wakes": 0, "bad_pos": "0x0000", "as_last": 0, "as_ones": 0, "as_zero": 0, "first_bad": "0x00000000", "first_want": "0x00000000", "first_pos": 0}
+    2026-10-20 14:08:24 cycle   1: asleep 32.0 s (PCF 32, counted 26), woke key, p2 0x100, seq 3, key 1, Mac 51 ms, link sent 7 timeouts 3  ok
+    2026-10-20 14:09:27 cycle   2: asleep 33.0 s (PCF 33, counted 27), woke key, p2 0x100, seq 4, key 1, Mac 52 ms, link sent 8 timeouts 2  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 52.2, "max": 52.2}, "clock_before_abs_ms": {"median": 144.9, "max": 144.9}, "timed_out": {}}
+sequence back to 0xff
+summary: probe, far first FAIL (probe CLEAN), probe, near first ok (probe CLEAN)
