@@ -282,3 +282,20 @@ session); every NAK reason provoked; forbidden commands shown to have no
 effect; simultaneous USB and radio requests correctly routed; under a typing
 burst no new pass >= 25 ms and no A1 drop, replacement or give-up; and a
 sustained request stream's loss and latency.
+
+## The drain bound (10-19): `ea73efb2`
+
+Every echo cost one 13-15 ms pass, 8-9 ms of it in the RX drain (the Mac
+session's `HC_ACCT` attribution, `history/raw81-echo-20261019-mac/`). The
+fix (`4c5cb496`): mid-collection the drain stops after `RAW81_DRAIN_MS` (2),
+the lifetime rises to 40 ms to span the passes, and op 17 page 1 reports the
+last commit's ms and passes. [Review](review-codex-raw81-drain-2026-10-19.md)
+and [verify](review-codex-raw81-drain-verify-2026-10-19.md), verbatim:
+
+| finding | disposition |
+|---|---|
+| Must-fix: a partial drain left an A-frame's ACK queued while the pump could retransmit, close the 91's window or advance (the documented keystroke-loss path) | **Fixed in `ea73efb2`:** a drain stopped by its budget sets `rx_left` and the pump skips that pass. Verified closed. |
+| Note: the comments called 8-9 ms the module's delivery time; the measurement was the drain's | **Fixed** in the same commit. |
+| Note: 40 ms extends a false start's damage; 128 bytes of input queue cover ~11 ms; silence survives the new scheduling | **Accepted** for stage 1 (one request at a time). |
+| Verify, should-fix: under a continuous request stream `rx_left` can recur pass after pass with no global bound on a keyboard frame's wait | **Taken for stage 2:** a bound on consecutive skipped pumps (after it, one full drain to the queue's end, then the pump), and stage 2's one-dispatch-per-pass. Stage 1's echo, one request at a time, cannot produce the pattern. |
+| Verify, note: the 64-byte cap still exits without `rx_left` (the existing limitation) | **Accepted;** recorded, unchanged from before stage 1. |
