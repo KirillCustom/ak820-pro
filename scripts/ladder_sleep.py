@@ -8,8 +8,9 @@ no stage forced, no arm.
 In order: the mode set (op 14 sub 1; put back at the end); relay 2 off (the
 pack); a rig tap (F19, to the Mac: the ladder's idle starts there); USB data
 off (`uhubctl`). The logger then shows the sleep: its fall is timed from the
-tap and must come at the mode's sleep time (Balanced 420 s, Power saver 180,
-Lights out 30), within the stages' pass. --asleep-s after that, the wake:
+tap and must come at the mode's sleep time (Balanced 1200 s, Power saver
+180, Lights out 60; plans/POWER-MODES-REVISION-PLAN.md), within the stages'
+pass. --asleep-s after that, the wake:
 the rig's tap, or with --charge-wake relay 2 on (CHRG falls if the pack takes
 a charge; a full pack's charger gives no edge, so after 20 s with no rise the
 rig taps). Then data on, and the board's figures: why it woke, the PCF's
@@ -33,7 +34,7 @@ import deep_sleep as ds  # noqa: E402
 import ak820battery as ba  # noqa: E402
 
 cm = sb.cm
-SLEEP_S = {0: None, 1: 420, 2: 180, 3: 30}   # Always on never; Balanced 7 min; Power saver 3; Lights out 30 s
+SLEEP_S = {0: None, 1: 1200, 2: 180, 3: 60}   # Always on never; Balanced 20 min; Power saver 3; Lights out 1
 AGENT_LOG = os.path.expanduser("~/Library/Logs/ak820pro/ak820-agent.log")
 
 

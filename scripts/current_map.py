@@ -31,8 +31,15 @@ hold, so the daemon keeps its now-playing and clock traffic.
 from 16 to 255 and red, green and blue alone, for the gauge's RGB model in
 buffer units: QMK's CIE curve makes values 64 and 128 drives of 12 and 48), or
 `stages` (Phase 2's ladder stages forced, at JD's lighting, a purple and an
-animated effect, each beside the board's own modelled draw from HC_POWER). Each state also records the board's own LED drive (`led drive`,
-per mille of the maximum) and the pack power (mA x vcell).
+animated effect, and JD's lighting in Power saver while typing, at its 128
+ceiling, each beside the board's own modelled draw from HC_POWER). Each state
+also records the board's own LED drive (`led drive`, per mille of the maximum)
+and the pack power (mA x vcell).
+
+Above 15% only: it refuses at a level of 150 per mille or below, where the
+low cap's ceiling (Power saver's 128 while typing, in every mode) would hold
+every state's lighting under it, a held stage or not
+(plans/POWER-MODES-REVISION-PLAN.md).
 """
 import argparse
 import csv
@@ -52,7 +59,8 @@ RELAY = os.path.join(ROOT, "scripts", "usb_relay.py")
 BATT = os.path.join(ROOT, "hostagent", "ak820battery.py")
 
 GET_VALUE, SET_VALUE, RGB_CH = 0x08, 0x07, 3
-POWER_FULL = 0   # power.c's POWER_MODE_FULL
+POWER_FULL, POWER_SAVER = 0, 2   # power.c's POWER_MODE_FULL, POWER_MODE_SAVER
+LOW_CAP_PM = 150                 # power.c's LOW_CAP_PM: the low cap at or below it
 BRIGHTNESS, EFFECT, SPEED, COLOR = 1, 2, 3, 4
 HEALTH_CH, HC_DEVHOOK = 0x13, 0x76
 
@@ -86,13 +94,17 @@ RGB_CURVE = ([("jd", None, None), ("rgb off", {"effect": 0}, None)]
 # Phase 2: the ladder's stages forced (HC_DEVHOOK op 14), at JD's lighting and
 # at a coloured and an animated effect, each against the board's own modelled
 # draw (HC_POWER), which the summary sets beside the logger's. A 4th element
-# is the stage to force (0 active .. 3 screen off). Effect 3 is Cycle All
-# (animated); effect 1 at hue 191 is a saturated purple.
+# is the stage to force (0 active .. 3 screen off), a 5th the power mode to
+# hold it in (Always on otherwise). Effect 3 is Cycle All (animated); effect 1
+# at hue 191 is a saturated purple. "jd saver" is JD's lighting typing in
+# Power saver, at its 128 ceiling: ~161 mW with the bench's USB data (~154
+# untethered) at his white and screen level.
 PURPLE = {"effect": 1, "h": 191, "s": 255, "v": 255}
 CYCLE = {"effect": 3, "h": 0, "s": 255, "v": 255}
-STAGES = [(f"{who} {stg}", rgb, None, k)
-          for who, rgb in (("jd", None), ("purple", PURPLE), ("cycle", CYCLE))
-          for k, stg in enumerate(("active", "dim", "off", "dark"))]
+STAGES = ([(f"{who} {stg}", rgb, None, k)
+           for who, rgb in (("jd", None), ("purple", PURPLE), ("cycle", CYCLE))
+           for k, stg in enumerate(("active", "dim", "off", "dark"))]
+          + [("jd saver", None, None, 0, POWER_SAVER)])
 SETS = {"loads": STATES, "rgb-curve": RGB_CURVE, "stages": STAGES}
 
 
@@ -170,6 +182,15 @@ def power_mode(h, mode=None):
     return r[4]
 
 
+def power_state(h):
+    """Op 14's read (sub 0): the mode, the stage, the value ceiling applied,
+    the stage held (0xFF none) and whether the board is on the pack. A set
+    (sub 1 or 2) takes effect at power.c's next 10 Hz tick, so read this after
+    one, not in the set's own reply."""
+    r = xfer(h, [SET_VALUE, HEALTH_CH, HC_DEVHOOK, 14, 0, 0] + [0] * 26)
+    return {"mode": r[4], "stage": r[5], "val_cap": r[6], "forced": r[7], "on_battery": bool(r[8])}
+
+
 def set_lcd(h, want, jd):
     if want is None:
         lcd(h, 4, jd["level"])
@@ -195,6 +216,13 @@ def led_drive():
     """The board's LED drive over the last second, per mille (None if unread)."""
     rc, out = run([PY, BATT])
     m = re.search(r"^led drive\s+([0-9.]+) %", out, re.M)
+    return round(float(m.group(1)) * 10) if m else None
+
+
+def level_pm():
+    """The gauge's level, per mille (None if unknown or unread)."""
+    rc, out = run([PY, BATT])
+    m = re.search(r"^level\s+([0-9.]+) %", out, re.M)
     return round(float(m.group(1)) * 10) if m else None
 
 
@@ -279,19 +307,27 @@ def main():
             else:
                 raise SystemExit("relay 2 off, but the board does not read battery")
         say("on battery")
+        lv = level_pm()
+        if jd_mode is not None and lv is not None and lv <= LOW_CAP_PM:
+            raise SystemExit(f"the level is {lv / 10:.1f}%: at 15% or below the low cap holds every "
+                             "state under Power saver's ceiling; charge first")
         states = SETS[a.set]
         plan = states + states[::-1]
         for i, state in enumerate(plan):
             name, rgb, screen = state[:3]
             stage = state[3] if len(state) > 3 else None
+            mode = state[4] if len(state) > 4 else POWER_FULL
             h = ak820text.open_device()
             try:
                 set_rgb(h, dict(jd_rgb) if rgb is None else rgb)
                 st = set_lcd(h, screen, jd_lcd)
                 if jd_mode is not None:
-                    # Every state's stage held: the one it names, or active, so
-                    # neither the ladder nor its low-battery cap moves a load
-                    # mid-hold (codex: Full alone does not stop the cap).
+                    # Every state's stage held, in its mode: the one it names,
+                    # or active, so the ladder does not move a load mid-hold.
+                    # Holding the stage keeps the low cap's stages out, but not
+                    # its ceiling (Saver's 128 while typing), hence the refusal
+                    # at 15% above.
+                    power_mode(h, mode)
                     force_stage(h, 0 if stage is None else stage)
             finally:
                 h.close()

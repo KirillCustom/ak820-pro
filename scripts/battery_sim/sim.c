@@ -68,8 +68,11 @@ bool     display_band_busy(void) {
            (status_posted && now_ms - status_at < 2000u);
 }
 bool     display_debug_active(void) { return debug_open; }
-/* QMK's conversion, for the dim hook: s = 0 (white) is all the sim needs. */
+/* QMK's conversion, for the dim hook: s = 0 (white) is all the sim needs.
+ * The colour build (SIM_REAL_COLOUR, colour.c) links QMK's own instead. */
+#ifndef SIM_REAL_COLOUR
 rgb_t    hsv_to_rgb(hsv_t c) { rgb_t r = {c.v, c.v, c.v}; return r; }
+#endif
 static uint8_t power_mode_p1;   /* kb_eeconfig's power mode + 1, 0 = unset */
 bool kb_eeconfig_get_power_mode(uint8_t *m) {
     if (power_mode_p1 == 0) return false;
@@ -110,7 +113,8 @@ uint64_t sn32f2xx_led_drive_take(uint32_t now, uint32_t *lit_ms, uint64_t rgb_ms
     return (uint64_t)sum * dt;
 }
 uint32_t sn32f2xx_led_load(void) { return scale ? 82u * 3u * 255u / 2u : 0u; }
-void     sn32f2xx_set_power_scale(uint8_t s) { scale = s; }
+static int      scale_sets;   /* power.c's apply() sets the scale every time it runs */
+void     sn32f2xx_set_power_scale(uint8_t s) { scale = s; scale_sets++; }
 
 /* The persisted level, as kb_eeconfig keeps it: whole percent + 1, 0 = unset. */
 static uint8_t saved_p1;       /* 0.5 % steps + 1, as kb_eeconfig keeps it */
@@ -1268,6 +1272,9 @@ static void c5_equivalence(void) {
 #ifdef BATTERY_P_SLEEP_UW
 #include "sleeps.c"  /* deep sleep's hand-over */
 #endif
+#ifdef SIM_REAL_COLOUR
+#include "colour.c"  /* the colour path: QMK's conversion and the board's effects under the ceiling */
+#endif
 #endif
 #endif
 
@@ -1393,6 +1400,21 @@ int main(int argc, char **argv) {
     else if (!strcmp(s, "l_sleep_usb"))     l_sleep_usb();
     else if (!strcmp(s, "l_wake_notice"))   l_wake_notice();
     else if (!strcmp(s, "l_wake_notice_high")) l_wake_notice_high();
+    else if (!strcmp(s, "l_no_lights_off")) l_no_lights_off();
+    else if (!strcmp(s, "l_ceiling_moves")) l_ceiling_moves();
+    else if (!strcmp(s, "l_low_edge"))      l_low_edge();
+    else if (!strcmp(s, "l_unknown_level")) l_unknown_level();
+#ifdef AK820_DEV_HOOKS
+    else if (!strcmp(s, "l_forced_ceiling")) l_forced_ceiling();
+    else if (!strcmp(s, "l_set_mode"))       l_set_mode();
+    else if (!strcmp(s, "l_under_dim"))      l_under_dim();
+    else if (!strcmp(s, "c_lights_off_held")) c_lights_off_held();
+#endif
+#ifdef SIM_REAL_COLOUR
+    else if (!strcmp(s, "k_hook"))  k_hook();
+    else if (!strcmp(s, "k_drift")) k_drift();
+    else if (!strcmp(s, "k_rainfall")) k_rainfall();
+#endif
     else if (!strcmp(s, "c_rate"))        c_rate();
     else if (!strcmp(s, "c_uneven"))      c_uneven();
     else if (!strcmp(s, "c_wrap"))        c_wrap();

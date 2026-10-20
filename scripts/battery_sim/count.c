@@ -135,20 +135,40 @@ static void c_time_left(void) {
     CHECK(battery_energy_used_mwh_x10() == 0, "FULL restarts the energy: %u", battery_energy_used_mwh_x10());
 }
 
-/* The ladder's off stage: the RGB's energy leaves the count (the driver's
- * scale 0), the backlight capped at level 4: 106.9 + 3.3 mW. */
+/* The ladder's dark stage, Balanced's at 20 min: the RGB's energy leaves the
+ * count (the driver's scale 0) and so does the backlight's, the base alone
+ * (106.9 mW) for an hour, the deep sleep never taken (the sim has none). */
 static void c_load_step(void) {
     power_init();
     c_start(96);
-    idle_ms = 300000;
+    idle_ms = 1200000;
     ltick();
-    CHECK(power_stage() == POWER_STAGE_LIGHTS_OFF, "lights off: %d", power_stage());
+    CHECK(power_stage() == POWER_STAGE_SCREEN_OFF, "dark: %d", power_stage());
     uint16_t l0 = battery_level_permille();
     for (uint32_t i = 0; i < 36000u; i++) ltick();
+    CHECK(battery_power_uw() == 106900u, "the base alone: %u uW", battery_power_uw());
+    double want = 106.9 * 3600.0 / 56084.4;
+    double drop = l0 - battery_level_permille();
+    CHECK(fabs(drop - want) <= 1.0, "an hour dark: %.0f pm, want %.1f", drop, want);
+}
+
+#ifdef AK820_DEV_HOOKS
+/* The RGB-off stage no mode reaches now, held by the bench: the base and the
+ * backlight capped at level 4, 106.9 + 3.3 mW. */
+static void c_lights_off_held(void) {
+    power_init();
+    c_start(96);
+    power_force_stage(POWER_STAGE_LIGHTS_OFF);
+    ltick();
+    CHECK(power_stage() == POWER_STAGE_LIGHTS_OFF, "lights off, held: %d", power_stage());
+    uint16_t l0 = battery_level_permille();
+    for (uint32_t i = 0; i < 36000u; i++) ltick();
+    CHECK(battery_power_uw() == 106900u + 39100u * 4u / 48u, "the base and level 4: %u uW", battery_power_uw());
     double want = (106.9 + 39.1 * 4 / 48) * 3600.0 / 56084.4;
     double drop = l0 - battery_level_permille();
     CHECK(fabs(drop - want) <= 1.0, "an hour with the lights off: %.0f pm, want %.1f", drop, want);
 }
+#endif
 
 /* The bench's USB data adds its 7.1 mW. */
 static void c_usb_data(void) {

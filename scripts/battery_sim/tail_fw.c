@@ -25,6 +25,12 @@ uint32_t timer_elapsed32(uint32_t last) { (void)last; return 0; }
 bool     gpio_read_pin(int pin) { (void)pin; return true; }
 bool     rgb_matrix_is_enabled(void) { return true; }
 uint32_t sn32f2xx_led_load(void) { return 0; }
+uint64_t sn32f2xx_led_drive_take(uint32_t now, uint32_t *lit_ms, uint64_t rgb_ms[3]) {   /* Phase 2's count */
+    (void)now;
+    if (lit_ms) *lit_ms = 0;
+    if (rgb_ms) rgb_ms[0] = rgb_ms[1] = rgb_ms[2] = 0;
+    return 0;
+}
 bool     kb_eeconfig_get_batt_level(uint16_t *permille) { (void)permille; return false; }
 void     kb_eeconfig_set_batt_level(uint16_t permille) { (void)permille; }
 uint32_t ch582_battery_age_ms(void) { return UINT32_MAX; }
