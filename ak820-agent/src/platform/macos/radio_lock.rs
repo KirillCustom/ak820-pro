@@ -29,9 +29,11 @@ pub fn try_take() -> Result<Option<RadioLock>, String> {
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         // Every user's: reachable whatever the creator's umask, and sticky,
-        // so only its owner can delete or replace the file, whose inode IS
+        // so no other user can delete or replace the file, whose inode IS
         // the lock (flock does not stop a rename, as Windows' sharing does).
-        // Only the owner can set it; anyone else's daemon finds it set.
+        // Its owner, the directory's owner and root still can: the Rust and
+        // the Python never do, and every holder must keep it so. Only the
+        // owner can set this; anyone else's daemon finds it set or not.
         let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o1777));
     }
     let file = open_or_create(&p).map_err(|e| format!("{}: {e}", p.display()))?;
@@ -49,7 +51,12 @@ pub fn try_take() -> Result<Option<RadioLock>, String> {
 fn open_or_create(p: &std::path::Path) -> std::io::Result<File> {
     for _ in 0..3 {
         match File::open(p) {
-            Ok(f) => return Ok(f),
+            Ok(f) => {
+                // Its owner puts back what a restrictive umask took; anyone
+                // else's attempt fails and changes nothing (codex's verify, 3).
+                let _ = f.set_permissions(std::fs::Permissions::from_mode(0o666));
+                return Ok(f);
+            }
             Err(e) if e.kind() != ErrorKind::NotFound => return Err(e),
             Err(_) => {}
         }

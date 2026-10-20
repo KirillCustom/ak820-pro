@@ -439,8 +439,19 @@ must-fix.
 |---|---|---|
 | 1 | must: `IOHIDDeviceCreate` returning NULL for a listed service was `Absent`, which on the USB path hands now-playing to the radio | **Taken:** `Open` (busy); the next listing establishes absence. |
 | 2 | should: one retirement budget and cap message for both objects, so a radio that answers and then sleeps can spend the board's six | **Taken:** a budget per opener. |
-| 3 | should: two users racing at the lock file's creation (the loser's read-and-append open fails), and the umask can shut a second user out | **Taken:** the file is created exclusively and the loser opens it read-only; the directory is set 1777 (sticky, so only the file's owner can replace it, which matters because flock does not stop a rename), the file 0666. |
+| 3 | should: two users racing at the lock file's creation (the loser's read-and-append open fails), and the umask can shut a second user out | **Taken:** the file is created exclusively and the loser opens it read-only; the directory is set 1777 (sticky, so no other user can replace it, which matters because flock does not stop a rename; its owner, the directory's owner and root still can, and no holder does), the file 0666. |
 | 4 | should: the lock test skipped errors as well as contention | **Taken:** it skips `Ok(None)` and fails `Err`, as Windows' does. |
+
+**Codex's verify (10-20)**
+([`review-codex-macos-radio-verify-2026-10-20.md`](review-codex-macos-radio-verify-2026-10-20.md),
+verbatim): the must-fix is closed; `Open` stands the radio down and retries
+on the media schedule; the budgets are apart; nothing blocks installing
+with `--clock --radio`. Its should-fixes: an owner's existing restrictive
+file was never repaired (**taken:** the owner sets 0666 on every open; a
+non-owner's attempt fails harmlessly), and the inode wording (**taken**,
+above and in the code). **Noted, not taken:** under a umask of 077 a second
+user can open the file in the instant between its creation and its chmod
+and take the 60 s lock-error backoff once; this Mac has one user.
 
 
 ### Codex's implementation review (10-20) and its dispositions
