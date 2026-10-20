@@ -227,3 +227,59 @@ the table wins:**
 | V6 | should: re-prime on the monitor's enable too; label the timing boundaries | **Taken.** |
 | V7 | should: keep the link's retry, give-up, replacement and queue-drop counters beside the delivered presses | **Taken.** |
 
+## Handoff (00:05 10-20): built, not yet reviewed or flashed
+
+**JD's go (00:00 10-20):** flash it and test whatever is needed overnight,
+while he sleeps. No hands available.
+
+**The firmware:**
+- **Branch:** `mac/uart-latency` at `11cea91370`, pushed to jdlien. It sits
+  on Gremlin's stage 2 v2, `0ae4cf8c80` (`gremlin/raw81`), so the stage-1
+  echo is retired.
+- **chibios-contrib:** `327092d999`, pushed to `ak820pro-patches`.
+- **Status:** dev and daily both compile clean. `build.sh` checks that
+  `ak820_i2c_xfer_begin/end` are linked and that the dev diagnostics are
+  present in dev and absent in daily.
+- **The dev ops:**
+  - op 20: sub 2 sets the lock mode from [5] (0 transaction, 1 byte,
+    2 unlocked, the default); sub 3 sets UART2's priority from [5] (0, the
+    default, or 1). The summary's [14] is the mode and [15] the priority.
+  - op 23 sub 5: the stuck-SCL ordinary read. The reply's [16..21] carry it.
+  - ops 25-26: the gap monitor (sub 1 on, 2 off, 3 zero) and its ring.
+  - op 22, kind 0xFF: [12..13] is UART2's longest handler.
+  - Gremlin's are op 17 subs 4 and 5: stay off op 17.
+
+**Next, in order:**
+1. **Codex on the diff:** `git -C qmk_firmware-ak820pro diff 0ae4cf8c80
+   mac/uart-latency`, plus contrib `22596e61cd..327092d999`; dispositions
+   here.
+2. **`./build.sh dev`, then `./flash.sh <artifact>`.** JD's go covers it.
+3. **Port `scripts/win_raw81_s2.py` to the Mac, as `mac_raw81_s2.py`:**
+   - swap its `Radio.__init__` (the dongle's FF60 by hidutil's
+     `DevSrvsID`, as in `mac_raw81_echo.py`), `usb_open`/`usb_xfer` (through
+     `deep_sleep.with_dev` and `cm.xfer`) and `Owner`'s lock (`fcntl.flock`
+     on `/Users/Shared/ak820pro/raw81.lock`, byte 0);
+   - run `all` (stage 2's acceptance) on the new build.
+4. **Update `overrun_diag.py`:**
+   - op 20's new subs: mode and priority, read back before each arm;
+   - the load: `mac_raw81_s2.py load SECONDS`, since the echo is retired.
+     It logs each loss's `sent_s` and `gave_up_s`;
+   - the monitor ops; the RX tap's byte totals (ops 15/16) per arm.
+5. **The A/B:**
+   - lock transaction against unlocked, each with a burst and without, at
+     priority 1;
+   - then priority 1 against 0, unlocked;
+   - then the monitor off against on.
+
+   Compare OEs, refused bytes, the tap's bytes and losses.
+6. **The release matrix, every complete pass under 25 ms:**
+   - the stuck test;
+   - the animation's stop (`ANIM_TOG`: no hands, so through the restore by
+     Fn+D's op 1 instead);
+   - a sync's phase set, with the release and boundary errors.
+
+   And typing through the rig (relay 1) during a request stream: every press
+   at the Mac; the link's retries, give-ups, replacements and queue drops.
+7. **History write-ups and a report to JD.** Then `ak820pro-jdlien` and
+   `deps.lock` with Gremlin, then R5.
+

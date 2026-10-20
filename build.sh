@@ -167,7 +167,12 @@ for fn in i2c_write_byte i2c_read_byte; do
     daily|fpb) (( ! any )) || { echo "FAIL: a $FLAVOR build's $fn touches the lock between bytes" >&2; fail=1; } ;;
   esac
 done
-od_syms=(od_mask_begin od_uart_oe od_fill_summary rtc_burst_start sleep_wake_ring_fill)
+# The PCF's transfer runs unlocked with only the row ISR held off, in every
+# flavour (plans/UART-LATENCY-PLAN.md, fix 1): its hooks must be linked.
+for sym in ak820_i2c_xfer_begin ak820_i2c_xfer_end; do
+  [[ -n "$(awk -v s="$sym" '$3 == s' <<<"$nm_out")" ]] || { echo "FAIL: $sym is missing (the unlocked PCF transfer)" >&2; fail=1; }
+done
+od_syms=(od_mask_begin od_uart_oe od_fill_summary rtc_burst_start sleep_wake_ring_fill od_tick od_set_uart_priority)
 for sym in "${od_syms[@]}"; do
   have=$(awk -v s="$sym" '$3 == s' <<<"$nm_out")
   case "$FLAVOR" in
