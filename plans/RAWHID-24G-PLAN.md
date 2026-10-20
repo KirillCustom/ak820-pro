@@ -338,3 +338,13 @@ call sites, many per pass, each paying the same software divide. Fix once in
 16-bit tick's increments), after measuring one call's cost and the calls per
 pass; codex to check the stall counters' 25 ms arithmetic, which runs through
 it.
+
+### Stage 2 addendum: TX fairness (from the drain-bound verify)
+
+A drain stopped by its budget defers the TX pump to the next pass
+(`rx_left`). Under a steady request stream that could recur pass after pass.
+Stage 2 bounds it: after `RAW81_MAX_SKIPS` (2) consecutive skipped pumps, the
+next drain ignores the budget and reads to the queue's end (at most the 128
+bytes queued, now ~microseconds a byte), and the pump runs. With the tick fix
+a collection already takes 2 passes and the budget rarely binds; the bound
+is the guarantee, not the common path.
