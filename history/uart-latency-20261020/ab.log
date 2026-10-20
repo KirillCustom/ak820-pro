@@ -1,0 +1,40 @@
+2026-10-20 00:10:01 arm tb: lock transaction, UART2 at 1, a burst of 1500, monitor off, 150 s of load
+2026-10-20 00:12:34   OE 199 (+4 in the drain), refused 0, with PCF 182, none 21; burst 1500 of 1500; load 4162 ok, 356 lost of 4600, ge25 0, ge10 775; tap 154661 B
+2026-10-20 00:12:34 arm ub: lock unlocked, UART2 at 1, a burst of 1500, monitor off, 150 s of load
+2026-10-20 00:15:09   OE 14 (+7 in the drain), refused 0, with PCF 0, none 21; burst 1500 of 1500; load 5586 ok, 14 lost of 5600, ge25 0, ge10 1526; tap 190661 B
+2026-10-20 00:15:09 arm ub: lock unlocked, UART2 at 1, a burst of 1500, monitor off, 150 s of load
+2026-10-20 00:17:43   OE 12 (+2 in the drain), refused 0, with PCF 0, none 14; burst 1500 of 1500; load 5588 ok, 12 lost of 5600, ge25 0, ge10 1581; tap 190676 B
+2026-10-20 00:17:43 arm tb: lock transaction, UART2 at 1, a burst of 1500, monitor off, 150 s of load
+2026-10-20 00:20:17   OE 205 (+5 in the drain), refused 0, with PCF 194, none 16; burst 1500 of 1500; load 4167 ok, 357 lost of 4600, ge25 0, ge10 810; tap 154656 B
+2026-10-20 00:20:17 arm tn: lock transaction, UART2 at 1, no burst, monitor off, 150 s of load
+2026-10-20 00:22:53   OE 9 (+8 in the drain), refused 0, with PCF 2, none 15; burst 1500 of 0; load 5792 ok, 8 lost of 5800, ge25 0, ge10 440; tap 197454 B
+2026-10-20 00:22:53 arm un: lock unlocked, UART2 at 1, no burst, monitor off, 150 s of load
+2026-10-20 00:25:30   OE 10 (+7 in the drain), refused 0, with PCF 0, none 17; burst 1500 of 0; load 5790 ok, 10 lost of 5800, ge25 0, ge10 454; tap 197464 B
+2026-10-20 00:25:30 arm un: lock unlocked, UART2 at 1, no burst, monitor off, 150 s of load
+2026-10-20 00:28:06   OE 9 (+6 in the drain), refused 0, with PCF 0, none 15; burst 1500 of 0; load 5791 ok, 9 lost of 5800, ge25 0, ge10 509; tap 197476 B
+2026-10-20 00:28:06 arm tn: lock transaction, UART2 at 1, no burst, monitor off, 150 s of load
+2026-10-20 00:30:43   OE 10 (+5 in the drain), refused 0, with PCF 0, none 15; burst 1500 of 0; load 5790 ok, 10 lost of 5800, ge25 0, ge10 482; tap 197473 B
+2026-10-20 00:30:43 arm un: lock unlocked, UART2 at 1, no burst, monitor off, 150 s of load
+2026-10-20 00:33:20   OE 15 (+5 in the drain), refused 0, with PCF 0, none 20; burst 1500 of 0; load 5785 ok, 15 lost of 5800, ge25 0, ge10 498; tap 197464 B
+2026-10-20 00:33:20 arm pn: lock unlocked, UART2 at 0, no burst, monitor off, 150 s of load
+2026-10-20 00:35:56   OE 3 (+3 in the drain), refused 0, with PCF 0, none 6; burst 1500 of 0; load 5797 ok, 3 lost of 5800, ge25 0, ge10 475; tap 197482 B
+2026-10-20 00:35:56 arm pn: lock unlocked, UART2 at 0, no burst, monitor off, 150 s of load
+2026-10-20 00:38:32   OE 5 (+0 in the drain), refused 0, with PCF 0, none 5; burst 1500 of 0; load 5795 ok, 5 lost of 5800, ge25 0, ge10 503; tap 197461 B
+2026-10-20 00:38:32 arm un: lock unlocked, UART2 at 1, no burst, monitor off, 150 s of load
+2026-10-20 00:41:09   OE 14 (+2 in the drain), refused 0, with PCF 0, none 16; burst 1500 of 0; load 5786 ok, 14 lost of 5800, ge25 0, ge10 564; tap 197473 B
+2026-10-20 00:41:09 arm pb: lock unlocked, UART2 at 0, a burst of 1500, monitor off, 150 s of load
+2026-10-20 00:43:43   OE 3 (+2 in the drain), refused 0, with PCF 0, none 5; burst 1500 of 1500; load 5597 ok, 3 lost of 5600, ge25 0, ge10 1736; tap 190685 B
+2026-10-20 00:43:43 arm mb: lock unlocked, UART2 at 0, a burst of 1500, monitor on, 150 s of load
+2026-10-20 00:46:20   OE 3 (+2 in the drain), refused 0, with PCF 1, none 4; burst 1500 of 1500; load 5597 ok, 3 lost of 5600, ge25 0, ge10 2029; tap 190685 B; gaps >= 128 us 2, >= 347 us 0, longest 0.219 ms
+2026-10-20 00:46:20 arm mb: lock unlocked, UART2 at 0, a burst of 1500, monitor on, 150 s of load
+2026-10-20 00:48:56   OE 6 (+5 in the drain), refused 0, with PCF 0, none 11; burst 1500 of 1500; load 5594 ok, 6 lost of 5600, ge25 0, ge10 1960; tap 190694 B; gaps >= 128 us 1, >= 347 us 0, longest 0.16 ms
+2026-10-20 00:48:56 arm pb: lock unlocked, UART2 at 0, a burst of 1500, monitor off, 150 s of load
+2026-10-20 00:51:30   OE 6 (+2 in the drain), refused 0, with PCF 0, none 8; burst 1500 of 1500; load 5594 ok, 6 lost of 5600, ge25 0, ge10 1686; tap 190688 B
+2026-10-20 00:51:30 arm pn: lock unlocked, UART2 at 0, no burst, monitor off, 150 s of load
+2026-10-20 00:54:06   OE 2 (+1 in the drain), refused 0, with PCF 0, none 3; burst 1500 of 0; load 5798 ok, 2 lost of 5800, ge25 0, ge10 436; tap 197473 B
+2026-10-20 00:54:06 arm mn: lock unlocked, UART2 at 0, no burst, monitor on, 150 s of load
+2026-10-20 00:56:41   OE 2 (+3 in the drain), refused 0, with PCF 0, none 5; burst 1500 of 0; load 5598 ok, 2 lost of 5600, ge25 0, ge10 560; tap 190688 B; gaps >= 128 us 1, >= 347 us 0, longest 0.187 ms
+2026-10-20 00:56:41 arm mn: lock unlocked, UART2 at 0, no burst, monitor on, 150 s of load
+2026-10-20 00:59:15   OE 5 (+1 in the drain), refused 0, with PCF 0, none 6; burst 1500 of 0; load 5595 ok, 5 lost of 5600, ge25 0, ge10 521; tap 190673 B; gaps >= 128 us 1, >= 347 us 0, longest 0.171 ms
+2026-10-20 00:59:16 arm pn: lock unlocked, UART2 at 0, no burst, monitor off, 150 s of load
+2026-10-20 01:01:52   OE 5 (+2 in the drain), refused 0, with PCF 0, none 7; burst 1500 of 0; load 5795 ok, 5 lost of 5800, ge25 0, ge10 520; tap 197464 B

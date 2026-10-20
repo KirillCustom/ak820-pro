@@ -1,0 +1,47 @@
+session 81; board counters before: {'ok': 0, 'stale': 0, 'forbidden': 0, 'badenv': 0, 'badsum': 0, 'taint': 0, 'lifetime': 0, 'busy': 0, 'qbytes': 0, 'drops': 0, 'dispatched': 0, 'sent91': 0, 'acks_in_window': 0, 'defer_overrun': 0, 'state': 0, 'resp_pending': 0, 'session_live': 0, 'session': 0, 'last_seq': 0, 'short_writes': 0, 'resp_expired': 0}
+ok   text set line 0: ok in 23.4 ms
+ok   text set line 1: ok in 24.6 ms
+ok   text set (legacy): ok in 22.5 ms
+ok   text clear: ok in 27.2 ms
+ok   text playback
+ok   health 071301: ok in 30.7 ms
+ok   health 071302: ok in 34.3 ms
+ok   health 071304: ok in 22.4 ms
+ok   health 071306: ok in 24.1 ms
+ok   health 071307: ok in 22.9 ms
+ok   health 07130e00: ok in 21.7 ms
+ok   health 07130e21: ok in 25.0 ms
+ok   health 07130e22: ok in 20.9 ms
+ok   health 07130e23: ok in 24.8 ms
+ok   health 07130e24: ok in 24.4 ms
+ok   health 07130e25: ok in 24.2 ms
+ok   health 07130e26: ok in 22.7 ms
+ok   health 07130e27: ok in 23.1 ms
+ok   health 07130e28: ok in 20.4 ms
+ok   health 07130e29: ok in 22.4 ms
+ok   health 07130e2a: ok in 23.5 ms
+ok   clock: the long clock counted 3.500 s of a 3.5 s stall (USB round trip 3.512 s)
+ok   expiry: pending at the stall's entry, 130 ms after the write (TTL 250)
+ok   expiry: gone on the first look after the stall, the hold still on
+ok   expiry: dispatched once, expired once, never sent, nothing heard
+ok   expiry: the session is served after it
+ok   forbidden -> NAK 2
+ok   bootloader jump -> NAK 2
+ok   repeated admitted seq -> NAK 3
+ok   corrupted envelope -> NAK 1
+ok   another session inside the idle -> NAK 4
+ok   own session still served
+stream 1000: {'ok': 998, 'unknown': 2}; rtt median 26.62 p95 29.93 max 33.98 ms; board ok +998, taint +2, dispatched +998, sent91 +1996; ge10 +77, uart_overrun +2
+ok   stream: 998/1000 ok, 2 lost, 2 explained by the board
+ok   stream: no incomplete pair and no NAK
+ok   stream: p95 under 30 ms
+ok   stream: board defer_overrun +0
+ok   stream: board short_writes +0
+ok   stream: board resp_expired +0
+ok   stream: no pass >= 25 ms
+ok   stream: link giveups +0
+ok   stream: link replaced +0
+ok   stream: link queue_full +0
+ok   max RTT under the 250 ms tripwire
+board counters after: {'ok': 1025, 'stale': 1, 'forbidden': 2, 'badenv': 1, 'badsum': 0, 'taint': 2, 'lifetime': 0, 'busy': 1, 'qbytes': 0, 'drops': 0, 'dispatched': 1025, 'sent91': 2053, 'acks_in_window': 0, 'defer_overrun': 0, 'state': 0, 'resp_pending': 0, 'session_live': 1, 'session': 81, 'last_seq': 5094, 'short_writes': 0, 'resp_expired': 1}
+all checks pass

@@ -1,0 +1,366 @@
+{
+ "args": {
+  "cmd": "ab",
+  "arg": null,
+  "lo": 40,
+  "hi": 80,
+  "arms": "mb",
+  "secs": 25.0,
+  "n": 200,
+  "us": "50,100,150,200,300,500,1000,1500",
+  "json": "history/uart-latency-20261020/smoke.json"
+ },
+ "at": "2026-10-20 00:03:13",
+ "arms": [
+  {
+   "arm": "mb",
+   "lock": "unlocked",
+   "uart_prio": 0,
+   "monitor": true,
+   "mask_us": 0,
+   "burst_asked": 200,
+   "burst_unfinished": false,
+   "start": 1792476193.843,
+   "load_start": 1792476196.993,
+   "end": 1792476224.292,
+   "burst_start": {
+    "left": 200,
+    "done": 0,
+    "failed": 0,
+    "exposure_ms": 0,
+    "active": true,
+    "skipped": 0,
+    "lo": 40,
+    "hi": 80,
+    "host_t": 1792476197.304
+   },
+   "board": {
+    "summary": {
+     "oe_obs": 0,
+     "oe_drain": 0,
+     "rx_drop": 0,
+     "ring_seq": 0,
+     "lock": "unlocked",
+     "uart_prio": 0,
+     "usb_max_ms": 0.053,
+     "st_max_ms": 0.016,
+     "ctx_pcf": 0,
+     "ctx_flash": 0,
+     "ctx_none": 0,
+     "rx_off": 0
+    },
+    "kinds": [
+     {
+      "kind": "read 1 (4 B)",
+      "count": 0,
+      "fails": 0,
+      "max_span_ms": 0.0,
+      "max_whole_ms": 0.0,
+      "spans_ge_1ms": 0,
+      "spans_ge_1_4ms": 0,
+      "spans": 0
+     },
+     {
+      "kind": "read 7 (10 B)",
+      "count": 200,
+      "fails": 0,
+      "max_span_ms": 0.005,
+      "max_whole_ms": 4.005,
+      "spans_ge_1ms": 0,
+      "spans_ge_1_4ms": 0,
+      "spans": 400
+     },
+     {
+      "kind": "write 1 (3 B)",
+      "count": 0,
+      "fails": 0,
+      "max_span_ms": 0.0,
+      "max_whole_ms": 0.0,
+      "spans_ge_1ms": 0,
+      "spans_ge_1_4ms": 0,
+      "spans": 0
+     },
+     {
+      "kind": "write 8 (9 B)",
+      "count": 0,
+      "fails": 0,
+      "max_span_ms": 0.0,
+      "max_whole_ms": 0.0,
+      "spans_ge_1ms": 0,
+      "spans_ge_1_4ms": 0,
+      "spans": 0
+     }
+    ],
+    "sleep": {
+     "ctx_sleep": 0,
+     "tick_hz": 187500,
+     "now_secs": 262,
+     "ctx_probe": 0,
+     "uart_max_ms": 0.011
+    },
+    "burst": {
+     "left": 0,
+     "done": 200,
+     "failed": 0,
+     "exposure_ms": 13206,
+     "active": false,
+     "skipped": 1,
+     "lo": 40,
+     "hi": 80
+    },
+    "ring": [],
+    "wakes": [],
+    "mon": {
+     "on": true,
+     "max_ms": 0.187,
+     "n_128us": 1,
+     "n_197us": 0,
+     "n_347us": 0,
+     "ticks": 606880,
+     "max_ctx": "none",
+     "max_act": 0,
+     "seq": 0
+    },
+    "mon_ring": [],
+    "rxtap": {
+     "armed": true,
+     "bytes": 34051
+    }
+   },
+   "load": {
+    "exit": 1,
+    "fails": [
+     "stream: p95 under 30 ms",
+     "stream: p95 under 30 ms",
+     "stream: p95 under 30 ms"
+    ],
+    "requests": 1000,
+    "ok": 1000,
+    "lost": 0,
+    "other": 0,
+    "taint": 0,
+    "badsum": 0,
+    "ge25": 0,
+    "ge10": 268,
+    "uart_overrun_link": 0,
+    "giveups": 0,
+    "replaced": 0,
+    "queue_full": 0,
+    "max_rtt_ms": 35.14,
+    "losses": [],
+    "blocks": [
+     {
+      "n": 200,
+      "results": {
+       "ok": 200
+      },
+      "rtt_ms": {
+       "min": 22.76,
+       "median": 25.94,
+       "p95": 30.74,
+       "max": 33.91
+      },
+      "board_delta": {
+       "ok": 200,
+       "stale": 0,
+       "forbidden": 0,
+       "badenv": 0,
+       "badsum": 0,
+       "taint": 0,
+       "lifetime": 0,
+       "busy": 0,
+       "qbytes": 0,
+       "drops": 0,
+       "dispatched": 200,
+       "sent91": 400,
+       "acks_in_window": 0,
+       "defer_overrun": 0,
+       "resp_pending": 0,
+       "short_writes": 0,
+       "resp_expired": 0
+      },
+      "stall_link_delta": {
+       "ge25": 0,
+       "ge10": 83,
+       "giveups": 0,
+       "replaced": 0,
+       "queue_full": 0,
+       "uart_overrun": 0
+      },
+      "losses": [],
+      "max_rtt_ms": 33.91,
+      "loss_rate": 0.0
+     },
+     {
+      "n": 200,
+      "results": {
+       "ok": 200
+      },
+      "rtt_ms": {
+       "min": 22.69,
+       "median": 26.11,
+       "p95": 30.84,
+       "max": 32.88
+      },
+      "board_delta": {
+       "ok": 200,
+       "stale": 0,
+       "forbidden": 0,
+       "badenv": 0,
+       "badsum": 0,
+       "taint": 0,
+       "lifetime": 0,
+       "busy": 0,
+       "qbytes": 0,
+       "drops": 0,
+       "dispatched": 200,
+       "sent91": 400,
+       "acks_in_window": 0,
+       "defer_overrun": 0,
+       "resp_pending": 0,
+       "short_writes": 0,
+       "resp_expired": 0
+      },
+      "stall_link_delta": {
+       "ge25": 0,
+       "ge10": 86,
+       "giveups": 0,
+       "replaced": 0,
+       "queue_full": 0,
+       "uart_overrun": 0
+      },
+      "losses": [],
+      "max_rtt_ms": 33.91,
+      "loss_rate": 0.0
+     },
+     {
+      "n": 200,
+      "results": {
+       "ok": 200
+      },
+      "rtt_ms": {
+       "min": 22.94,
+       "median": 25.92,
+       "p95": 30.72,
+       "max": 34.72
+      },
+      "board_delta": {
+       "ok": 200,
+       "stale": 0,
+       "forbidden": 0,
+       "badenv": 0,
+       "badsum": 0,
+       "taint": 0,
+       "lifetime": 0,
+       "busy": 0,
+       "qbytes": 0,
+       "drops": 0,
+       "dispatched": 200,
+       "sent91": 400,
+       "acks_in_window": 0,
+       "defer_overrun": 0,
+       "resp_pending": 0,
+       "short_writes": 0,
+       "resp_expired": 0
+      },
+      "stall_link_delta": {
+       "ge25": 0,
+       "ge10": 53,
+       "giveups": 0,
+       "replaced": 0,
+       "queue_full": 0,
+       "uart_overrun": 0
+      },
+      "losses": [],
+      "max_rtt_ms": 34.72,
+      "loss_rate": 0.0
+     },
+     {
+      "n": 200,
+      "results": {
+       "ok": 200
+      },
+      "rtt_ms": {
+       "min": 21.85,
+       "median": 25.9,
+       "p95": 28.97,
+       "max": 34.68
+      },
+      "board_delta": {
+       "ok": 200,
+       "stale": 0,
+       "forbidden": 0,
+       "badenv": 0,
+       "badsum": 0,
+       "taint": 0,
+       "lifetime": 0,
+       "busy": 0,
+       "qbytes": 0,
+       "drops": 0,
+       "dispatched": 200,
+       "sent91": 400,
+       "acks_in_window": 0,
+       "defer_overrun": 0,
+       "resp_pending": 0,
+       "short_writes": 0,
+       "resp_expired": 0
+      },
+      "stall_link_delta": {
+       "ge25": 0,
+       "ge10": 25,
+       "giveups": 0,
+       "replaced": 0,
+       "queue_full": 0,
+       "uart_overrun": 0
+      },
+      "losses": [],
+      "max_rtt_ms": 34.72,
+      "loss_rate": 0.0
+     },
+     {
+      "n": 200,
+      "results": {
+       "ok": 200
+      },
+      "rtt_ms": {
+       "min": 22.16,
+       "median": 25.89,
+       "p95": 29.03,
+       "max": 35.14
+      },
+      "board_delta": {
+       "ok": 200,
+       "stale": 0,
+       "forbidden": 0,
+       "badenv": 0,
+       "badsum": 0,
+       "taint": 0,
+       "lifetime": 0,
+       "busy": 0,
+       "qbytes": 0,
+       "drops": 0,
+       "dispatched": 200,
+       "sent91": 400,
+       "acks_in_window": 0,
+       "defer_overrun": 0,
+       "resp_pending": 0,
+       "short_writes": 0,
+       "resp_expired": 0
+      },
+      "stall_link_delta": {
+       "ge25": 0,
+       "ge10": 21,
+       "giveups": 0,
+       "replaced": 0,
+       "queue_full": 0,
+       "uart_overrun": 0
+      },
+      "losses": [],
+      "max_rtt_ms": 35.14,
+      "loss_rate": 0.0
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,4 @@
+2026-10-20 00:04:02 arm tb: lock transaction, UART2 at 1, a burst of 1500, monitor off, 150 s of load
+2026-10-20 00:06:38   OE 221 (+6 in the drain), refused 0, with PCF 202, none 25; burst 1500 of 1500; load 4133 ok, 384 lost of 4600, ge25 0, ge10 773; tap 154509 B
+2026-10-20 00:06:38 arm ub: lock unlocked, UART2 at 1, a burst of 1500, monitor off, 150 s of load
+raw HID interface busy or absent (is VIA holding it? close the usevia.app tab)
