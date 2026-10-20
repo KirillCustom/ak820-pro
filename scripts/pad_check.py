@@ -32,6 +32,12 @@ board runs that image (its manifest's token), runs `deep_cycles.py --n N
            flash-probe v09).
   (codex, pad-check verify, P2s 1-4.)
 
+--fix validates a build that should sleep (the deep-sleep fix; codex, fix
+review, P2 3): every cycle's recovery without a timeout, no strays, no PLL
+ceiling; every ring entry a key wake that slept, with p1 0 and no strays;
+the newest ring entry equal to the record. --host drops --board-only, so
+each key must also reach the Mac within 1 s.
+
 Exit 0 to advance, 2 not to, 4 if the board runs another image, 5 if
 relay 2 is off (deep_cycles starts from charging; put it on, then rerun).
 """
@@ -125,6 +131,8 @@ def main():
     ap.add_argument("--expect", required=True)
     ap.add_argument("--control", action="store_true", help="b2a07e0d37 itself: advance only on the regression")
     ap.add_argument("--n", type=int, default=2)
+    ap.add_argument("--fix", action="store_true", help="a build that should sleep: the stricter checks above")
+    ap.add_argument("--host", action="store_true", help="keys must reach the Mac too (no --board-only)")
     ap.add_argument("--out", default=os.path.join(ROOT, "history", "pad-sweep-" + time.strftime("%Y%m%d")))
     a = ap.parse_args()
     if not 1 <= a.n <= 500:
@@ -142,8 +150,8 @@ def main():
         sys.exit(5)
     d = os.path.join(a.out, f"{tag}-{time.strftime('%H%M%S')}")
     os.makedirs(d, exist_ok=True)
-    r = subprocess.run([sys.executable, os.path.join(HERE, "deep_cycles.py"), "--n", str(a.n),
-                        "--board-only", "--out", d], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, os.path.join(HERE, "deep_cycles.py"), "--n", str(a.n), "--out", d]
+                       + ([] if a.host else ["--board-only"]), capture_output=True, text=True)
     with open(os.path.join(d, "deep-cycles.log"), "w") as f:
         f.write(r.stdout + r.stderr)
     try:
@@ -152,7 +160,7 @@ def main():
     except (OSError, ValueError):
         dc = {}
     ring = ds.with_dev(od.wakes)
-    res = judge(dc, ring, r.returncode, r.stdout, a.n, a.control)
+    res = judge(dc, ring, r.returncode, r.stdout, a.n, a.control, a.fix, a.host)
     res.update({"artifact": os.path.basename(art), "head": m["git_head"], "token": m["token"],
                 "lines": [ln for ln in r.stdout.splitlines() if "cycle " in ln or "deep cycles" in ln]})
     with open(os.path.join(d, "check.json"), "w") as f:
@@ -161,7 +169,28 @@ def main():
     sys.exit(0 if res["advance"] else 2)
 
 
-def judge(dc, ring, rc, stdout, n, control):
+def fix_problems(cycles, ring):
+    """What a build that should sleep may not show (see --fix)."""
+    out = []
+    for c in cycles:
+        rec = c.get("record") or {}
+        if c.get("timed_out"):
+            out.append(f"cycle {c.get('i')}: recovery timed out {c['timed_out']}")
+        if rec.get("strays") or rec.get("pll_ceiling"):
+            out.append(f"cycle {c.get('i')}: strays {rec.get('strays')}, pll ceiling {rec.get('pll_ceiling')}")
+    for e in ring:
+        if not (e.get("reason") == "key" and e.get("flags", 0) & SLEPT and e.get("p1") == "0x0" and not e.get("strays")):
+            out.append(f"ring {e.get('seq')}: {e.get('reason')} p1 {e.get('p1')} flags {e.get('flags')} strays {e.get('strays')}")
+    if cycles and ring:
+        rec, last = cycles[-1].get("record") or {}, ring[-1]
+        # the record counts sleeps from 1, the ring numbers its entries from 0
+        if ((rec.get("seq", 0) - 1, hex(rec.get("p0", -1)), hex(rec.get("p1", -1)), hex(rec.get("p2", -1)))
+                != (last.get("seq"), last.get("p0"), last.get("p1"), last.get("p2"))):
+            out.append(f"the record (seq {rec.get('seq')}) and the ring's newest (seq {last.get('seq')}) differ")
+    return out
+
+
+def judge(dc, ring, rc, stdout, n, control, fix=False, host=False):
     cycles, summary = dc.get("cycles", []), dc.get("summary", {})
     board = board_verdict(cycles, ring)
     complete = (rc in (0, 1) and summary.get("cycles") == n and summary.get("stopped") is None
@@ -169,19 +198,24 @@ def judge(dc, ring, rc, stdout, n, control):
                 and "cleanup incomplete" not in stdout)
     gates = all(c.get("key_gain") == 1 and c.get("new_ge25") == 0
                 and all((c.get("link") or {}).get(k, 1) == 0 for k in LINK_GATED) for c in cycles)
-    failed = [(c, failing_checks(c)) for c in cycles if not c.get("ok")]
+    failed = [(c, failing_checks(c) | ({"mac"} if host and not (c.get("mac_latency_ms") is not None
+                                                                  and c["mac_latency_ms"] < 1000) else set()))
+              for c in cycles if not c.get("ok")]
     unexplained = [sorted(f) for c, f in failed if not f or not explained(c, f, board)]
-    advance = (complete and gates and not unexplained
-               and (board == "regression" if control else board in ("regression", "normal")))
-    return {"control": control, "board": board, "complete": complete, "gates": gates, "strict_pass": rc == 0,
-            "failing": [sorted(f) for _, f in failed], "unexplained": unexplained, "advance": advance,
-            "summary": summary, "ring": ring}
+    problems = fix_problems(cycles, ring) if fix else []
+    advance = (complete and gates and not unexplained and not problems
+               and (board == "regression" if control else board == "normal" if fix
+                    else board in ("regression", "normal")))
+    return {"control": control, "fix": fix, "host": host, "board": board, "complete": complete, "gates": gates,
+            "strict_pass": rc == 0, "failing": [sorted(f) for _, f in failed], "unexplained": unexplained,
+            "problems": problems, "advance": advance, "summary": summary, "ring": ring}
 
 
 def report(tag, res):
     print(f"{tag}: board {res['board']}, {'complete' if res['complete'] else 'INCOMPLETE'}, "
           f"gates {'ok' if res['gates'] else 'FAILED'}, deep_cycles {'PASS' if res['strict_pass'] else 'FAIL'}"
           + (f", unexplained {res['unexplained']}" if res["unexplained"] else "")
+          + (f", problems {res['problems']}" if res.get("problems") else "")
           + f" -> {'ADVANCE' if res['advance'] else 'STOP'}", flush=True)
     for ln in res.get("lines", []):
         print("   ", ln)
