@@ -151,3 +151,64 @@ at 0.
   wedges the CPU needs the slider. JD at hand during the sweep.
 - **What would refute the lead:** corruption that shows up while waking
   through SRAM, before any return to flash.
+
+## The sweep's result (10-20, 12:47-13:10): every variant holds
+
+`466aa04636` flashed at 12:46. The slider was on 2.4G, on the pack. The
+run was `wfi_sweep.py --n 2`, which runs `deep_cycles.py --n 2
+--board-only` for each variant
+(`history/uart-latency-20261020/wfi-sweep/`, `wfi-sweep.log`):
+
+| variant | WFI | result |
+|---|---|---|
+| `0xFF`, the C sequence | `0x12440`, 0 mod 16 | 2/2 |
+| 0 | 6 mod 16 | 2/2 |
+| 1 | 8 | 2/2 |
+| 2 | 10 | 2/2 |
+| 3 | 12 | 2/2 |
+| 4 | 14 | 2/2 |
+| 5 | 0 | 2/2 |
+| **6** | **2, b2a0's offset** | **2/2** |
+| 7 | 4 | 2/2 |
+| 8, SRAM | `0x200014f8` | 2/2 |
+
+Every sleep lasted 27-47 s, and every wake was the relay's key. The ring's
+p1 read `0x0` throughout. The sequence was put back to `0xFF` afterwards.
+
+- **The offset alone is not the trigger.** Variant 6 puts the WFI at 2 mod
+  16, as in b2a0, and holds.
+  - Codex's P2 applies: the asm copies resume through different
+    instructions than b2a0's loop. So the flash-fetch lead is weaker, not
+    refuted.
+- **This diagnostic sleeps.** It also stays on the board for now; b2a0
+  cannot hold a sleep.
+- **What the failure needs is still b2a0's exact image.** The sleep fails
+  only there, every time, and only the instructions after the WFI are
+  clearly wrong:
+  - `r7` is loaded with `&ds_p1_ris` at `0x1203a`, before the loop, and no
+    instruction in the loop writes it;
+  - PRIMASK is set across the loop, so no handler runs;
+  - yet by the store at `0x1212c`, `r7` points at code.
+
+  So something executed that is not in the image. That leaves the fetch
+  after the wake (the lead), or a bus fault on it.
+
+## Next (each build through codex, each flash on JD's go)
+
+1. **Probe the flash directly after the wake, from SRAM.** Straight after
+   the WFI, still in SRAM, read known flash words into an SRAM buffer, with
+   a count between reads. Use two kinds of word: one in the line the CPU
+   last fetched before the WFI, and one far from it.
+   - If the reads come back wrong, the hazard is proven. The count also
+     says how long the flash takes to come back, which calibrates the fix's
+     settle.
+   - If every read is right from the first, the flash holds the bus until
+     it is ready, at least for data. The lead weakens further.
+   - Either way, the answer does not depend on where the code sits.
+2. **If the probe is clean: move b2a0's own instructions.** Padding goes in
+   ahead of `sleep.c` in the link, at 16, 32, 64 and 2 bytes. That says
+   whether the failure follows the offset within a line, the absolute
+   address, or neither. Check each build's disassembly to confirm
+   `deep_sleep` is byte-identical apart from its branches to other code.
+3. **The register capture** (codex's P1), on a padded build that still
+   fails.

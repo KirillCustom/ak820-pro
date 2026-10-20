@@ -1,0 +1,42 @@
+variant 0xff (as built): PASS
+    2026-10-20 12:48:15 cycle   1: asleep 42.0 s (PCF 42, counted 34), woke key, p2 0x100, seq 1, key 1, Mac 54 ms, link sent 5 timeouts 1  ok
+    2026-10-20 12:49:16 cycle   2: asleep 31.0 s (PCF 31, counted 25), woke key, p2 0x100, seq 2, key 1, Mac 52 ms, link sent 9 timeouts 2  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 54.4, "max": 54.4}, "clock_before_abs_ms": {"median": 321.2, "max": 321.2}, "timed_out": {}}
+variant 0x00 ( 6 mod 16): PASS
+    2026-10-20 12:50:22 cycle   1: asleep 36.0 s (PCF 36, counted 30), woke key, p2 0x100, seq 3, key 1, Mac 44 ms, link sent 7 timeouts 3  ok
+    2026-10-20 12:51:30 cycle   2: asleep 38.0 s (PCF 37, counted 30), woke key, p2 0x100, seq 4, key 1, Mac 52 ms, link sent 9 timeouts 3  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 52.1, "max": 52.1}, "clock_before_abs_ms": null, "timed_out": {}}
+variant 0x01 ( 8 mod 16): PASS
+    2026-10-20 12:52:39 cycle   1: asleep 39.0 s (PCF 38, counted 31), woke key, p2 0x100, seq 5, key 1, Mac 56 ms, link sent 7 timeouts 2  ok
+    2026-10-20 12:53:52 cycle   2: asleep 43.0 s (PCF 44, counted 35), woke key, p2 0x100, seq 6, key 1, Mac 38 ms, link sent 8 timeouts 1  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 56.1, "max": 56.1}, "clock_before_abs_ms": {"median": 227.6, "max": 227.6}, "timed_out": {}}
+variant 0x02 (10 mod 16): PASS
+    2026-10-20 12:55:03 cycle   1: asleep 41.0 s (PCF 40, counted 33), woke key, p2 0x100, seq 7, key 1, Mac 55 ms, link sent 7 timeouts 2  ok
+    2026-10-20 12:56:06 cycle   2: asleep 33.0 s (PCF 33, counted 27), woke key, p2 0x100, seq 8, key 1, Mac 50 ms, link sent 9 timeouts 2  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 55.0, "max": 55.0}, "clock_before_abs_ms": null, "timed_out": {}}
+variant 0x03 (12 mod 16): PASS
+    2026-10-20 12:57:02 cycle   1: asleep 27.0 s (PCF 27, counted 23), woke key, p2 0x100, seq 9, key 1, Mac 35 ms, link sent 6 timeouts 2  ok
+    2026-10-20 12:58:16 cycle   2: asleep 43.0 s (PCF 43, counted 35), woke key, p2 0x100, seq 10, key 1, Mac 38 ms, link sent 9 timeouts 1  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 38.4, "max": 38.4}, "clock_before_abs_ms": null, "timed_out": {}}
+variant 0x04 (14 mod 16): PASS
+    2026-10-20 12:59:33 cycle   1: asleep 47.0 s (PCF 47, counted 38), woke key, p2 0x100, seq 11, key 1, Mac 37 ms, link sent 7 timeouts 1  ok
+    2026-10-20 13:00:37 cycle   2: asleep 34.0 s (PCF 34, counted 28), woke key, p2 0x100, seq 12, key 1, Mac 50 ms, link sent 9 timeouts 2  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 50.3, "max": 50.3}, "clock_before_abs_ms": null, "timed_out": {}}
+variant 0x05 ( 0 mod 16): PASS
+    2026-10-20 13:01:39 cycle   1: asleep 32.0 s (PCF 33, counted 27), woke key, p2 0x100, seq 13, key 1, Mac 54 ms, link sent 6 timeouts 2  ok
+    2026-10-20 13:02:46 cycle   2: asleep 36.0 s (PCF 36, counted 29), woke key, p2 0x100, seq 14, key 1, Mac 65 ms, link sent 9 timeouts 2  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 64.8, "max": 64.8}, "clock_before_abs_ms": {"median": 271.8, "max": 271.8}, "timed_out": {}}
+variant 0x06 ( 2 mod 16): PASS
+    2026-10-20 13:03:47 cycle   1: asleep 31.0 s (PCF 31, counted 25), woke key, p2 0x100, seq 15, key 1, Mac 54 ms, link sent 6 timeouts 2  ok
+    2026-10-20 13:05:02 cycle   2: asleep 45.0 s (PCF 45, counted 37), woke key, p2 0x100, seq 16, key 1, Mac 36 ms, link sent 9 timeouts 1  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 54.4, "max": 54.4}, "clock_before_abs_ms": null, "timed_out": {}}
+variant 0x07 ( 4 mod 16): PASS
+    2026-10-20 13:06:07 cycle   1: asleep 35.0 s (PCF 35, counted 28), woke key, p2 0x100, seq 17, key 1, Mac 49 ms, link sent 7 timeouts 2  ok
+    2026-10-20 13:07:17 cycle   2: asleep 40.0 s (PCF 40, counted 33), woke key, p2 0x100, seq 18, key 1, Mac 50 ms, link sent 9 timeouts 2  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 49.6, "max": 49.6}, "clock_before_abs_ms": null, "timed_out": {}}
+variant 0x08 (SRAM): PASS
+    2026-10-20 13:08:33 cycle   1: asleep 46.0 s (PCF 46, counted 37), woke key, p2 0x100, seq 19, key 1, Mac 31 ms, link sent 7 timeouts 1  ok
+    2026-10-20 13:09:45 cycle   2: asleep 42.0 s (PCF 42, counted 34), woke key, p2 0x100, seq 20, key 1, Mac 56 ms, link sent 9 timeouts 2  ok
+    deep cycles: PASS {"cycles": 2, "passed": 2, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 55.8, "max": 55.8}, "clock_before_abs_ms": null, "timed_out": {}}
+sequence back to 0xff
+summary: as built ok,  6 mod 16 ok,  8 mod 16 ok, 10 mod 16 ok, 12 mod 16 ok, 14 mod 16 ok,  0 mod 16 ok,  2 mod 16 ok,  4 mod 16 ok, SRAM ok
