@@ -260,3 +260,38 @@ daemon `v0.1.1-628-g5a9bac1` installed `--clock --radio`):
 
 Left for JD: a track change while on the radio, the deep-sleep backoff, and
 the same cable-out on gremlin (Windows) by hand.
+
+## 8. P0 frames from Windows over Bluetooth (10-20, ~14:45)
+
+Board on `466aa04636` (dev, token `0x43ac66bd`), BT slot 1, the cable in for
+the devhook reads only (in BT mode the board ignores USB LED reports). The
+sender is the 2.4G one (section 3) pointed at the **BLE keyboard's
+keyboard-class interface**, `HID#{00001812-...}_Dev_VID&010c45_PID&fefe_..._Col01`,
+from the Configuration Manager's `GUID_DEVINTERFACE_KEYBOARD` list (no HID
+enumeration; `AK820_WIN_KBD` picks it in `ledchannel_test.py`). The daemon
+was stopped for the runs. Results in `history/ledchannel-2026-10-20-gremlin-ble-*/`.
+
+- **`IOCTL_KEYBOARD_SET_INDICATORS` reaches the board over BLE**, access 0,
+  unprivileged: one Scroll change and back arrived as `0x05` x3 then `0x01`
+  x3, 0-5 ms apart, as over the dongle. So the Windows route is the same
+  call on both radios, P0 only (Num and Scroll).
+
+| write spacing | committed exactly | anchor to commit |
+|---|---|---|
+| 40 ms | 6/6 | 5956-8709 ms |
+| 32 ms | 6/6 | 4863-7097 ms |
+| 24 ms | 6/6 | 3669-5308 ms |
+| 16 ms | 6/6 | 2506-3572 ms |
+| **10 ms** | **6/6** | **1579-2334 ms** |
+| 7 ms | 2/6 (gap and CRC aborts) | 1265-1473 ms |
+| 5 ms | 0/6 (range and CRC aborts) | - |
+| 3 ms | 0/6 | - |
+
+- **Windows' BLE is ~3x the Mac's**: 10 ms a change holds, where the Mac's
+  writes take ~30 ms each. The cliff is between 7 and 10 ms, as the
+  dongle's (6-7 ms): closer, changes merge, digits are lost, and the frame
+  dies on a gap, a range check or its CRC. **No frame committed wrong.**
+- No pass >= 25 ms in any run; UART overruns +3 only in the 3 ms run.
+- **A sender should use 16 ms over BLE** (a 20-37-byte P0 frame in 2.5-3.6 s),
+  10 ms over the dongle (section 3), until a longer error-rate run says
+  closer is safe.

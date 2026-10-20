@@ -93,10 +93,14 @@ def win_send(gap_ms, vals):
     cm.CM_Get_Device_Interface_List_SizeW(ctypes.byref(n), ctypes.byref(kbd), None, 0)
     buf = ctypes.create_unicode_buffer(n.value)
     cm.CM_Get_Device_Interface_ListW(ctypes.byref(kbd), None, buf, n, 0)
+    # AK820_WIN_KBD picks another keyboard-class interface by its device id
+    # (the path's second field, lower case, matched exactly): the BLE
+    # keyboard's is `{00001812-...}_dev_vid&010c45_pid&fefe_..._col01`.
+    want = os.environ.get("AK820_WIN_KBD", WIN_DONGLE).lower()
     paths = [p for p in buf[:n.value].split("\0")
-             if p and len(p.split("#")) == 4 and p.lower().split("#")[1] == WIN_DONGLE]
+             if p and len(p.split("#")) == 4 and p.lower().split("#")[1] == want]
     if len(paths) != 1:
-        sys.exit(f"the dongle's keyboard-class interface: found {paths}")
+        sys.exit(f"the keyboard-class interface {want}: found {paths}")
     caps = win_user_leds() & 0x02
     if any(v & ~0x07 or (v & 0x02) != caps for v in vals):
         sys.exit("Windows carries Num and Scroll only, with the user's own Caps: P0 frames only")
