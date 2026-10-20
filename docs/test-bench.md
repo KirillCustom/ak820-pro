@@ -373,10 +373,24 @@ INA228's `vbus_mv` (below).
   `--set rgb-curve` (Phase 2): white at 14 values and the three colours,
   each with the board's LED drive read back; `--set stages`: the ladder's
   stages forced (`HC_DEVHOOK` op 14) at three lightings, each beside the
-  board's own modelled draw (`HC_POWER`). On Phase 2 firmware every map holds
-  Always on and a forced stage, so the ladder cannot move a load mid-hold.
-- `scripts/ladder_check.py` (Phase 2): every enabled effect through every
-  forced ladder stage, on USB, the LED drive read back: off must read 0.0%.
+  board's own modelled draw (`HC_POWER`), and JD's lighting typing in Power
+  saver (`jd saver`, at its 128 ceiling: ~161 mW with the USB data, ~154
+  untethered). On Phase 2 firmware every map holds a mode (Always on but for
+  `jd saver`) and a forced stage, so the ladder cannot move a load
+  mid-hold. ⚠️ It refuses at a level of 15% or below: a held stage keeps the
+  low cap's stages out but not its ceiling, Power saver's 128 while typing in
+  every mode.
+- `scripts/ladder_check.py [--rig]` (Phase 2, and the modes' revision): on
+  USB, the LED drive read back, op 14 read back after a tick:
+  - every enabled effect through every forced stage in Always on: off must
+    read 0.0%;
+  - Power saver's ceiling per effect, ACTIVE held in Always on and in Power
+    saver at value 255 and 100: at 255 Power saver at most 0.35 of Always on
+    for the effects that convert at the user's value (DRIFT 0.70), at 100 the
+    two alike; solid white at 255 in Power saver within 5% of white at 128;
+  - means over each hold, with a tolerance for the animated effects. Typing
+    Heatmap lights only pressed keys, so `--rig` taps the relay's key through
+    its holds; without it, the Heatmap is reported and not judged.
 - `scripts/devhook.py lcd [LEVEL | on | off]`: the screen's backlight by
   hand.
 - **Results** (`plans/POWER-CAMPAIGN-PLAN.md`, R1 and R2), at 4.17 V: JD's
@@ -540,8 +554,8 @@ the session left unlocked for a window (JD's call).
   --no-press`).
 - `scripts/deep_cycles.py --n 100`: the soak, by default **through the
   ladder's own path**: Lights out and a 30 s bench sleep time (op 14 sub
-  5), no stage forced; the mode found is put back. Each cycle passes only
-  on exactly one press, a fresh sleep sequence number, no reset, no new pass
+  5; a bench time, not Lights out's own 1 min), no stage forced; the mode
+  found is put back. Each cycle passes only on exactly one press, a fresh sleep sequence number, no reset, no new pass
   of 25 ms or more, no new transport error, the PCF's slept seconds within
   2 s of the logger's fall and rise edges, and the Mac's key-down within 1 s,
   all judged once the wake's recovery has closed. It keeps the recovery's
@@ -549,8 +563,8 @@ the session left unlocked for a window (JD's call).
   experiment's op 14 sub 4 instead; `--awake` is the awake control;
   `--tap-ms 25` the input gate's short taps.
 - `scripts/ladder_sleep.py --mode N [--asleep-s S] [--charge-wake]`: one
-  sleep through the ladder at the mode's real time (Balanced 420 s, Power
-  saver 180, Lights out 30): a rig tap starts the idle, data off, the sleep
+  sleep through the ladder at the mode's real time (Balanced 1200 s, Power
+  saver 180, Lights out 60): a rig tap starts the idle, data off, the sleep
   timed from the tap, the wake (the rig, or relay 2 on), then the daemon's
   first clock sync before any read of its own (macOS opens raw HID
   exclusively), and the board's figures. The mode is put back.

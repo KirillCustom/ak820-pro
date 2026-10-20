@@ -176,6 +176,10 @@ modelled battery energy** (`e_used`'s increase, 0.1 mWh, u16; ~76.5 mWh at
 
 ### 5. The modes on `Fn`+`B` (power.c), the agreed step 3
 
+> Revised 2026-10-20: new timings, Power saver's 128 while typing, and DRIFT's
+> dim made exact: [`POWER-MODES-REVISION-PLAN.md`](POWER-MODES-REVISION-PLAN.md).
+> What follows is what was built then.
+
 As built in `37b844b83c` (Full / Normal / Saver; the stage times in
 `BATTERY-GAUGE-PLAN.md`), with codex's fixes:
 - **Every stage change repaints every LED** (must-fix 4): it restarts the

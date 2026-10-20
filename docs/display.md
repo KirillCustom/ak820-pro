@@ -416,7 +416,7 @@ outline over grey glass, **Lights out** an unlit slate outline struck through
 by a light-grey slash; each has a light-grey screw base under a darker
 collar. The bolt and the cross need USB and the modes act only
 on battery, so the two never want the slot at once. At 15% or below, while the
-low cap holds Always on or Balanced to Power saver's stages, the slot shows
+low cap holds Always on or Balanced to Power saver's lighting, the slot shows
 Power saver's bulb: it shows what the lights are doing
 (`power_lights_mode()`, [battery.md](battery.md), "The idle ladder and the
 power modes"). On USB the mode can still be changed, and it takes effect at
@@ -469,8 +469,8 @@ The deep sleep is the ladder's last stage (`sleep.c`;
 
 - **The screen goes off when the board sleeps.** Its dim level is the
   backlight's software PWM, which needs the 20 kHz tick the sleep stops; the
-  ladder's screen-off time equals its sleep time (Balanced 7 min, Power
-  saver 3).
+  ladder's screen-off time equals its sleep time (Balanced 20 min, Power
+  saver 3, Lights out 1, whose screen is dark already).
 - **Host content expires at the wake**: the host text slot and the playback
   position, which ran on while the board slept and would show stale, until
   a host sends them again.
