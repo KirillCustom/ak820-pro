@@ -168,6 +168,10 @@ pub struct BleLights {
     buf: Box<[u8; 2]>,
     poisoned: bool,
     pub name: String,
+    /// The slowest write's completion, and how many took over 100 ms: for
+    /// `ak820 lockchan send` and the gap study (10-20).
+    pub slowest: Duration,
+    pub over_100ms: u32,
 }
 
 impl BleLights {
@@ -210,6 +214,8 @@ impl BleLights {
                 buf: Box::new([REPORT_ID, 0]),
                 poisoned: false,
                 name,
+                slowest: Duration::ZERO,
+                over_100ms: 0,
             }))
         }
     }
@@ -257,9 +263,13 @@ impl LockLights for BleLights {
         if rc != kIOReturnSuccess {
             return Err(WriteError::Failed(format!("{}: write: {}", self.name, ioreturn_name(rc))));
         }
-        let deadline = Instant::now() + WRITE_TIMEOUT + WRITE_GRACE;
+        let t0 = Instant::now();
+        let deadline = t0 + WRITE_TIMEOUT + WRITE_GRACE;
         loop {
             if let Some(result) = self.done.0.get() {
+                let took = t0.elapsed();
+                self.slowest = self.slowest.max(took);
+                self.over_100ms += (took > Duration::from_millis(100)) as u32;
                 return if result == kIOReturnSuccess {
                     Ok(())
                 } else {

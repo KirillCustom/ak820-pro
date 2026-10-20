@@ -1,0 +1,21 @@
+ 0 Sent                   slowest 157 ms, 1 >100 ms -> board commit
+ 1 Sent                   slowest 188 ms, 3 >100 ms -> board commit
+ 2 Abandoned(Deadline)    slowest 314 ms, 5 >100 ms -> board abort
+ 3 Sent                   slowest 253 ms, 2 >100 ms -> board commit
+ 4 Sent                   slowest 88 ms, 0 >100 ms -> board commit
+ 5 Sent                   slowest 352 ms, 3 >100 ms -> board commit
+ 6 Abandoned(Deadline)    slowest 249 ms, 4 >100 ms -> board nothing
+ 7 Sent                   slowest 428 ms, 1 >100 ms -> board commit
+ 8 Sent                   slowest 203 ms, 2 >100 ms -> board commit
+ 9 Sent                   slowest 173 ms, 2 >100 ms -> board commit
+10 Sent                   slowest 258 ms, 2 >100 ms -> board commit
+11 Sent                   slowest 231 ms, 2 >100 ms -> board commit
+12 Abandoned(Deadline)    slowest 362 ms, 3 >100 ms -> board abort
+13 Abandoned(Deadline)    slowest 410 ms, 3 >100 ms -> board abort
+14 Sent                   slowest 289 ms, 3 >100 ms -> board commit
+15 Sent                   slowest 228 ms, 2 >100 ms -> board commit
+16 Sent                   slowest 163 ms, 1 >100 ms -> board commit
+17 Abandoned(Deadline)    slowest 281 ms, 3 >100 ms -> board abort
+18 Sent                   slowest 239 ms, 2 >100 ms -> board commit
+19 Sent                   slowest 154 ms, 1 >100 ms -> board commit
+radio as is: 15/20 committed

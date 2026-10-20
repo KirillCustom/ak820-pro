@@ -506,11 +506,13 @@ fn lockchan_send(artist: &str, title: &str) -> Result<(), String> {
     let t0 = Instant::now();
     let out = frame::run(&mut lights, &Wall, &Never, &mut line, || Some(Payload { kind, seq: 0, bytes: bytes.clone() }));
     println!(
-        "{}: type {kind}, {} payload bytes: {out:?}, {} writes in {:.2} s{}",
+        "{}: type {kind}, {} payload bytes: {out:?}, {} writes in {:.2} s, slowest {} ms, {} over 100 ms{}",
         lights.name,
         bytes.len(),
         line.writes,
         t0.elapsed().as_secs_f64(),
+        lights.slowest.as_millis(),
+        lights.over_100ms,
         if line.restore_pending { " (restore pending)" } else { "" }
     );
     // A stuck write keeps the owner lock and the device for the life of the

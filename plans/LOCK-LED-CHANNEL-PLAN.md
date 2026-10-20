@@ -1000,10 +1000,25 @@ tapped Caps twice (`history/lockchan-mac-caps-20261020/`):
   landed at frame edges. Each LED byte reaches the board 3 times (the
   module repeats it).
 
-**⚠️ The receiver aborted 15 of 40 complete frames for a gap**, a pause
-over 500 ms between two writes, while the sender called them sent. The
-10-18 probe frames (24/24) and today's single frame committed. Under study
-before the Mac's sender is wired in. The suspects:
-- the BLE link's latency (the module's slave latency) after the host has
-  counted a write complete;
-- the daemon's 2.4G dongle probing on the same band.
+**The receiver aborted 15 of 40 complete frames for a gap**, a pause over
+500 ms between two writes. The Caps script logged only the frames around
+JD's taps, so how the sender saw those 15 was not recorded then.
+
+**The gap study** (`scripts/mac_lockchan_gaps.py`,
+`history/lockchan-mac-gaps-20261020/run-a.*`): 20 frames back to back,
+each frame's outcome, its slowest write, and the board's verdict.
+- **15/20 committed, and the sender knew every failure.** All 15 `Sent`
+  frames committed. The 5 others were `Abandoned(Deadline)` by the sender
+  itself, and the board aborted them or saw nothing. Nothing committed
+  wrong.
+- **The cause is the Mac's BLE write latency.** The slowest write in each
+  frame took 88-428 ms, with 1-5 writes over 100 ms per frame. That is
+  past the sender's phase deadlines (100 ms in the preamble, 300 ms for
+  data, inside the receiver's 500 ms), so the sender gives the frame up
+  rather than risk a gap. On 10-18 the writes took 41-322 ms.
+- **Not the 2.4G dongle:** with the cable's data in, the daemon's radio is
+  off and never probes it.
+- **So a frame goes through about 3 times in 4 on the Mac.** The policy's
+  resend 2 s after a change and its 60 s refresh carry the rest. Left
+  open: whether the Mac's other Bluetooth devices (a mouse, a trackpad,
+  headphones) make the latency worse.
