@@ -1,9 +1,11 @@
 # Now-playing over the 2.4G dongle: the daemon's second transport
 
-Status: **draft for codex's review (10-19), nothing built.** Owner: the
-Gremlin session (Windows); the macOS half is the Mac session's. Depends on
-raw HID over 2.4G stage 2 (`plans/RAWHID-24G-PLAN.md`), on the board since
-`b4b6662f` (`ak820pro-jdlien`), dev builds only.
+Status: **built on Windows and passing live with the cable in (10-20,
+`--radio-only`); in codex's implementation review; the cable-out test needs
+JD.** See "Built (10-19/20)" at the end. Owner: the Gremlin session
+(Windows); the macOS half is the Mac session's. Depends on raw HID over 2.4G
+stage 2 with envelope v2 (`plans/RAWHID-24G-PLAN.md`), `gremlin/raw81` at
+`0ae4cf8c`, dev builds only.
 
 ## What it is for
 
@@ -350,3 +352,55 @@ encode/decode across every allowed command, and the search and span
 boundaries (a bad high byte, the span limit not crossed, no wrap reuse).
 Arbitrary-window tests assert the **permitted residual**, not "no window
 action".
+
+## Built (10-19/20)
+
+**Envelope v2 and R4-1 on the board.** `e8cb64f5` (v2), `5a7696ae` (the idle
+restart, the 250 ms response TTL), `145a8234` (the long clock extended by a
+virtual timer every half wrap: codex's must-fix in the
+[implementation review](review-codex-raw81-v2-impl-2026-10-19.md), a stall
+could otherwise hold a response past the host's quiet), `0ae4cf8c` (op 17 sub
+4, a deliberate stall, and sub 5, a hold on responses: the two regressions).
+[Verify](review-codex-raw81-v2-verify-2026-10-19.md) and
+[verify 2](review-codex-raw81-v2-verify2-2026-10-19.md): flash. Flashed on
+gremlin 23:33 10-19; `win_raw81_s2.py all` passes whole
+(`history/raw81-v2-gremlin-0ae4cf8c.json`): the long clock counted 3.500 s of
+a 3.5 s stall, a response held through it expired (seen gone on the first
+look after the stall, the hold still on) and was never sent, every NAK, the
+stream 1000/1000 (p95 28.9 ms, no pass >= 25 ms).
+
+**The daemon** (`8da0dfc`, on `7130c46`'s v2 module):
+- `raw81::link::Link`: one acquisition, existing only while the machine-wide
+  lock is held. The 3 s quiet before every session, a random safe id, nothing
+  persisted (R3-2, R4-1). The BUSY grace before the first admission, 3 tries,
+  per session; a status-0 receipt (ok or incomplete) is admission. STALE, a
+  span past 16,384 positions or a failed search rotates. One retry for an
+  unknown or a bad CRC (R2-3). The drain and the 100 ms deadline on an
+  injected clock, checked before feeding (R3-3). Text-only `push` plus the
+  qualification `probe` (R2-5).
+- `radio::Radio`: the daemon's side, its own state (`off absent contended
+  quiet qualified silent busy refused unresponsive abandoned`), backoffs
+  (silence 1, 2, 4 ... 30 s and then the lock released; busy 30 s; refused
+  10 min; stuck 60 s), status keys (`transport`, `radio_*`). Each new
+  qualification (a new session the board answered: an acquisition, a
+  rotation, a recovery) refreshes the text whole (R2-7).
+- The agent hands the media tick to the radio only on the USB **opener's**
+  `Absent`; a USB presence stands the radio down and releases the lock;
+  coming back from the radio refreshes the text over USB.
+- Windows: `open_radio` takes the dongle's `MI_03` by interface (its `MI_00`
+  is a keyboard, and it has an `MI_01` too), with the board's identity
+  check; `radio_lock` is `LockFileEx` on byte 0 of
+  `%ProgramData%k820proaw81.lock`, the script's lock. macOS: the trait's
+  defaults (no radio) until the Mac session's IOKit opener and flock.
+- `--radio` (daemon and `ak820 install`); `--radio-only` for development.
+
+**Live on gremlin, cable in, `--radio-only` (23:36 10-19):** the lock taken,
+the quiet, qualified 3 s later, the `CLEAR` and the playback readout every
+tick: the board's counters show 11 dispatched in 30 s (ten readouts and the
+keepalive), no stale, busy, taint, drop or expiry, in one session; the clock
+synced over USB alongside. `win_raw81_s2.py` was refused the lock while the
+daemon held it; the lock was free once the daemon was killed.
+
+**Still to do:** codex's review of the daemon; the cable-out test (JD pulls
+the cable with a track playing: the band shows it within a tick, the cable
+back hands over to USB); the Mac's half.

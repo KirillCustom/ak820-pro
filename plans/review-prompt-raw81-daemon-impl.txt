@@ -1,0 +1,26 @@
+You are reviewing an implementation before it is installed as the daemon on a user's machine: ak820-agent (Rust), now-playing over the AK820 Pro's 2.4G dongle when the keyboard's USB cable is out. The plan is plans/RAWHID-24G-DAEMON-PLAN.md (the original sections D1-D8, then revisions 2, 3 and 4, which replace the original where they differ; your three earlier reviews of it are plans/review-codex-rawhid-daemon-plan*.md). The firmware side and its envelope are plans/RAWHID-24G-PLAN.md and qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/raw81.c and ch582f_ajazz.c (branch gremlin/raw81, 0ae4cf8c), already reviewed and flashed; the host reference implementation is scripts/raw81_proto.py and scripts/win_raw81_s2.py.
+
+The change is commit 8da0dfc in this repo, plus 7130c46 (the raw81 module's envelope v2). Read with `git show 8da0dfc` and `git show 7130c46`. The files:
+- ak820-agent/src/raw81/mod.rs: envelope v2, safe_request, the receipt parser, the Transaction state machine.
+- ak820-agent/src/raw81/link.rs: Link, one acquisition of the radio: the session lifecycle (QUIET 3 s before each session, a random safe id, nothing persisted), the initial-admission BUSY grace, rotation, span accounting, the drain, the deadline, one retry. Text-only push plus the probe.
+- ak820-agent/src/radio.rs: the daemon's radio side: its own state, backoffs and status; the lock held across ticks; the publisher refresh on a new qualification.
+- ak820-agent/src/agent.rs: the media tick hands over to the radio only on the USB opener's Absent; --radio-only (development) sends the media over the radio with the cable in.
+- ak820-agent/src/platform/mod.rs (open_radio, radio_lock as default trait methods), platform/windows/{device.rs open_radio, path.rs is_interface, radio_lock.rs, daemon.rs, cli.rs install --radio}.
+- ak820-agent/src/raw81/fake.rs: the test seam (a fake dongle with a stage-2 board, a fake clock).
+
+Measured on the Windows machine (gremlin) with --radio-only: the lock taken, the 3 s quiet, the probe qualified the board, CLEAR and the playback readout every 3 s tick (the board's counters: 11 dispatched in 30 s, no stale, busy, taint, drop or expiry), the clock syncing over USB alongside; the Python test script was refused the lock while the daemon held it; the lock was free after the daemon was killed. 372 unit tests pass.
+
+Known and stated, judge whether each is acceptable:
+- The board's 1 s session idle is shorter than the 3 s media tick, so on the board every tick starts afresh (R4-1's idle restart); the host's seqs still only increase within its session.
+- The quiet and the grace do not block: they return Waiting and the next media tick (3 s) resumes, so a 1.1 s grace is in practice 3 s.
+- The dongle is opened per tick (as the board is); the Link (session, lock) spans ticks.
+- macOS gets the default methods (no radio) until the Mac session implements them; not built here.
+
+Check, citing file:line, against the plan's revisions:
+1. Conformance to R2-1..R2-7, R3-1..R3-3 and R4-1..R4-3: anything missing or contradicted (qualification triggers; the one-retry rule; Incomplete vs Unknown; STALE rotation; BUSY grace per session and its bound; the 3 s quiet with the lock held for all outstanding I/O; release when USB takes over or the radio idles out; the full refresh on transport change, new qualification, rotation and recovery; separate radio status; only the opener's Absent selects the radio; the clock and health cannot reach the radio).
+2. Correctness of Link::request: seq and span accounting (skips counted, no reuse within the board's freshness window, wraparound), the drain contract, the deadline checked before feeding, late reports, foreign receipts, report-id handling, the reply check against the command.
+3. The agent integration: any way the USB Watch, backoff or status is affected by radio results; behaviour when USB returns mid-acquisition; when the dongle vanishes; when the board sleeps (silence backoff, release at the cap); on daemon exit while holding the lock.
+4. The Windows lock: LockFileEx semantics against Python's msvcrt.locking, sharing flags, the ProgramData directory for a second user, failure modes.
+5. Tests: what the fakes cannot catch, and missing cases the plan's R2-6/R3-3/R4-3 list asks for.
+
+Give a verdict first (install on gremlin for a cable-out test, or hold), then findings ranked must-fix / should-fix / note.
