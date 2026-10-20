@@ -1,0 +1,35 @@
+{
+ "at": "2026-10-20 01:11:25",
+ "args": {
+  "cmd": "restore",
+  "n": 20,
+  "json": "history/uart-latency-20261020/restore.json"
+ },
+ "before": {
+  "count_ge_25ms": 0,
+  "count_ge_10ms": 179,
+  "passes": 70885,
+  "blit_gap_max_ms": 14,
+  "i2c_gap_max_ms": 12,
+  "loop_gap_max_ms": null
+ },
+ "after": {
+  "count_ge_25ms": 0,
+  "count_ge_10ms": 382,
+  "passes": 89546,
+  "blit_gap_max_ms": 19,
+  "i2c_gap_max_ms": 12,
+  "loop_gap_max_ms": null
+ },
+ "delta": {
+  "count_ge_25ms": 0,
+  "count_ge_10ms": 203,
+  "passes": 18661
+ },
+ "checks": [
+  {
+   "check": "20 staged restores: no pass >= 25 ms",
+   "ok": true
+  }
+ ]
+}

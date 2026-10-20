@@ -1,0 +1,158 @@
+{
+ "at": "2026-10-20 01:09:27",
+ "args": {
+  "cmd": "stuck",
+  "n": 20,
+  "json": "history/uart-latency-20261020/stuck.json"
+ },
+ "runs": [
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 11,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 11,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 11,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 11,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 11,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 11,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  },
+  {
+   "ok": false,
+   "ms": 10,
+   "ge25": 0,
+   "ge10": 1
+  }
+ ],
+ "after_burst": {
+  "left": 0,
+  "done": 5,
+  "failed": 0,
+  "exposure_ms": 275,
+  "active": false,
+  "skipped": 0,
+  "lo": 40,
+  "hi": 80
+ },
+ "checks": [
+  {
+   "check": "every stuck read failed",
+   "ok": true
+  },
+  {
+   "check": "every stuck read <= 12 ms whole (longest 11)",
+   "ok": true
+  },
+  {
+   "check": "no pass >= 25 ms",
+   "ok": true
+  },
+  {
+   "check": "five ordinary reads after: 5 done, 0 failed",
+   "ok": true
+  }
+ ]
+}

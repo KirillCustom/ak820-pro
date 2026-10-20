@@ -1,0 +1,48 @@
+{
+ "session": 77,
+ "at": "2026-10-20 01:14:23",
+ "stream": {
+  "n": 1000,
+  "results": {
+   "ok": 1000
+  },
+  "rtt_ms": {
+   "min": 21.48,
+   "median": 27.26,
+   "p95": 29.94,
+   "max": 36.86
+  },
+  "board_delta": {
+   "ok": 1000,
+   "stale": 0,
+   "forbidden": 0,
+   "badenv": 0,
+   "badsum": 0,
+   "taint": 0,
+   "lifetime": 0,
+   "busy": 0,
+   "qbytes": 0,
+   "drops": 0,
+   "dispatched": 1000,
+   "sent91": 2000,
+   "acks_in_window": 0,
+   "defer_overrun": 0,
+   "resp_pending": 0,
+   "short_writes": 0,
+   "resp_expired": 0
+  },
+  "stall_link_delta": {
+   "ge25": 0,
+   "ge10": 77,
+   "giveups": 0,
+   "replaced": 0,
+   "queue_full": 0,
+   "uart_overrun": 0
+  },
+  "losses": [],
+  "max_rtt_ms": 36.86,
+  "loss_rate": 0.0
+ },
+ "max_rtt_ms": 36.86,
+ "fails": []
+}
