@@ -45,6 +45,8 @@ pub struct Status {
     pub state: &'static str,
     pub frames: u64,
     pub failures: u64,
+    /// Frames lost to chance and retried at once (a deadline, a lock change).
+    pub retries: u64,
     pub last_sent: Option<Instant>,
     pub last_error: Option<String>,
     pub restore_pending: bool,
@@ -368,6 +370,10 @@ impl<P: Platform> Core<P> {
                     self.policy.failed(gen, done);
                     self.set_error(h, e);
                 }
+                frame::Why::Deadline | frame::Why::UserChanged => {
+                    self.policy.retry(gen, done);
+                    self.with_status(h, |st| st.retries += 1);
+                }
                 other => {
                     self.policy.failed(gen, done);
                     self.set_error(h, format!("{other:?}"));
@@ -417,7 +423,9 @@ impl Time for Wall<'_> {
     }
 }
 
-/// Start the sender thread.
+/// Start the sender thread. Only `platform` moves to it: the lights are
+/// opened there and never leave it (the Mac's device is scheduled on the
+/// opening thread's run loop), so `LockLights` need not be `Send`.
 pub fn spawn<P: Platform + Send + 'static>(platform: P) -> Result<Handle, String> {
     let h = Handle::new();
     let theirs = h.clone();

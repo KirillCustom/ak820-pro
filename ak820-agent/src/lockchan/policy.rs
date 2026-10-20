@@ -21,6 +21,8 @@ pub const REPEAT: Duration = Duration::from_secs(2);
 pub const REFRESH: Duration = Duration::from_secs(60);
 pub const CLEAR_FOR: Duration = Duration::from_secs(180);
 const BACKOFF_MAX: Duration = Duration::from_secs(30);
+/// Chance losses retried at once before one counts as a failure.
+pub const SOFT_TRIES: u32 = 3;
 
 pub type Content = (u8, Vec<u8>);
 
@@ -34,12 +36,13 @@ pub struct Policy {
     repeat_owed: bool,
     last_title_sent: Option<Instant>,
     backoff: Duration,
+    soft: u32,
     not_before: Option<Instant>,
 }
 
 impl Default for Policy {
     fn default() -> Self {
-        Policy { gen: 0, content: None, next: None, repeat_owed: false, last_title_sent: None, backoff: Duration::ZERO, not_before: None }
+        Policy { gen: 0, content: None, next: None, repeat_owed: false, last_title_sent: None, backoff: Duration::ZERO, soft: 0, not_before: None }
     }
 }
 
@@ -59,6 +62,7 @@ impl Policy {
         self.next = Some(now);
         self.repeat_owed = true;
         self.backoff = Duration::ZERO;
+        self.soft = 0;
         true
     }
 
@@ -96,6 +100,7 @@ impl Policy {
         }
         let Some(c) = &self.content else { return };
         self.backoff = Duration::ZERO;
+        self.soft = 0;
         if !is_clear(c) {
             self.last_title_sent = Some(now);
         }
@@ -125,8 +130,26 @@ impl Policy {
         if gen != self.gen {
             return;
         }
+        self.soft = 0;
         self.backoff = (self.backoff * 2).clamp(Duration::from_secs(1), BACKOFF_MAX);
         self.next = Some(now + self.backoff);
+    }
+
+    /// An attempt lost to chance, not a fault: a missed phase deadline (the
+    /// Mac's BLE writes spike to 88-428 ms, so ~1 frame in 4 misses one,
+    /// measured 10-20) or the user's lock changing mid-frame. Due again at
+    /// once (the frame's own recovery wait spaces it), without growing the
+    /// backoff; after [`SOFT_TRIES`] in a row it counts as a failure.
+    pub fn retry(&mut self, gen: u64, now: Instant) {
+        if gen != self.gen {
+            return;
+        }
+        self.soft += 1;
+        if self.soft > SOFT_TRIES {
+            self.failed(gen, now);
+        } else {
+            self.next = Some(now);
+        }
     }
 }
 
@@ -237,6 +260,25 @@ mod tests {
         p.sent(g, t);
         p.failed(g, t);
         assert_eq!(p.due(), Some(t + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn chance_losses_retry_at_once_then_back_off() {
+        let t0 = Instant::now();
+        let mut p = Policy::default();
+        p.set(title("A"), t0);
+        let g = p.generation();
+        for i in 1..=SOFT_TRIES {
+            let t = t0 + Duration::from_secs(i as u64);
+            p.retry(g, t);
+            assert_eq!(p.due(), Some(t), "try {i}");
+        }
+        let t = t0 + Duration::from_secs(10);
+        p.retry(g, t);
+        assert_eq!(p.due(), Some(t + Duration::from_secs(1)), "the fourth backs off");
+        p.sent(g, t);
+        p.retry(g, t);
+        assert_eq!(p.due(), Some(t), "a success resets the count");
     }
 
     #[test]
