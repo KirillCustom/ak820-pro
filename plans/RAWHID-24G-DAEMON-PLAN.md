@@ -221,3 +221,16 @@ best-effort status telemetry. Install combinations of `--radio` and
 
 **Note taken:** one Configuration Manager snapshot per tick, shared by the
 USB and dongle openers.
+
+**R2-1's residual, stated.** The probe controls its own 34 bytes, not what an
+older board's window already holds. A matched frame clears the window, so
+normally nothing is pending; but a module frame cut short (an overrun) can
+leave `5A <d>`, `5B <d>` or `5C <d>` pending, and the probe's first byte
+(`0x81`, which cannot be avoided) completes it if `<type> + <d> == 0x81` (a
+`5C 25`: a battery reading of 37%; a `5A 27`: refused by the board's
+`d <= 0x1F` LED guard; a `5B 26`: no state code the parser acts on). The
+exposure is one probe per acquisition, needing an already-corrupted frame and
+that exact sum; the cost at worst one bogus battery sample, which the gauge's
+trimmed mean absorbs. Accepted as the probe's residual and not reduced
+further; the collector in every build (the raw-HID plan) removes it at the
+source.
