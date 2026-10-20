@@ -126,3 +126,28 @@ not a brown-out boot (`b2a0-after-clean-boot`): **2/2 fail at once**, the
 - **Every dev or daily build is a lottery until then:** a change anywhere
   below `sleep.c` in the link can move the WFI. `b2a07e0d37` is back on
   the board, with this bug.
+
+## The WFI placement diagnostic (`466aa04636`, `mac/sleep-wfi-diag`)
+
+`b2a07e0d37` plus op 14 sub 7, which picks the sleep's WFI sequence at run
+time: `0xFF` the C sequence (default), 0-7 an asm copy with the WFI at
+`(2k + 6) mod 16`, 8 a copy in SRAM (`.ramtext`) with a settle loop before
+it returns to flash. Built as `via-dev-466aa04636-20261020-094005.bin`
+(token `0x0a4548df`). `scripts/wfi_sweep.py` runs `deep_cycles.py` on each
+variant.
+
+**Codex (`review-codex-sleep-wfi-diag-2026-10-20.md`): clear for an
+attended bench flash.** It confirms the offsets from the ELF's jump table:
+0 → 6, 1 → 8, 2 → 10, 3 → 12, 4 → 14, 5 → 0, 6 → 2, 7 → 4, the default
+at 0.
+- **P2, a sweep that passes everywhere cannot exclude the hazard.** The asm
+  copies resume differently from the original loop. **Taken:** if every
+  variant passes, next come layout-only moves of the original sequence (the
+  register allocation checked unchanged), then the register capture.
+- **P3, the settle is uncalibrated** (300 iterations of a 6-instruction
+  loop, not a measured 100 us). **Taken for the fix, not the diagnostic:**
+  a production settle gets measured and swept first.
+- **Recovery:** the watchdog does not count in Deep-sleep, so a wake that
+  wedges the CPU needs the slider. JD at hand during the sweep.
+- **What would refute the lead:** corruption that shows up while waking
+  through SRAM, before any return to flash.
