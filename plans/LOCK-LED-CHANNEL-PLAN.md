@@ -889,3 +889,50 @@ without a new generation; a failed read is idle at once, as today.
   s; fired on **any change** of `dwTime` while armed, forwards or backwards.
 - Discovery: while the BLE keyboard is absent, the Configuration Manager's
   list is read again every 10 s (it opens nothing).
+
+### Codex's verification of revision 3 (10-20) and revision 4
+
+[Verbatim](review-codex-lockled-sender-r3-2026-10-20.md), prompt
+[`review-prompt-lockled-sender-r3.txt`](review-prompt-lockled-sender-r3.txt).
+Verdict: nearly adequate; one must-fix (R3-4's validity test), the rest
+handled in the implementation; **once R4-1 is in, the sender and the
+transport integration can be implemented to this specification.** All
+agreed.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | `OpenInputDesktop` succeeds in a disconnected session and says nothing about the thread's own desktop | **Agreed.** R4-1 |
+| 2 | The handover wait needs a dedicated timestamp for every possibly delivered media command (playback-only cycles, partial batches, uncertain outcomes), taken at completion; unknown startup history waits conservatively; a failed USB push keeps BT revoked | **Agreed.** R4-2 |
+| 3 | Invalidate a lock-light frame being assembled when raw HID's media is accepted; "never received" must not lease the first 10 s after boot | **Agreed.** R4-3 (firmware). The second half is already so: `rawhid_media_seen` |
+| 4 | 3 s bounds the exit, not a worst-case restore (2 + 0.6 + 2 = 4.6 s) | **Agreed:** 3 s stays a hard exit budget; restoration is attempted only within what is left |
+| 5 | Freeze the snapshot before the header, not at the wire's payload section | **Agreed:** selected after warm-up and quiet, before the frame's first write; that attempt's bytes are immutable |
+| 6 | R3-6's numbers match the receiver; enforce 100/300 ms on completion against the saved previous completion | **Agreed** |
+| 7 | `restore_pending` closes the gap; keep it across unknown locks and reopens; clear only on a fresh repair that reads back right | **Agreed** |
+
+**R4-1. When the user's locks are known.** `user()` returns `Some` only when
+all of these hold, checked before each write (cheap calls, no I/O to the
+board), and `None` otherwise or when any check fails:
+- the daemon's session is **active and unlocked**:
+  `WTSQuerySessionInformationW(WTS_CURRENT_SESSION, WTSSessionInfoEx)` gives
+  `SessionState == WTSActive` and `SessionFlags == WTS_SESSIONSTATE_UNLOCK`;
+- the **input desktop is the thread's desktop**: the names from
+  `GetUserObjectInformationW(UOI_NAME)` of `OpenInputDesktop` and
+  `GetThreadDesktop(GetCurrentThreadId())` match (`Default` normally;
+  `Winlogon` while locked or at a UAC prompt fails it);
+- then plain `GetKeyState` for Num, Caps and Scroll.
+The soak covers lock and unlock, a UAC prompt, and (if it can be arranged on
+gremlin) a disconnect and reconnect.
+
+**R4-2. The handover timestamp.** The daemon keeps one monotonic instant,
+`raw_media_last`, set at the **completion** of every raw-HID media request
+it sent whose delivery is possible: text, CLEAR and PLAYBACK, over USB or the
+radio, answered or not (a timeout counts: the board may have taken it).
+The channel's first frame after an acquisition waits until 12 s after it. At
+startup there is no history (another process may have pushed): the first
+acquisition waits 12 s regardless. A USB push that failed does not grant the
+channel: only the opener's `Absent` does.
+
+**R4-3. The board drops a lock-light frame being assembled** when raw HID
+accepts a media command (`lockchan_link_lost`, which also drops the LED
+baseline; the next report only sets it), so no assembly can straddle a raw-HID
+update. The lease at commit stays.
