@@ -1,0 +1,23 @@
+2026-10-20 17:12:29 20 cycles through the ladder: Minimal, the bench sleep time 30 s; relay 2 off; light sleep off; the mode was 1
+2026-10-20 17:13:02 cycle   1: asleep 19.0 s (PCF 19, counted 15), woke key, p2 0x100, seq 1, key 1, Mac 44 ms, link sent 4 timeouts 0  ok
+2026-10-20 17:13:57 cycle   2: asleep 25.0 s (PCF 25, counted 20), woke key, p2 0x100, seq 2, key 1, Mac 68 ms, link sent 9 timeouts 2  ok
+2026-10-20 17:14:37 cycle   3: asleep 10.0 s (PCF 10, counted 8), woke key, p2 0x100, seq 3, key 1, Mac 68 ms, link sent 8 timeouts 2  ok
+2026-10-20 17:15:21 cycle   4: asleep 14.0 s (PCF 15, counted 12), woke key, p2 0x100, seq 4, key 1, Mac 65 ms, link sent 8 timeouts 3  ok
+2026-10-20 17:16:01 cycle   5: asleep 8.0 s (PCF 8, counted 6), woke strays, p2 0x0, seq 5, key 1, Mac 39 ms, link sent 8 timeouts 3 ge25 +1  FAIL
+2026-10-20 17:16:56 cycle   6: asleep 24.0 s (PCF 24, counted 19), woke key, p2 0x100, seq 6, key 1, Mac 63 ms, link sent 9 timeouts 2  ok
+2026-10-20 17:17:39 cycle   7: asleep 13.0 s (PCF 13, counted 11), woke key, p2 0x100, seq 7, key 1, Mac 70 ms, link sent 8 timeouts 5  ok
+2026-10-20 17:18:18 cycle   8: asleep 9.0 s (PCF 9, counted 7), woke key, p2 0x100, seq 8, key 1, Mac 102 ms, link sent 8 timeouts 5  ok
+2026-10-20 17:18:58 cycle   9: asleep 10.0 s (PCF 10, counted 8), woke key, p2 0x100, seq 9, key 1, Mac 78 ms, link sent 8 timeouts 2  ok
+2026-10-20 17:19:43 cycle  10: asleep 15.0 s (PCF 15, counted 12), woke key, p2 0x100, seq 10, key 1, Mac 90 ms, link sent 9 timeouts 5  ok
+2026-10-20 17:20:36 cycle  11: asleep 23.0 s (PCF 23, counted 19), woke key, p2 0x100, seq 11, key 1, Mac 84 ms, link sent 8 timeouts 4  ok
+2026-10-20 17:21:23 cycle  12: asleep 18.0 s (PCF 18, counted 14), woke key, p2 0x100, seq 12, key 1, Mac 72 ms, link sent 8 timeouts 3  ok
+2026-10-20 17:22:10 cycle  13: asleep 17.0 s (PCF 17, counted 13), woke key, p2 0x100, seq 13, key 1, Mac 80 ms, link sent 8 timeouts 3  ok
+2026-10-20 17:23:01 cycle  14: asleep 21.0 s (PCF 21, counted 17), woke key, p2 0x100, seq 14, key 1, Mac 80 ms, link sent 8 timeouts 3 ERRORS ['uart_overrun']  FAIL
+2026-10-20 17:23:45 cycle  15: asleep 14.1 s (PCF 13, counted 11), woke key, p2 0x100, seq 15, key 1, Mac 96 ms, link sent 8 timeouts 2  ok
+2026-10-20 17:24:33 cycle  16: asleep 18.0 s (PCF 18, counted 15), woke key, p2 0x100, seq 16, key 1, Mac 96 ms, link sent 8 timeouts 3  ok
+2026-10-20 17:25:32 cycle  17: asleep 25.0 s (PCF 25, counted 20), woke key, p2 0x100, seq 17, key 1, Mac 74 ms, link sent 9 timeouts 5  ok
+2026-10-20 17:26:26 cycle  18: asleep 24.0 s (PCF 24, counted 19), woke key, p2 0x100, seq 18, key 1, Mac 71 ms, link sent 8 timeouts 2  ok
+2026-10-20 17:27:23 cycle  19: asleep 27.0 s (PCF 27, counted 22), woke key, p2 0x100, seq 19, key 1, Mac 80 ms, link sent 8 timeouts 4 ERRORS ['uart_overrun']  FAIL
+2026-10-20 17:28:11 cycle  20: asleep 18.0 s (PCF 19, counted 15), woke key, p2 0x100, seq 20, key 1, Mac 80 ms, link sent 8 timeouts 2  ok
+2026-10-20 17:28:14 restored: relay 1 open, relay 2 on, data on, the arm cancelled, the bench sleep time cleared, the mode put back, stage released
+deep cycles: FAIL {"cycles": 20, "passed": 17, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 77.5, "max": 101.8}, "clock_before_abs_ms": null, "timed_out": {}}

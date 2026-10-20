@@ -69,6 +69,14 @@ ANIM_TOL = 0.25                  # and 15 per mille: two holds of a moving or ra
 CAPPED_MAX = 0.35                # expected 48 / 255 = 0.19
 DRIFT_MAX = 0.70                 # expected 128 / 255 = 0.50
 MIN_LIT = {255: 20, 100: 2}      # per mille: a lit reference at each value (purple at 255 reads ~500)
+# The Heatmap lights only the rig's one tapped key of 81: measured 10-20 at
+# 6.7 per mille over a stage's holds and 1.9 at value 100, so the floor that
+# fits a field of lit keys can never pass it.
+MIN_LIT_HEATMAP = {255: 4, 100: 1}
+
+
+def min_lit(eff, v):
+    return (MIN_LIT_HEATMAP if eff == HEATMAP else MIN_LIT)[v]
 MIN_WHITE = 100                  # per mille: white at 128 (expected ~188)
 
 
@@ -126,7 +134,7 @@ def stages_pass(b, rows):
                         and st["val_cap"] == STAGE_CAP[stage])
             got.append(b.drive(eff, SAMPLES_STAGE))
         act, dim, off, dark, back = got
-        drive_ok = (act >= MIN_LIT[255] and off == 0 and dark == 0 and dim < act
+        drive_ok = (act >= min_lit(eff, 255) and off == 0 and dark == 0 and dim < act
                     and abs(back - act) <= max(20, act * 0.2))
         ok = all(caps) and (drive_ok or not judged(eff, b.rig))
         bad += not ok
@@ -162,7 +170,7 @@ def saver_pass(b, rows):
                     drive_ok = drive_ok and sav <= ref * DRIFT_MAX + 2
             else:
                 drive_ok = abs(sav - ref) <= t
-            drive_ok = drive_ok and ref >= MIN_LIT[v]
+            drive_ok = drive_ok and ref >= min_lit(eff, v)
             ok = ok1 and ok2 and (drive_ok or not judged(eff, b.rig))
             bad += not ok
             rows.append({"part": "saver", "value": v, "effect": eff, "name": name, "full": ref, "saver": sav,

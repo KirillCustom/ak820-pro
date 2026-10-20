@@ -15,7 +15,35 @@ loop stopped next time. The crash hunt adds what they cannot say (a CPU fault
 versus a hang, the PC, stack depth, why blits time out) and tries to provoke
 the next reset instead of waiting for it.
 
-## 2026-10-20 — RESUME HERE
+## 2026-10-20 evening — RESUME HERE
+
+**On the board since 17:11: `845996c39c`** (`mac/lockchan-pm`, dev, token
+`0x2e279a39`). It is the power modes revised (`5df4e0e3b7`) plus the
+lock-LED handler and the play times (type 3) with codex's fixes.
+- **`ak820pro-jdlien` and `deps.lock` are at `5df4e0e3b7`;** the lock-LED
+  commits stay on their branch until the stray question below is settled.
+- **Validated** ([`../history/power-modes-20261020/`](../history/power-modes-20261020/README.md)):
+  - deep sleep 17/20 on BT and 9/10 on 2.4G, every cycle asleep and woken
+    by its key;
+  - `ladder_check --rig` passes once its Heatmap floor is fixed (re-judged
+    from the run's data).
+- ⚠️ **Open: a stray-wake storm beside lock-light frames** (`BACKLOG.md`).
+  One BT cycle ended its sleep on `strays: 1000` while the daemon sent
+  frames; its cause is not known. The diagnostic is built
+  (`a5a176bef4`, op 24 slot 8), with the readout tied to its title (codex's
+  last P2). It needs codex, then a flash, then a deliberate test: frames
+  into a long bench sleep against a control, slider on BT.
+- **The Mac's 450 ms data gap is measured:** 20/20 `Sent` frames committed
+  with the daemon's raw HID quiet. The daemon's release build
+  (`v0.1.1-699`) is signed but not installed; reinstalling it brings play
+  times, the gap, the orderly stop and Gremlin's two sender fixes.
+- **Gremlin:** the type 3 sender, the wake resend's 4 s wait, and the BT
+  clock (type 4) designed and under codex. Its `rtc.c` fixes
+  (`gremlin/rtc-clock-fixes` `090378fd`) wait for my review after codex.
+- **The agent's own repo** with a notarized Mac release and a signed Windows
+  build: decided, for later (`BACKLOG.md`).
+
+## 2026-10-20 (morning)
 
 **On the board since 01:04 10-20: `b2a07e0d37`** (dev, token `0x398a2e17`;
 `ak820pro-jdlien` and `deps.lock` point at it). It is the UART-latency build

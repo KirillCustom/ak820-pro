@@ -14,7 +14,10 @@ reviews and every disposition:
 > **State (2026-10-20): the power modes are revised** ("The idle ladder and
 > the power modes", below; [`plans/POWER-MODES-REVISION-PLAN.md`](../plans/POWER-MODES-REVISION-PLAN.md)):
 > Balanced dims at 10 min and sleeps at 20, Power saver types at value 128
-> and dims at 1 min, sleeps at 3, and Lights out sleeps after 1 min.
+> and dims at 1 min, sleeps at 3, and Lights out sleeps after 1 min. On JD's
+> unit since 17:11 10-20 as `845996c39c` (dev, token `0x2e279a39`: the
+> revision `5df4e0e3b7` plus the lock-LED work), validated in
+> [`history/power-modes-20261020/`](../history/power-modes-20261020/README.md).
 >
 > **State (2026-10-18): Phase 2 is built** (`d3e8389858`, "The gauge as
 > built, Phase 2" and "The idle ladder and the power modes", below): an

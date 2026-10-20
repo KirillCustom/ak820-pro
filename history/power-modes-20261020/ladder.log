@@ -1,0 +1,31 @@
+start: lighting {'effect': 1, 'h': 169, 's': 0, 'v': 251, 'speed': 231}, power mode 1, stage held 255
+1 solid                  active  49.8%  dim   2.2%  off  0.0%  dark  0.0%  wake  49.8%  op 14 ok  ok
+2 alphas mods (JD's)     active  49.4%  dim   2.2%  off  0.0%  dark  0.0%  wake  49.4%  op 14 ok  ok
+3 cycle all              active  49.8%  dim   2.3%  off  0.0%  dark  0.0%  wake  49.9%  op 14 ok  ok
+4 cycle left-right       active  49.9%  dim   2.2%  off  0.0%  dark  0.0%  wake  49.9%  op 14 ok  ok
+5 cycle up-down          active  50.0%  dim   2.2%  off  0.0%  dark  0.0%  wake  49.9%  op 14 ok  ok
+6 jellybean raindrops    active  62.8%  dim   2.8%  off  0.0%  dark  0.0%  wake  64.5%  op 14 ok  ok
+7 typing heatmap         active   0.7%  dim   0.1%  off  0.0%  dark  0.0%  wake   0.8%  op 14 ok  FAIL
+8 rainfall (custom)      active   9.8%  dim   1.0%  off  0.0%  dark  0.0%  wake  10.4%  op 14 ok  ok
+9 drift (custom)         active   2.8%  dim   0.6%  off  0.0%  dark  0.0%  wake   2.9%  op 14 ok  ok
+v255 1 solid                  Always on  49.8%  Power saver   9.2%  (0.18)  op 14 ok  ok
+v255 2 alphas mods (JD's)     Always on  49.4%  Power saver   9.2%  (0.19)  op 14 ok  ok
+v255 3 cycle all              Always on  49.7%  Power saver   9.3%  (0.19)  op 14 ok  ok
+v255 4 cycle left-right       Always on  49.9%  Power saver   9.3%  (0.19)  op 14 ok  ok
+v255 5 cycle up-down          Always on  49.8%  Power saver   9.3%  (0.19)  op 14 ok  ok
+v255 6 jellybean raindrops    Always on  62.3%  Power saver  11.4%  (0.18)  op 14 ok  ok
+v255 7 typing heatmap         Always on   2.0%  Power saver   0.4%  (0.20)  op 14 ok  ok
+v255 8 rainfall (custom)      Always on  10.0%  Power saver   3.6%  (0.37)  op 14 ok  ok
+v255 9 drift (custom)         Always on   2.6%  Power saver   1.2%  (0.47)  op 14 ok  ok
+v100 1 solid                  Always on   5.3%  Power saver   5.3%  (1.00)  op 14 ok  ok
+v100 2 alphas mods (JD's)     Always on   5.3%  Power saver   5.3%  (1.00)  op 14 ok  ok
+v100 3 cycle all              Always on   5.4%  Power saver   5.4%  (0.99)  op 14 ok  ok
+v100 4 cycle left-right       Always on   5.4%  Power saver   5.4%  (1.00)  op 14 ok  ok
+v100 5 cycle up-down          Always on   5.4%  Power saver   5.4%  (1.00)  op 14 ok  ok
+v100 6 jellybean raindrops    Always on   6.8%  Power saver   6.5%  (0.97)  op 14 ok  ok
+v100 7 typing heatmap         Always on   0.2%  Power saver   0.2%  (1.07)  op 14 ok  FAIL
+v100 8 rainfall (custom)      Always on   1.2%  Power saver   1.2%  (0.98)  op 14 ok  ok
+v100 9 drift (custom)         Always on   0.9%  Power saver   0.9%  (1.00)  op 14 ok  ok
+white: Always on at 128  18.8%, Power saver at 255  18.8%  ok
+restored: lighting {'effect': 1, 'h': 169, 's': 0, 'v': 251, 'speed': 231}, power mode 1, stage held 255
+ladder check: 2 FAILED

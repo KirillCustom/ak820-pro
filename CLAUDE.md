@@ -114,10 +114,19 @@ ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 ## Current state (2026-10-20)
 
 **Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-20
-— RESUME HERE").
+evening — RESUME HERE").
 
-**On the board since 15:16 10-20: `8b06e4dcc4`** (a `dev` build, token
-`0x3e1c880c`; `ak820pro-jdlien` and `deps.lock` point at it). It is
+**On the board since 17:11 10-20: `845996c39c`** (`mac/lockchan-pm`, a
+`dev` build, token `0x2e279a39`). It is the power modes revised
+(`5df4e0e3b7`, which `ak820pro-jdlien` and `deps.lock` now point at) plus
+the lock-LED handler and play times, which stay on their branch.
+- **Validated:** deep sleep on BT and 2.4G, and `ladder_check --rig`
+  ([`history/power-modes-20261020/`](history/power-modes-20261020/README.md)).
+- ⚠️ **Open: one stray-wake storm beside the daemon's lock-light frames**
+  (`plans/BACKLOG.md`); a diagnostic is built.
+
+**Before it, from 15:16 10-20: `8b06e4dcc4`** (a `dev` build, token
+`0x3e1c880c`). It is
 `b2a07e0d37` with the deep sleep's wake from SRAM. On `b2a07e0d37` every
 deep sleep ended after one second, because of where the linker put the WFI
 ([docs/sn32f299.md](docs/sn32f299.md), errata item 37;

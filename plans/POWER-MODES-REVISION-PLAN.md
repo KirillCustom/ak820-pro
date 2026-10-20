@@ -603,7 +603,21 @@ the bench scripts before accepting validation 4.
 **Results after the fixes:** `run.sh` passes against `5df4e0e3b7`, and the
 mutants are 26 of 27 caught (all 9 new ones, plus the known survivor).
 
-### What is left, handed over (10-20)
+### What is left, handed over (10-20) -- done that evening
+
+**Done by the bench session** ([`../history/power-modes-20261020/`](../history/power-modes-20261020/README.md)):
+- **The flash:** `845996c39c` at 17:11, one image rather than two. It is the
+  revision with the lock-LED commits cherry-picked on top.
+- **The merge:** `ak820pro-jdlien` fast-forwarded to `5df4e0e3b7` and pushed;
+  `deps.lock` pinned to it; the host branch on `main`. `run.sh` passes with
+  no override, mutants 26 of 27.
+- **Validation 3:** 17/20 on BT and 9/10 on 2.4G, every cycle asleep and
+  woken by its key. The failures: a stray-wake storm and two overruns beside
+  the daemon's lock-light frames (BACKLOG), and one known wake paint.
+- **`ladder_check --rig`:** passes but for the Heatmap's "reference lit"
+  floor, which one tapped key cannot reach. Fixed in the script and
+  re-judged from the run's data.
+
 
 JD gave the go to build and flash, and asked for the rest to be handed to
 the bench session (`ak820-pro-32`). The board checks are cut to what
