@@ -530,3 +530,23 @@ closed; the rest partial or mostly closed, for the reasons below.
 | V9 | note: separate OE and refused-byte counts are feasible at the existing sites | **Taken.** Step 1 item 1; called OE observations, with the LLD's coverage gaps stated. |
 | V10 | small: 64 + 10, not 74; the FIFO comment; the healthy-bus qualifier; one tainted echo, not one byte; the 60 s check cannot explain 22-28 s | **Taken.** All five. |
 | V11 | closing: no universal 25 ms guarantee; validate retries, give-ups, replacement and the waking key | **Taken.** Part 2's "Not claimed" and its test. |
+
+## Built (10-19, `27db633a44` on the local branch `mac/overrun-caps`, contrib `22596e61cd`)
+
+One change from revision 3, simpler than V1's scheduling: **the Fn+D restore
+never uses the lock queue.**
+- **How:** `draw_locks_diff(one, queued)` paints at once in the restore
+  (`queued` false), one component a pass, exactly as before. Only the 10 Hz
+  normal path and the full repaint queue the label.
+- **What that removes:** the pump runs no glyphs during the restore, and
+  stage 1's discard empties both queues. So no stage can clear a label
+  whose glyphs are still queued, and the pump needs no new order.
+- **A label is all or nothing,** so the dirty flag is not needed. A refused
+  label queues nothing and leaves `shown_*` as it was, so the panel still
+  matches it, and the next tick's diff tries again. For the third slot, the
+  clear sets `shown_sl3` to NULL before the label is offered.
+
+Waiting on Gremlin's `4c5cb496` (the raw81 drain's 2 ms give-back) to land on
+`ak820pro-jdlien`; this branch rebases onto it before codex's review of the
+diff and the build.
+

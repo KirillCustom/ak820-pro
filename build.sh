@@ -149,6 +149,26 @@ if [[ "$FLAVOR" == (daily|fpb) ]]; then
     [[ -z "$(awk -v s=$sym '$3 == s' <<<"$nm_out")" ]] || { echo "FAIL: a $FLAVOR build carries $sym" >&2; fail=1; }
   done
 fi
+# The PCF's I2C releases the system lock at every byte (halconf.h's
+# SW_I2C_BYTE_PREEMPT, the fallback driver's i2c_byte_boundary): in every
+# flavour, both byte routines hold an unlock and a relock. And the overrun
+# measurement (overrun_diag.c, rtc.c's burst, sleep.c's wake ring) is dev
+# only (plans/OVERRUN-CAPS-PLAN.md).
+s_dis=$(arm-none-eabi-objdump -d --no-show-raw-insn "$s_elf")
+for fn in i2c_write_byte i2c_read_byte; do
+  body=$(awk -v f="<$fn>:" 'index($0, f) {p=1; next} p && /^$/ {exit} p' <<<"$s_dis")
+  [[ -n "$body" ]] || { echo "FAIL: $fn not found (inlined? the preemption check needs it)" >&2; fail=1; continue; }
+  grep -q "cpsie" <<<"$body" && grep -q "cpsid" <<<"$body" ||
+    { echo "FAIL: $fn does not release the lock between bytes" >&2; fail=1; }
+done
+od_syms="od_mask_begin od_uart_oe od_fill_summary rtc_burst_start sleep_wake_ring_fill"
+for sym in $od_syms; do
+  have=$(awk -v s=$sym '$3 == s' <<<"$nm_out")
+  case "$FLAVOR" in
+    dev)       [[ -n "$have" ]] || { echo "FAIL: the dev build lacks $sym" >&2; fail=1; } ;;
+    daily|fpb) [[ -z "$have" ]] || { echo "FAIL: a $FLAVOR build carries $sym" >&2; fail=1; } ;;
+  esac
+done
 if (( fail )); then echo "Structural checks FAILED; nothing published." >&2; exit 1; fi
 
 # The manifest scripts/symbolize.sh resolves a board-reported token through.
