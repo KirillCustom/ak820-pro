@@ -75,9 +75,9 @@ class Owner:
             except Exception as e:
                 sys.exit(f"{STATE} is unreadable ({e}): refusing to allocate a session; delete it only "
                          "if no raw81 owner has run in the last second")
-        wait = float(st["opened"]) + 2.0 - time.time()
+        wait = float(st["opened"]) + 1.0 - time.time()
         if wait > 0:
-            time.sleep(wait)               # 2 s: the board's two-count session idle, and no reuse inside the lifetime
+            time.sleep(wait)               # no reuse inside the 1 s lifetime
         self.session = (int(st["session"]) % 255) + 1
         self.opened = time.time()
         tmp = STATE + ".tmp"               # persisted atomically, before any send
@@ -91,7 +91,7 @@ class Owner:
 
     def next(self):
         if self.issued >= ROTATE_SPAN:
-            time.sleep(2.0)                # the session idles two counts, then a new one (R4-2)
+            time.sleep(1.1)                # the session idles 1 s, then a new one (R4-2)
             self._open()
         self.seq = (self.seq + 1) & 0xFFFF
         self.issued += 1
@@ -133,6 +133,17 @@ class Radio:
             if rep and t.feed(rep):
                 break
         rtt = (time.perf_counter() - t0) * 1000
+        if t.result == "nak" and t.status == 4 and session == self.owner.session and not getattr(self, "_busy_retry", False):
+            # Our own fresh session refused busy: the board saw the previous
+            # session active less than 1 s ago (a restart straight after a long
+            # run; codex's latency review). Wait out the idle once and retry
+            # on a new seq.
+            self._busy_retry = True
+            time.sleep(1.1)
+            try:
+                return self.xact(inner, raw=raw)
+            finally:
+                self._busy_retry = False
         if t.result in ("ok", "nak", "incomplete"):
             self.max_rtt = max(self.max_rtt, rtt)
         return t, rtt
