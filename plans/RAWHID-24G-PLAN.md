@@ -184,3 +184,101 @@ unfilled example strings; software 2024.07.26 SVN0138, PnP 0C45:FEFE), 180F,
 response): WCH's CH58x OTA profile, the module's own firmware update. Never
 write FEE1.** So raw HID over the dongle is the only two-way wireless path;
 over BLE the lock-LED report stays the only host-to-board one.
+
+## Stage 2: dispatch, as designed (10-19; for codex before it is built)
+
+Stage 1's echo works from the Mac (429/430; `history/raw81-echo-20261019-mac/`)
+and its one cost, a 13-15 ms pass per echo, has a fix in review
+(`gremlin/raw81`, the drain bound). Stage 2 makes the board *act* on a
+request over the dongle, under the conditions codex's plan review set
+(findings 2, 3, 4, 6, 7): end-to-end integrity before anything changes
+state, a positive allow-list upstream of VIA, bounded dispatch, and explicit
+reply ownership. Dev builds only, like stage 1.
+
+### The request envelope (inside the 81's 32 bytes)
+
+```
+[0]    0xC7          magic: never a first byte any firmware's raw HID answers
+                     (VIA's ids are 0x01-0x15; ours ride on 0x07)
+[1]    seq           the host's request number, mod 256
+[2..3] CRC-16        CCITT-FALSE (poly 0x1021, init 0xFFFF), big-endian, over
+                     [0..1] and [4..31]
+[4..31] inner        the ordinary 28-byte command, e.g. 07 13 01 (health get)
+```
+
+The board dispatches `inner` as a 32-byte buffer (inner, then 4 zero bytes,
+length 32), exactly as a USB report of the same command would arrive. Every
+command on the allow-list fits in 28 bytes (a text line is at most 26; the
+health reads at most 6). The CRC is what the transport's 1-byte sum is not:
+codex's constructed case (one byte lost under an overrun turns `TEXT_SET`
+into a valid `TEXT_CLEAR` with a matching sum) fails it with probability
+2^-16 rather than 1 in 1.
+
+### The reply
+
+The handler edits the 32-byte buffer in place, as it does on USB, and the
+whole buffer goes back as a `91`: the reply is byte for byte the USB reply.
+Replies carry no envelope: the health replies fill all 32 bytes, the board's
+TX is not where bytes were lost (overruns are an RX phenomenon), and the radio
+and the USB legs below the module are CRC-protected. A request that is not
+dispatched gets a **NAK** instead, so the host learns at once rather than by
+timeout:
+
+```
+[0] 0xC7  [1] seq as received  [2] reason: 1 bad CRC, 2 not on the
+          allow-list, 3 busy (a reply still waiting), 4 not 2.4G-linked
+[3..31] 0
+```
+
+A NAK's first byte (`0xC7`) can never begin a real reply (those begin with
+`0x07` or VIA's `0xFF` unhandled).
+
+**Correlation, host side:** one request in flight per host; before sending,
+drain whatever input reports are waiting (Windows delivers to every open
+handle); accept only a reply whose first three bytes equal the request's inner
+`[0..2]` (and a health page byte where the command has one), or a NAK with the
+request's seq. A stale reply to an earlier request of the *same* command could
+still pass; for the stage-2 set that is harmless (a text echo, a health read
+a few ms old). The clock is not on the list for exactly this reason: its GET
+reply fills all 32 bytes, so a stale one cannot be told from a fresh one. It
+is stage 3, with a radio clock command whose reply carries the seq.
+
+### The allow-list (positive, exact, checked before dispatch)
+
+| inner | what | why safe |
+|---|---|---|
+| `07 12 01`, `07 12 03`, `07 12 04`, `07 12 02` | text set, set line, playback, clear | RAM and dirty flags only; the display draws later through the glyph queue (codex plan review, 4) |
+| `07 13 01`, `07 13 02`, `07 13 04`, `07 13 06`, `07 13 07` | health get, conn, get2, get3, get4 | pure reads |
+| `07 13 0E <page>` | HC_LINK pages | pure reads |
+
+Everything else, VIA's own commands, the RTC, flash provisioning, every
+health command that resets, configures, injects, stalls or jumps
+(`HC_RESET`, `HC_BATTCFG`, `HC_ACCT`'s ops, `HC_BOOTLOADER`, `HC_DEVHOOK`
+and the instrumented ones), NAKs with reason 2. The check matches whole
+bytes, not prefixes.
+
+### Dispatch
+
+- **Where:** `ch582_task()`, after the drain and the TX pump, **at most one
+  request per pass**, from a one-slot request buffer filled at commit. A
+  commit with the slot full NAKs busy.
+- **How:** `via_custom_value_command_kb(buf, 32)` directly: the board's own
+  entry for its channels (`0x07` `id_custom_set_value` reaches it through VIA
+  today). No core hook and no `raw_hid_send()`: the reply is read out of
+  `buf` and queued as a `91`, so it can never leave over USB, and a USB
+  request can never reply over the radio (codex plan review, 7).
+- **Reentrancy:** `ch582_tx_drain()` (the USB bootloader path) calls
+  `ch582_task()` from inside a USB raw-HID handler; a depth guard skips radio
+  dispatch when `ch582_task()` is entered recursively, so no handler nests in
+  another (codex plan review, 6).
+- **Budget:** the allow-listed handlers are RAM work; the pass is measured
+  (`HC_ACCT`, `count_ge_10ms`, `count_ge_25ms`) under a request stream with
+  and without USB traffic beside it.
+
+### Stage 2's exit (codex plan review, 8)
+
+Text and health round trips over the dongle from Windows and macOS (the Mac
+session); every NAK reason provoked; forbidden commands shown to have no
+effect; simultaneous USB and radio requests correctly routed; under a typing
+burst no new pass >= 25 ms and no A1 drop, replacement or give-up; and a
+sustained request stream's loss and latency.
