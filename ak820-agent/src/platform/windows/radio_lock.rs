@@ -19,6 +19,10 @@ use windows::Win32::System::IO::OVERLAPPED;
 /// Held until dropped.
 pub struct RadioLock(HANDLE);
 
+// A file handle may be closed from any thread; the lock-LED sender holds its
+// own on its thread.
+unsafe impl Send for RadioLock {}
+
 impl Drop for RadioLock {
     fn drop(&mut self) {
         unsafe { CloseHandle(self.0).ok() };
@@ -27,17 +31,27 @@ impl Drop for RadioLock {
 
 /// The lock file's path.
 pub fn path() -> std::path::PathBuf {
+    path_named("raw81.lock")
+}
+
+fn path_named(name: &str) -> std::path::PathBuf {
     std::env::var_os("ProgramData")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| r"C:\ProgramData".into())
         .join("ak820pro")
-        .join("raw81.lock")
+        .join(name)
 }
 
 /// Take it without blocking: `Ok(Some)` held, `Ok(None)` another owner holds
 /// it, `Err` it could not be tried (the directory or file).
 pub fn try_take() -> Result<Option<RadioLock>, String> {
-    let p = path();
+    try_take_named("raw81.lock")
+}
+
+/// The same mechanism on another file: the lock-LED channel's owner lock,
+/// `lockchan.lock` (plans/LOCK-LED-CHANNEL-PLAN.md, R3-3).
+pub fn try_take_named(name: &str) -> Result<Option<RadioLock>, String> {
+    let p = path_named(name);
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }

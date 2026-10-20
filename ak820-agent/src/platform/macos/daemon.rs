@@ -50,6 +50,7 @@ pub fn main() {
         clock: false,
         radio: false,
         radio_only: false,
+        lockchan: false,
     };
 
     let args: Vec<String> = std::env::args().skip(1).collect();

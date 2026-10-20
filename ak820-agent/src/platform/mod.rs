@@ -77,6 +77,14 @@ pub trait Platform {
         Err("the radio is not available on this platform yet".into())
     }
 
+    /// Start the lock-LED channel's sender thread (`crate::lockchan::sender`)
+    /// with this platform's keyboard, owner lock and input tick, if it has
+    /// one: now-playing over Bluetooth, where there is no raw HID. The
+    /// default: none.
+    fn spawn_lockchan() -> Option<Result<crate::lockchan::sender::Handle, String>> {
+        None
+    }
+
     /// Start the media source on its own thread. `log` is the daemon's, for a
     /// source with something to say between polls (the macOS helper's
     /// restarts); a source that has nothing to say ignores it.

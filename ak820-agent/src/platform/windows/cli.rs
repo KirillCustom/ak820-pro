@@ -448,14 +448,16 @@ fn install(flags: &[&str]) -> Result<(), String> {
     let mut in_place = false;
     let mut clock = false;
     let mut radio = false;
+    let mut lockchan = false;
     for flag in flags {
         match *flag {
             "--in-place" => in_place = true,
             "--clock" => clock = true,
             "--radio" => radio = true,
+            "--lockchan" => lockchan = true,
             other => {
                 return Err(format!(
-                    "install: unknown flag {other}; the flags are --in-place, --clock and --radio"
+                    "install: unknown flag {other}; the flags are --in-place, --clock, --radio and --lockchan"
                 ))
             }
         }
@@ -545,7 +547,7 @@ fn install(flags: &[&str]) -> Result<(), String> {
 
     let user = format!("{}\\{}", env_var("USERDOMAIN")?, env_var("USERNAME")?);
     let log = dir.join("ak820-agent.log");
-    let arguments = task_arguments(&log.display().to_string(), clock, radio);
+    let arguments = task_arguments(&log.display().to_string(), clock, radio, lockchan);
     let xml = task::task_xml(&task::Definition {
         description: task::AGENT_DESCRIPTION,
         user: &user,
@@ -1087,11 +1089,12 @@ fn report_drained(drained: &[Drained]) {
 /// The daemon's arguments in its task: each install flag persisted, so the
 /// task runs what the install asked for (`task::agent_owns_clock` reads
 /// `--clock` back out of them).
-fn task_arguments(log: &str, clock: bool, radio: bool) -> String {
+fn task_arguments(log: &str, clock: bool, radio: bool, lockchan: bool) -> String {
     format!(
-        "--log \"{log}\"{}{}",
+        "--log \"{log}\"{}{}{}",
         if clock { " --clock" } else { "" },
-        if radio { " --radio" } else { "" }
+        if radio { " --radio" } else { "" },
+        if lockchan { " --lockchan" } else { "" }
     )
 }
 
@@ -1102,10 +1105,11 @@ mod install_tests {
     #[test]
     fn every_flag_combination_persists() {
         let log = "L.log";
-        assert_eq!(task_arguments(log, false, false), "--log \"L.log\"");
-        assert_eq!(task_arguments(log, true, false), "--log \"L.log\" --clock");
-        assert_eq!(task_arguments(log, false, true), "--log \"L.log\" --radio");
-        assert_eq!(task_arguments(log, true, true), "--log \"L.log\" --clock --radio");
+        assert_eq!(task_arguments(log, false, false, false), "--log \"L.log\"");
+        assert_eq!(task_arguments(log, true, false, false), "--log \"L.log\" --clock");
+        assert_eq!(task_arguments(log, false, true, false), "--log \"L.log\" --radio");
+        assert_eq!(task_arguments(log, true, true, false), "--log \"L.log\" --clock --radio");
+        assert_eq!(task_arguments(log, true, true, true), "--log \"L.log\" --clock --radio --lockchan");
     }
 }
 

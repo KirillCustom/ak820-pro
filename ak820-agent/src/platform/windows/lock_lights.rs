@@ -338,6 +338,29 @@ impl LockLights for BleLights {
     }
 }
 
+/// The sender's platform on Windows: the BLE keyboard, `lockchan.lock`, and
+/// the last input's tick.
+pub struct WinPlat;
+
+impl crate::lockchan::sender::Platform for WinPlat {
+    type Lights = BleLights;
+
+    fn open(&mut self) -> Result<Option<BleLights>, String> {
+        BleLights::open()
+    }
+
+    fn lock(&mut self) -> Result<Option<Box<dyn std::any::Any + Send>>, String> {
+        super::radio_lock::try_take_named("lockchan.lock").map(|l| l.map(|g| Box::new(g) as Box<dyn std::any::Any + Send>))
+    }
+
+    fn input(&self) -> Option<(u32, u32)> {
+        use windows::Win32::System::SystemInformation::GetTickCount;
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+        let mut lii = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+        unsafe { GetLastInputInfo(&mut lii) }.as_bool().then(|| (lii.dwTime, unsafe { GetTickCount() }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

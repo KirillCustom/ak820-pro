@@ -43,6 +43,24 @@ pub struct Status {
     pub transport: String,
     /// The 2.4G radio's side, with `--radio`.
     pub radio: Option<RadioStatus>,
+    /// The lock-LED channel's side, with `--lockchan`.
+    pub lockchan: Option<LockchanStatus>,
+}
+
+/// The lock-LED channel for the status file (`crate::lockchan::sender`).
+/// "Sent" is what the host wrote; nothing acknowledges, so never "shown".
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LockchanStatus {
+    /// `off`, `idle`, `absent`, `sending`, `locks unknown`.
+    pub state: String,
+    pub granted: bool,
+    pub frames: u64,
+    pub retries: u64,
+    pub failures: u64,
+    pub writes: u64,
+    pub restore_pending: bool,
+    pub last_sent: Option<String>,
+    pub last_error: Option<String>,
 }
 
 /// The radio's state for the status file (`crate::radio`).
@@ -206,6 +224,23 @@ pub fn render(s: &Status) -> String {
             put("radio_last_error_at", v);
         }
     }
+    if let Some(l) = &s.lockchan {
+        put("lockchan", &l.state);
+        put("lockchan_granted", if l.granted { "yes" } else { "no" });
+        put("lockchan_frames_sent", &l.frames.to_string());
+        put("lockchan_retries", &l.retries.to_string());
+        put("lockchan_failures", &l.failures.to_string());
+        put("lockchan_writes", &l.writes.to_string());
+        if l.restore_pending {
+            put("lockchan_restore_pending", "yes");
+        }
+        if let Some(v) = &l.last_sent {
+            put("lockchan_last_sent", v);
+        }
+        if let Some(v) = &l.last_error {
+            put("lockchan_last_error", v);
+        }
+    }
     match &s.clock {
         None => put("clock", "python timekeeper (not this daemon)"),
         Some(c) => {
@@ -278,6 +313,7 @@ mod tests {
             health: None,
             transport: String::new(),
             radio: None,
+            lockchan: None,
         }
     }
 

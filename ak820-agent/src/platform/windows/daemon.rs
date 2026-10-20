@@ -15,12 +15,16 @@
 //! the clock until it is.
 //!
 //! ```text
-//! ak820-agent [--log PATH] [--status PATH] [--interval SECS] [--once] [--clock] [--radio]
+//! ak820-agent [--log PATH] [--status PATH] [--interval SECS] [--once] [--clock] [--radio] [--lockchan]
 //! ```
 //!
 //! `--radio` carries now-playing over the 2.4G dongle while the board is not
 //! on USB (`crate::radio`); `--radio-only`, for development, does so even
 //! with the cable in.
+//!
+//! `--lockchan` carries it over Bluetooth through the keyboard's lock lights
+//! while neither the cable nor the radio can (`crate::lockchan`); it needs
+//! `--interval` at most 5 s, the board's lease on raw HID being 10 s.
 //!
 //! `--clock` runs the clock loop as well. `ak820 install --clock` is the only
 //! thing that should pass it, because it also removes the Python timekeeper's
@@ -47,6 +51,7 @@ pub fn main() {
         clock: false,
         radio: false,
         radio_only: false,
+        lockchan: false,
     };
 
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -94,8 +99,16 @@ pub fn main() {
                 opts.radio_only = true;
                 i += 1;
             }
+            "--lockchan" => {
+                opts.lockchan = true;
+                i += 1;
+            }
             other => bail(&opts.log, &format!("unknown argument {other:?}"), 2),
         }
+    }
+
+    if opts.lockchan && opts.interval > agent::LOCKCHAN_MAX_INTERVAL {
+        bail(&opts.log, "--lockchan needs --interval of 5 s or less (the board's raw-HID lease is 10 s)", 2);
     }
 
     // Ownership is enforced, not intended: one of us, and not the Python

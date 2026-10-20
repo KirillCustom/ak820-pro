@@ -73,6 +73,10 @@ impl crate::platform::Platform for Native {
     /// track change is seen within half a second and the loop can push it at
     /// once (`agent::expedite`); polled on the push's own 3 s, a pause went
     /// out up to a poll late on a reading taken before it.
+    fn spawn_lockchan() -> Option<Result<crate::lockchan::sender::Handle, String>> {
+        Some(crate::lockchan::sender::spawn(lock_lights::WinPlat))
+    }
+
     fn spawn_media(interval: Duration, _log: &crate::logfile::Log) -> Result<smtc::MediaWorker, String> {
         smtc::MediaWorker::spawn(interval.min(Duration::from_millis(500)))
     }

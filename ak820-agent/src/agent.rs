@@ -212,7 +212,15 @@ pub struct Options {
     /// USB (the clock and health stay on USB), so the radio path can be
     /// proven with the cable in. Implies `radio`.
     pub radio_only: bool,
+    /// Carry now-playing over Bluetooth through the keyboard's lock lights
+    /// while neither the cable nor the radio can (`crate::lockchan`;
+    /// `plans/LOCK-LED-CHANNEL-PLAN.md`). Needs `interval` at most 5 s: the
+    /// board's lease on raw HID is 10 s (R3-2).
+    pub lockchan: bool,
 }
+
+/// The longest media interval `--lockchan` accepts (R3-2).
+pub const LOCKCHAN_MAX_INTERVAL: Duration = Duration::from_secs(5);
 
 /// The foreign reports among what a request threw away — arrived while we
 /// waited and answered somebody else. Stale reports (queued before we asked)
@@ -261,6 +269,29 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
         started: logfile::stamp(&P::host()),
         ..Status::default()
     };
+    // The lock-LED channel (plans/LOCK-LED-CHANNEL-PLAN.md): its own thread;
+    // this loop only feeds it content and grants or revokes it.
+    let lockchan = if opts.lockchan && !opts.once {
+        match P::spawn_lockchan() {
+            Some(Ok(h)) => {
+                log.line("lockchan: now-playing over Bluetooth's lock lights while neither the cable nor the radio can (--lockchan)");
+                Some(h)
+            }
+            Some(Err(e)) => {
+                log.line(&format!("[warn] lockchan: {e}"));
+                None
+            }
+            None => {
+                log.line("[warn] lockchan: not available on this platform");
+                None
+            }
+        }
+    } else {
+        None
+    };
+    // When this process last completed a raw-HID media request, by USB or the
+    // radio, delivered or not: the handover waits 12 s after it (R4-2).
+    let mut raw_media_last: Option<Instant> = None;
     let mut clock = if opts.clock {
         log.line(&format!(
             "clock loop: syncing every {}s ({}s while the residual exceeds {} ms); cache {}",
@@ -324,6 +355,11 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
                     opts.radio_only,
                     P::open_board,
                     |dev: &P::Device, publisher: &mut Publisher| {
+                        // USB has the board: the lock lights stop before
+                        // USB's first push (R2-5).
+                        if let Some(lc) = &lockchan {
+                            lc.revoke();
+                        }
                         let plan = publisher.plan(&snapshot, now);
                         cycle::<P>(dev, &plan, &snapshot, now, publisher, &log, &mut st, &mut discarded)
                     },
@@ -344,6 +380,27 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
                     &mut &log,
                 );
                 st.transport = transport.into();
+                if transport == "usb" || transport == "radio" {
+                    raw_media_last = Some(Instant::now());
+                }
+                if let Some(lc) = &lockchan {
+                    // The content and when the source observed it (R3-7); a
+                    // failed read is idle, observed now.
+                    let observed = if health.last_poll_ok {
+                        health.stale_for.and_then(|d| now.checked_sub(d)).unwrap_or(now)
+                    } else {
+                        now
+                    };
+                    lc.set(crate::lockchan::content(&snapshot), observed);
+                    // Only when USB is Absent (not busy, refused or a failed
+                    // discovery) and the radio is not carrying (R2-5).
+                    let absent = matches!(&outcome, Some(Err(hid::Error::Absent)));
+                    if absent && transport == "none" {
+                        lc.grant(raw_media_last, Instant::now());
+                    } else {
+                        lc.revoke();
+                    }
+                }
                 // A radio push is a push: the media keys say what the panel
                 // shows whichever transport carried it (seen stale 10-20).
                 if let Some(r) = radio.as_ref().filter(|r| Some(r.status.pushes) != radio_pushes) {
@@ -415,6 +472,11 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
         // stands the radio down, not only the media's own open (codex,
         // daemon review, 5).
         let seen = USB_SEEN.swap(false, std::sync::atomic::Ordering::Relaxed);
+        if seen {
+            if let Some(lc) = &lockchan {
+                lc.revoke();
+            }
+        }
         if seen && !opts.radio_only {
             if let Some(r) = radio.as_mut() {
                 r.usb_present(&mut &log);
@@ -429,6 +491,20 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
         if worked {
             // After every stand-down, so the file says what is so now.
             st.radio = radio.as_ref().map(|r| r.status.clone());
+            st.lockchan = lockchan.as_ref().map(|lc| {
+                let s = lc.status();
+                crate::status::LockchanStatus {
+                    state: if s.state.is_empty() { "off".into() } else { s.state.into() },
+                    granted: lc.granted(),
+                    frames: s.frames,
+                    retries: s.retries,
+                    failures: s.failures,
+                    writes: s.writes,
+                    restore_pending: s.restore_pending,
+                    last_sent: s.last_sent.map(|t| format!("{} s ago", t.elapsed().as_secs())),
+                    last_error: s.last_error,
+                }
+            });
             st.board = watch.state().word().to_string();
             st.updated = logfile::stamp(&P::host());
             if let Err(e) = status::write(&opts.status, &st) {
