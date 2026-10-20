@@ -614,3 +614,26 @@ any masked stretch over ~87 us while bytes arrive can overrun.
 - **Tonight's night in per-transaction mode still runs as planned:** the
   ring's contexts for the natural rate.
 
+## The next build: per byte dev-only, and the depth probe (10-19, `581890aa68` + the review's fix)
+
+- **Per byte is dev only:** `SW_I2C_BYTE_PREEMPT TRUE` moves into
+  `halconf.h`'s dev block, behind its switch, which boots per transaction.
+  `build.sh` fails a released build whose byte routines carry `cpsie` or
+  `cpsid`.
+- **The receiver's depth probe** (op 23 sub 3, `overrun_diag.py sweep`): n
+  spans of interrupts masked for a chosen 1-3000 us, through the burst's
+  gaps and admission, with no I2C. The span at which OEs begin, under the
+  echo's load, gives the receiver's depth.
+- **Codex's review**
+  ([`review-codex-overrun-probe-2026-10-19.md`](review-codex-overrun-probe-2026-10-19.md),
+  verbatim): no must-fix, nothing blocks the flash. Both should-fixes taken:
+  - a burst step marks its pass, so its last step keeps the reference check
+    and the pre-sleep read out of it;
+  - the sweep prints each span and its probe-context OEs.
+
+  Both notes taken: a released build may carry neither instruction, and the
+  child's `READY` wait is bounded by `select`.
+- **To flash in the morning with JD's go, then the sweep.** Tonight the
+  board runs `c9d1b8b4e7` per transaction, logging the natural overruns'
+  contexts.
+

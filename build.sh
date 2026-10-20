@@ -161,9 +161,10 @@ for fn in i2c_write_byte i2c_read_byte; do
   body=$(awk -v f="<$fn>:" 'index($0, f) {p=1; next} p && /^$/ {exit} p' <<<"$s_dis")
   [[ -n "$body" ]] || { echo "FAIL: $fn not found (inlined? the preemption check needs it)" >&2; fail=1; continue; }
   if grep -q "cpsie" <<<"$body" && grep -q "cpsid" <<<"$body"; then rel=1; else rel=0; fi
+  if grep -q "cpsie\|cpsid" <<<"$body"; then any=1; else any=0; fi
   case "$FLAVOR" in
     dev)       (( rel )) || { echo "FAIL: the dev build's $fn lacks the switchable byte release" >&2; fail=1; } ;;
-    daily|fpb) (( ! rel )) || { echo "FAIL: a $FLAVOR build's $fn releases the lock between bytes" >&2; fail=1; } ;;
+    daily|fpb) (( ! any )) || { echo "FAIL: a $FLAVOR build's $fn touches the lock between bytes" >&2; fail=1; } ;;
   esac
 done
 od_syms=(od_mask_begin od_uart_oe od_fill_summary rtc_burst_start sleep_wake_ring_fill)

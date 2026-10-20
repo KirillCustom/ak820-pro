@@ -26,7 +26,7 @@ it). `sweep` measures the receiver's depth: per span, a burst of masked
 spans of that length (no I2C), the same load and accounting, per transaction.
 Needs the Mac's dongle, the slider on 2.4G and the cable's data.
 """
-import argparse, json, os, subprocess, sys, tempfile, time
+import argparse, json, os, selectors, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -133,7 +133,8 @@ def show(d):
     print(f"OE observed {s['oe_obs']} (+{s['oe_drain']} in the drain's re-reads), bytes refused {s['rx_drop']}; "
           f"lock span {'per byte' if s['byte_mode'] else 'per transaction'}")
     print(f"  seen with: a PCF transaction {s['ctx_pcf']}, a flash write {s['ctx_flash']}, a sleep "
-          f"{d['sleep']['ctx_sleep']}, none {s['ctx_none']}; receiver-off intervals {s['rx_off']}")
+          f"{d['sleep']['ctx_sleep']}, the depth probe {d['sleep']['ctx_probe']}, none {s['ctx_none']}; "
+          f"receiver-off intervals {s['rx_off']}")
     print(f"  longest handlers: USB {s['usb_max_ms']} ms, system timer {s['st_max_ms']} ms")
     for k in d["kinds"]:
         if k["count"]:
@@ -173,7 +174,11 @@ class Echo:
 
     def wait_ready(self):
         deadline = time.monotonic() + READY_S
+        sel = selectors.DefaultSelector()
+        sel.register(self.p.stdout, selectors.EVENT_READ)
         while time.monotonic() < deadline:
+            if not sel.select(timeout=max(0.0, deadline - time.monotonic())):
+                break                              # silent past the deadline
             ln = self.p.stdout.readline()
             if not ln:
                 break
@@ -217,8 +222,8 @@ def run_arm(name, a, mask_us=0):
         summary(h, 3 if byte_mode else 2)
         summary(h, 1)                              # zero the counts, ring and kinds
     ds.with_dev(prep)
-    cm.say(f"arm {name}: {'per byte' if byte_mode else 'per transaction'}, "
-           f"{'a burst of ' + str(a.n) if with_burst else 'no burst'}, at least {a.secs:.0f} s of echo")
+    what = (f"{a.n} masked spans of {mask_us} us" if mask_us else f"a burst of {a.n}") if with_burst else "no burst"
+    cm.say(f"arm {name}: {'per byte' if byte_mode else 'per transaction'}, {what}, at least {a.secs:.0f} s of echo")
     t_arm, t_arm_m = time.time(), time.monotonic()
     runs, b0, done_at = [], None, None
     echo = Echo(CHUNK)
@@ -253,7 +258,8 @@ def run_arm(name, a, mask_us=0):
            "echo_sent": sum(r["n"] for r in runs), "echo_lost": sum(r["lost"] for r in runs),
            "idle_intervals": sorted(idle), "idle_s": round(sum(b - a_ for a_, b in idle), 2)}
     s = d["summary"]
-    cm.say(f"  OE {s['oe_obs']} (+{s['oe_drain']} in the drain), refused {s['rx_drop']}, with PCF {s['ctx_pcf']}; "
+    cm.say(f"  OE {s['oe_obs']} (+{s['oe_drain']} in the drain), refused {s['rx_drop']}, with PCF {s['ctx_pcf']}, "
+           f"with the probe {d['sleep']['ctx_probe']}; "
            f"burst {d['burst']['done']} done of {arm['burst_asked']}; echo lost {arm['echo_lost']} of "
            f"{arm['echo_sent']} over {arm['load_s']} s of load, {arm['idle_s']} s with nothing in flight")
     return arm
