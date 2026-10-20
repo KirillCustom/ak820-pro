@@ -206,12 +206,16 @@ pub fn read_current() -> windows::core::Result<(Option<SessionFacts>, Instant)> 
     let mut facts = cheap.swap_remove(at);
     let session = &handles[at];
     let observed = Instant::now();
+    // The timeline first, next to `observed`: its position is extrapolated
+    // to this read, and the lock-LED channel advances it from `observed`
+    // (`Platform::POSITION_AS_OF_OBSERVATION`). Read after the metadata, a
+    // slow metadata call would have counted twice (codex, type-3 sender, 2).
+    facts.timeline = timeline_of(session);
     if let Ok(props) = session.TryGetMediaPropertiesAsync().and_then(|op| op.join()) {
         facts.title = py_trim(&props.Title().map(|h| h.to_string()).unwrap_or_default()).to_string();
         facts.artist =
             py_trim(&props.Artist().map(|h| h.to_string()).unwrap_or_default()).to_string();
     }
-    facts.timeline = timeline_of(session);
     Ok((Some(facts), observed))
 }
 

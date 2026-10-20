@@ -229,6 +229,26 @@ fn tr_id(m: &Media) -> Content {
     (super::TYPE_TRANSPORT, v)
 }
 
+/// The readout's position at `at`, advanced from when it was true and
+/// clamped to a known duration (codex, type-3 sender, 4).
+fn pos_at_instant(pb: super::Playback, pos_at: Instant, at: Instant) -> u32 {
+    let p = pb.pos_s.saturating_add(at.saturating_duration_since(pos_at).as_secs() as u32);
+    if pb.dur_s > 0 { p.min(pb.dur_s) } else { p }
+}
+
+/// The transport policy's content: the identity, plus a seek revision, so a
+/// seek is a change with its own repeat (codex, type-3 sender, 3).
+fn tr_policy_id(m: &Media, seek_rev: u32) -> Content {
+    let mut c = tr_id(m);
+    c.1.extend_from_slice(&seek_rev.to_be_bytes());
+    c
+}
+
+/// Whether the readout has jumped from what was picked (`pos` at `at`).
+fn seeked(m: &Media, pos_at: Instant, picked: (u32, Instant), now: Instant) -> bool {
+    m.pb.is_some_and(|pb| super::is_seek(picked.0, now.saturating_duration_since(picked.1), pos_at_instant(pb, pos_at, now), pb.dur_s))
+}
+
 /// What the slot asks for now: the media made idle (CLEAR, no readout) once
 /// its observation is stale, and when that happens.
 fn current_of(slot: &Slot, now: Instant) -> (Option<(Media, Instant)>, Option<Instant>) {
@@ -287,6 +307,8 @@ pub struct Core<P: Platform> {
     /// The position the last type 3 carried and when it was picked, for the
     /// seek check.
     sent_pos: Option<(u32, Instant)>,
+    /// Bumped on every seek detected between frames.
+    seek_rev: u32,
     line: Line,
     next_open: Option<Instant>,
     armed: Option<u32>,
@@ -350,6 +372,7 @@ impl<P: Platform> Core<P> {
             tr: Policy::default(),
             text_sent: None,
             sent_pos: None,
+            seek_rev: 0,
             line: Line::default(),
             next_open: None,
             armed: None,
@@ -449,7 +472,7 @@ impl<P: Platform> Core<P> {
             let (view, stale_at) = current_of(&s, now);
             if let Some((m, _)) = &view {
                 self.text.set(text_id(&m.text), now);
-                self.tr.set(tr_id(m), now);
+                self.tr.set(tr_policy_id(m, self.seek_rev), now);
             }
             if std::mem::take(&mut s.force) || woke {
                 self.text.force(now);
@@ -462,13 +485,12 @@ impl<P: Platform> Core<P> {
             (s.granted, s.owner_gen, s.stop, stale_at, view)
         };
         // A seek: the position is not where the last type 3 said it would be.
-        if let (Some((m, pos_at)), Some((sent, at))) = (&view, self.sent_pos) {
-            if let Some(pb) = m.pb {
-                let pos_now = pb.pos_s.saturating_add(now.saturating_duration_since(*pos_at).as_secs() as u32);
-                if super::is_seek(sent, now.saturating_duration_since(at), pos_now, pb.dur_s) {
-                    self.tr.force(now);
-                    self.sent_pos = None;
-                }
+        // A change of its own, with the change's repeat (type-3 sender, 3).
+        if let (Some((m, pos_at)), Some(sent)) = (&view, self.sent_pos) {
+            if seeked(m, *pos_at, sent, now) {
+                self.seek_rev = self.seek_rev.wrapping_add(1);
+                self.tr.set(tr_policy_id(m, self.seek_rev), now);
+                self.sent_pos = None;
             }
         }
         if stop {
@@ -625,18 +647,24 @@ impl<P: Platform> Core<P> {
                         return Some(Abort::Superseded);
                     }
                     // Still fresh: an identity gone stale mid-frame is
-                    // superseded by the idle that replaces it.
+                    // superseded by the idle that replaces it; a transport,
+                    // by a seek after its pick too (type-3 sender, 3).
                     let s = self.ctl.h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
-                    let now_id = current_of(&s, self.time.now()).0.map(|(m, _)| match self.kind {
+                    let now = self.time.now();
+                    let view = current_of(&s, now).0;
+                    let now_id = view.as_ref().map(|(m, _)| match self.kind {
                         Kind::Text => text_id(&m.text),
-                        Kind::Transport => tr_id(&m),
+                        Kind::Transport => tr_id(m),
                     });
-                    (now_id.map(|c| id_hash(&c)) != Some(p.id)).then_some(Abort::Superseded)
+                    let seek = self.kind == Kind::Transport
+                        && matches!((&view, p.pos), (Some((m, pos_at)), Some(pos)) if seeked(m, *pos_at, (pos, p.at), now));
+                    (now_id.map(|c| id_hash(&c)) != Some(p.id) || seek).then_some(Abort::Superseded)
                 }
             }
             let ctl = Picking { ctl: Ctl { h, owner }, kind, picked: &picked, time };
             let lights = self.lights.as_mut().expect("opened above");
             let (text, tr) = (&mut self.text, &mut self.tr);
+            let (text_sent, seek_rev) = (self.text_sent, self.seek_rev);
             let line = &mut self.line;
             frame::run(lights, time, &ctl, line, || {
                 let at = time.now();
@@ -652,9 +680,15 @@ impl<P: Platform> Core<P> {
                         (text.generation(), id, m.text.clone(), None)
                     }
                     Kind::Transport => {
+                        // Still a title the board shows: the text sent whole
+                        // is the current one (type-3 sender, 1).
+                        text.set(text_id(&m.text), at);
+                        if m.text.0 != super::TYPE_NOW_PLAYING || text_sent != Some(text.generation()) {
+                            return None;
+                        }
                         let id = tr_id(&m);
-                        tr.set(id.clone(), at);
-                        let pos = m.pb.map(|pb| pb.pos_s.saturating_add(at.saturating_duration_since(pos_at).as_secs() as u32));
+                        tr.set(tr_policy_id(&m, seek_rev), at);
+                        let pos = m.pb.map(|pb| pos_at_instant(pb, pos_at, at));
                         (tr.generation(), id, super::transport(m.icon, m.pb, pos.unwrap_or(0)), pos)
                     }
                 };
@@ -673,11 +707,15 @@ impl<P: Platform> Core<P> {
         // are all still the frame's (verify, 4).
         let credited = p.is_some_and(|p| {
             let s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
-            let id = current_of(&s, done).0.map(|(m, _)| match kind {
+            let view = current_of(&s, done).0;
+            let id = view.as_ref().map(|(m, _)| match kind {
                 Kind::Text => text_id(&m.text),
-                Kind::Transport => tr_id(&m),
+                Kind::Transport => tr_id(m),
             });
-            s.granted
+            let seek = kind == Kind::Transport
+                && matches!((&view, p.pos), (Some((m, pos_at)), Some(pos)) if seeked(m, *pos_at, (pos, p.at), done));
+            !seek
+                && s.granted
                 && s.owner_gen == owner
                 && s.text_epoch == p.text_epoch
                 && (kind == Kind::Text || s.tr_epoch == p.tr_epoch)
@@ -1356,6 +1394,105 @@ mod tests {
             run_until(&mut r, t);
         }
         assert_eq!(r.kb.borrow().writes.len(), n, "nothing sent for a ticking position");
+    }
+
+    #[test]
+    fn the_end_of_a_track_is_not_a_seek() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 280, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(15));
+        let n = r.kb.borrow().writes.len();
+        // The track plays to its end at t0 + 20, and the source then sits at
+        // 300/300, its snapshot's position ageing from that instant: no
+        // seek, no frames (old code: 304 against 300 after a few polls).
+        let end = t0 + Duration::from_secs(20);
+        for i in 0..20u64 {
+            let t = t0 + Duration::from_secs(16 + i);
+            r.t.0.set(r.t.now().max(t));
+            if t < end {
+                r.h.set(playing("Alpha", Icon::Play, 280 + 16 + i as u32, 300), t, t);
+            } else {
+                r.h.set(playing("Alpha", Icon::Play, 300, 300), t, end);
+            }
+            run_until(&mut r, t);
+        }
+        assert_eq!(r.kb.borrow().writes.len(), n);
+    }
+
+    #[test]
+    fn a_seek_gets_the_change_repeat() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 100, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        let t1 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 250, 300), t1, t1);
+        run_until(&mut r, t1 + Duration::from_secs(10));
+        // The seek and its repeat 2 s later: two type 3s at or past 250
+        // (old code: one, then the 60 s refresh).
+        let n = transports(&r, Icon::Play, 300, 270).iter().filter(|p| **p >= 250).count();
+        assert!(n >= 2, "{n}");
+    }
+
+    #[test]
+    fn a_title_change_during_a_transports_warm_up_sends_no_transport_for_it() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 100, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        let (h, t) = (r.h.clone(), r.t.clone());
+        let n0 = r.kb.borrow().writes.len();
+        // A pause, then (during the transport's warm-up) a new title.
+        let t1 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Pause, 120, 300), t1, t1);
+        r.kb.borrow_mut().hook = Some(Box::new(move |i| {
+            if i == n0 {
+                h.set(playing("Bravo", Icon::Play, 0, 200), t.now(), t.now());
+            }
+        }));
+        run_until(&mut r, t1 + Duration::from_secs(20));
+        // Bravo's title went before any Bravo transport.
+        let w: Vec<u8> = r.kb.borrow().writes.iter().map(|w| w.1).collect();
+        let find = |c: &Content| {
+            (0..=255u8).find_map(|seq| {
+                let e = crate::lockchan::encode(&c.1, c.0, seq, Profile::P0, 0).unwrap();
+                w.windows(e.len()).position(|x| x == &e[..])
+            })
+        };
+        let title_at = find(&playing("Bravo", Icon::Play, 0, 0).text).expect("Bravo's title");
+        for pos in 0..30 {
+            if let Some(at) = find(&crate::lockchan::transport(Icon::Play, Some(Playback { pos_s: pos, dur_s: 200 }), pos)) {
+                assert!(at > title_at, "a Bravo transport before its title");
+            }
+        }
+    }
+
+    #[test]
+    fn a_seek_mid_transport_cuts_it() {
+        let mut r = rig();
+        let t0 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Play, 100, 300), t0, t0);
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        let (h, t) = (r.h.clone(), r.t.clone());
+        let n0 = r.kb.borrow().writes.len();
+        // A pause starts a transport; 10 writes into it, a seek.
+        let t1 = r.t.now();
+        r.h.set(playing("Alpha", Icon::Pause, 120, 300), t1, t1);
+        r.kb.borrow_mut().hook = Some(Box::new(move |i| {
+            if i == n0 + 10 {
+                h.set(playing("Alpha", Icon::Play, 250, 300), t.now(), t.now());
+            }
+        }));
+        r.core.step(&r.h, &*r.t);
+        let w = r.kb.borrow().writes.clone();
+        // Write n0+11 is the restore after the recovery wait: the frame was cut.
+        assert!(w.len() > n0 + 11);
+        assert!(w[n0 + 11].0 - w[n0 + 10].0 >= frame::RECOVERY);
     }
 
     #[test]
