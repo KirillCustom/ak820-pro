@@ -77,6 +77,8 @@ def main():
     ap.add_argument("--seed", type=int, default=81)
     ap.add_argument("--json")
     ap.add_argument("--no-board", action="store_true", help="leave the counters out of the report")
+    ap.add_argument("--ready", action="store_true",
+                    help="print READY on stdout just before the first request (for a parent driving a load)")
     a = ap.parse_args()
     rng = random.Random(a.seed)
 
@@ -91,9 +93,13 @@ def main():
     d = hid.Device(path=dongle_path("mi_03").encode())
     rtts, lost, stray, dup = [], 0, 0, 0
     lost_at = []    # wall-clock send times of the lost ones, to line up with other logs
+    lost_until = [] # and when each was given up: nothing was in flight between
     try:
         while d.read(33, 0):     # anything already waiting is not ours
             stray += 1
+        if a.ready:
+            print("READY", flush=True)
+        t_first = time.time()
         for i in range(a.n):
             body = bytes([0xE0 | (i >> 8) & 0x0F, i & 0xFF]) + bytes(rng.getrandbits(8) for _ in range(30))
             t_wall = time.time()
@@ -113,9 +119,11 @@ def main():
             if got is None:
                 lost += 1
                 lost_at.append(round(t_wall, 3))
+                lost_until.append(round(time.time(), 3))
             else:
                 rtts.append(got)
             time.sleep(a.gap_ms / 1000)
+        t_last = time.time()     # the load ends here; the drain below sends nothing
         time.sleep(0.2)
         while d.read(33, 50):    # late replies: duplicates or very slow ones
             dup += 1
@@ -125,7 +133,8 @@ def main():
 
     rtts.sort()
     pct = lambda q: round(rtts[min(len(rtts) - 1, int(q * len(rtts)))], 2) if rtts else None
-    res = {"n": a.n, "replied": len(rtts), "lost": lost, "lost_at": lost_at, "stray_reports": stray, "late_reports": dup,
+    res = {"n": a.n, "replied": len(rtts), "lost": lost, "lost_at": lost_at, "lost_until": lost_until,
+           "t_first": round(t_first, 3), "t_last": round(t_last, 3), "stray_reports": stray, "late_reports": dup,
            "rtt_ms": {"min": pct(0), "median": pct(0.5), "p95": pct(0.95), "max": pct(1.0)},
            "gap_ms": a.gap_ms, "timeout_ms": a.timeout_ms,
            "board_before": before, "board_after": after,

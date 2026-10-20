@@ -570,3 +570,21 @@ and the Fn+D deviation correct.
 | N1 | note: receiver-off count only, 16 bits on the wire | **Accepted** as is: the count; the sleep's own accounting has its seconds. |
 | N2 | note: whole-call timing ends before the restart; the phase write's completion can pass the lateness check | **Accepted:** the A/B's comparison list (release and boundary errors, restarts, the daemon's residuals) is how it is judged. |
 
+## Codex's verify of the implementation (10-19): dispositions
+
+[`review-codex-overrun-caps-impl-verify-2026-10-19.md`](review-codex-overrun-caps-impl-verify-2026-10-19.md),
+verbatim. **Nothing in the firmware blocks the flash.** Findings 1-3, 6, 7
+and 9 are closed, and the sleep admission has no starvation. What was left
+open was the host tool's:
+
+| # | finding | disposition |
+|---|---|---|
+| V1 | must, before the A/B: the burst could start before the echo sends; elapsed time counted the child's setup; one more run is no time margin; idle intervals hid setup and used send + timeout | **Taken:** the echo prints `READY` just before its first request (`--ready`) and records `t_first`/`t_last` and each loss's give-up time (`lost_until`); the burst starts on `READY`; monotonic deadlines; an explicit 10 s of load after the burst is seen done; idle intervals from those stamps. |
+| V2 | should: a failed burst start left the child running; the child's wait was unbounded; cleanup's two commands were not independent | **Taken:** each child has a bounded wait and an unconditional terminate-and-remove; the board's two cleanups are tried apart. |
+| V3 | should: `min(seq, cap)` breaks at the 16-bit wrap; the wake reader took the first reply's count; a ring retry kept an old summary | **Taken:** both readers walk back from the count, taking a slot only if it carries exactly the expected sequence (wrap-safe); the wake reader needs the same count in all eight replies; `snapshot()` keeps the summary the ring was read against. |
+
+**Flashed 21:47 10-19:** `via-dev-c9d1b8b4e7-20261019-214634.bin`, token
+`0xfc6e78de` (on Gremlin's `7924559047`, contrib `22596e61cd`). The keymap
+and lighting were restored and verified, and the daemon's first sync read
+-437.2 ms.
+

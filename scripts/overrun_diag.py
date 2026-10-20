@@ -63,10 +63,23 @@ def kinds(h):
     return out, {"ctx_sleep": U16(b, 0), "tick_hz": U32(b, 2), "now_secs": U32(b, 6)}
 
 
+def walk_back(slots, seq, cap):
+    """The newest entries, oldest first: from seq-1 backward (mod 2^16), each
+    taken only if its slot carries exactly that sequence number, so an
+    unwritten or overwritten slot ends the walk; wrap-safe."""
+    out = []
+    for k in range(1, cap + 1):
+        want = (seq - k) & 0xFFFF
+        e = slots[want % cap]
+        if e["seq"] != want:
+            break
+        out.append(e)
+    return out[::-1]
+
+
 def ring(h, seq):
-    """The last min(seq, 32) entries, each checked against the sequence it
-    should carry; re-read if an OE landed during the 16 pages. Assumes fewer
-    than 65,536 entries since the last reset (the A/B resets every arm)."""
+    """The OE ring's entries, newest 32 at most, and the summary they go with:
+    re-read if an OE landed during the 16 pages."""
     for _ in range(3):
         slots = {}
         for page in range(16):
@@ -77,18 +90,11 @@ def ring(h, seq):
                                        "in_drain": bool(e[7] & 0x40), "byte_mode": bool(e[7] & 0x80),
                                        "span_ms": ms(U16(e, 8)), "usb_max_ms": ms(U16(e, 10)),
                                        "st_max_ms": ms(U16(e, 12))}
-        now = summary(h)["ring_seq"]
-        if now == seq:
-            break
-        seq = now
-    else:
-        sys.exit("the OE ring kept moving during its readout")
-    want = [(seq - n) & 0xFFFF for n in range(min(seq, 32), 0, -1)]
-    out = [slots[s % 32] for s in want]
-    bad = [e["seq"] for e, s in zip(out, want) if e["seq"] != s]
-    if bad:
-        sys.exit(f"the OE ring's slots carry the wrong sequence numbers: {bad[:4]}")
-    return out
+        s_now = summary(h)
+        if s_now["ring_seq"] == seq:
+            return walk_back(slots, seq, 32), s_now
+        seq = s_now["ring_seq"]
+    sys.exit("the OE ring kept moving during its readout")
 
 
 def burst(h, sub=0, n=0, lo=40, hi=80):
@@ -98,23 +104,24 @@ def burst(h, sub=0, n=0, lo=40, hi=80):
 
 
 def wakes(h):
-    out = []
-    for slot in range(8):
-        b = op(h, 24, [slot])
-        out.append({"seq": U16(b, 0), "reason": WAKES[b[2]] if b[2] < len(WAKES) else b[2], "flags": b[3],
-                    "counted_s": U32(b, 4), "p0": hex(U32(b, 8)), "p1": hex(U32(b, 12)), "p2": hex(U32(b, 16)),
-                    "ms": U32(b, 20), "strays": U16(b, 24), "written": U16(b, 26)})
-    written = out[0]["written"]
-    by_slot = {i: w for i, w in enumerate(out)}
-    want = [(written - n) & 0xFFFF for n in range(min(written, 8), 0, -1)]
-    return [by_slot[s % 8] for s in want if by_slot[s % 8]["seq"] == s]
+    """The deep sleep's last eight wakes, oldest first; re-read if one landed
+    during the readout (every reply carries the count written)."""
+    for _ in range(3):
+        out = []
+        for slot in range(8):
+            b = op(h, 24, [slot])
+            out.append({"seq": U16(b, 0), "reason": WAKES[b[2]] if b[2] < len(WAKES) else b[2], "flags": b[3],
+                        "counted_s": U32(b, 4), "p0": hex(U32(b, 8)), "p1": hex(U32(b, 12)),
+                        "p2": hex(U32(b, 16)), "ms": U32(b, 20), "strays": U16(b, 24), "written": U16(b, 26)})
+        if len({w["written"] for w in out}) == 1:
+            return walk_back(out, out[0]["written"], 8)
+    sys.exit("the wake ring kept moving during its readout")
 
 
 def snapshot(h):
-    s = summary(h)
+    r, s = ring(h, summary(h)["ring_seq"])     # the summary the ring was read against
     k, extra = kinds(h)
-    return {"summary": s, "kinds": k, "sleep": extra, "burst": burst(h), "ring": ring(h, s["ring_seq"]),
-            "wakes": wakes(h)}
+    return {"summary": s, "kinds": k, "sleep": extra, "burst": burst(h), "ring": r, "wakes": wakes(h)}
 
 
 def show(d):
@@ -143,33 +150,61 @@ def show(d):
 
 
 ARMS = {"a": (False, False), "b": (False, True), "c": (True, True), "d": (True, False)}
-CHUNK = 1000   # echoes a run, ~20 s back to back; the load comes in runs of this
+CHUNK = 1000        # echoes a run, ~17-20 s back to back
+MARGIN_S = 10.0     # load after the burst is seen finished
+READY_S = 60.0      # the child's counter read and dongle open (its opener retries for up to 30 s)
 
 
-def echo_start(n):
-    out = tempfile.mktemp(suffix=".json")
-    p = subprocess.Popen([sys.executable, os.path.join(HERE, "mac_raw81_echo.py"), str(n), "--gap-ms", "0",
-                          "--json", out])
-    return p, out, time.time()
+class Echo:
+    """One echo run in a child, its load bounded by READY on stdout and the
+    run's own t_first/t_last, so the cable reads and the dongle's open around
+    it are never counted as load."""
 
+    def __init__(self, n):
+        self.out = tempfile.mktemp(suffix=".json")
+        self.n = n
+        self.p = subprocess.Popen([sys.executable, os.path.join(HERE, "mac_raw81_echo.py"), str(n),
+                                   "--gap-ms", "0", "--ready", "--json", self.out],
+                                  stdout=subprocess.PIPE, text=True)
 
-def echo_finish(p, out, t0):
-    rc = p.wait()
-    t1 = time.time()
-    if rc != 0 or not os.path.exists(out):
-        raise SystemExit(f"the echo run failed (exit {rc}): the arm's load is unknown")
-    with open(out) as f:
-        e = json.load(f)
-    os.unlink(out)
-    return {"start": round(t0, 3), "end": round(t1, 3), "n": e["n"], "replied": e["replied"], "lost": e["lost"],
-            "lost_at": e["lost_at"], "timeout_ms": e["timeout_ms"], "rtt_ms": e["rtt_ms"]}
+    def wait_ready(self):
+        deadline = time.monotonic() + READY_S
+        while time.monotonic() < deadline:
+            ln = self.p.stdout.readline()
+            if not ln:
+                break
+            if ln.strip() == "READY":
+                return
+        raise SystemExit("the echo never started sending")
+
+    def finish(self):
+        try:
+            self.p.communicate(timeout=self.n * 0.3 + READY_S)
+        except subprocess.TimeoutExpired:
+            raise SystemExit("an echo run hung")
+        if self.p.returncode != 0 or not os.path.exists(self.out):
+            raise SystemExit(f"the echo run failed (exit {self.p.returncode}): the arm's load is unknown")
+        with open(self.out) as f:
+            e = json.load(f)
+        return {"t_first": e["t_first"], "t_last": e["t_last"], "n": e["n"], "replied": e["replied"],
+                "lost": e["lost"], "lost_at": e["lost_at"], "lost_until": e["lost_until"], "rtt_ms": e["rtt_ms"]}
+
+    def close(self):
+        if self.p.poll() is None:
+            self.p.terminate()
+            try:
+                self.p.wait(5)
+            except subprocess.TimeoutExpired:
+                self.p.kill()
+                self.p.wait()
+        if os.path.exists(self.out):
+            os.unlink(self.out)
 
 
 def run_arm(name, a):
-    """Load from start to end: echo runs back to back, by elapsed time, until
-    --secs have passed and, in a burst arm, one whole run after the burst was
-    seen finished (>= ~20 s of margin). The burst starts 3 s into the first
-    run, so its first read has the load behind it."""
+    """Load from start to end: echo runs back to back until --secs of wall time
+    have passed and, in a burst arm, MARGIN_S of load after the burst was seen
+    finished. The burst starts once the first run is sending."""
     byte_mode, with_burst = ARMS[name]
 
     def prep(h):
@@ -179,38 +214,43 @@ def run_arm(name, a):
     ds.with_dev(prep)
     cm.say(f"arm {name}: {'per byte' if byte_mode else 'per transaction'}, "
            f"{'a burst of ' + str(a.n) if with_burst else 'no burst'}, at least {a.secs:.0f} s of echo")
-    t_arm, runs, b0, burst_done_at, margin_runs = time.time(), [], None, None, 0
-    p, out, t0 = echo_start(CHUNK)
-    if with_burst:
-        time.sleep(3)
-        b0 = ds.with_dev(lambda h: burst(h, 1, a.n, a.lo, a.hi))
-        b0["host_t"] = round(time.time(), 3)
-    while True:
-        runs.append(echo_finish(p, out, t0))
-        if with_burst and burst_done_at is None:
-            if not ds.with_dev(burst)["active"]:
-                burst_done_at = time.time()
-        elif with_burst:
-            margin_runs += 1
-        elapsed = time.time() - t_arm
-        if elapsed >= a.secs and (not with_burst or margin_runs >= 1):
-            break
-        if elapsed > a.secs + 900:
-            raise SystemExit(f"arm {name} ran 15 minutes past --secs: the burst never finished?")
-        p, out, t0 = echo_start(CHUNK)
+    t_arm, t_arm_m = time.time(), time.monotonic()
+    runs, b0, done_at = [], None, None
+    echo = Echo(CHUNK)
+    try:
+        echo.wait_ready()
+        if with_burst:
+            b0 = ds.with_dev(lambda h: burst(h, 1, a.n, a.lo, a.hi))
+            b0["host_t"] = round(time.time(), 3)
+        while True:
+            runs.append(echo.finish())
+            echo.close()
+            if with_burst and done_at is None and not ds.with_dev(burst)["active"]:
+                done_at = runs[-1]["t_last"]       # finished somewhere in this run, at the latest at its end
+            loaded_after = sum(max(0.0, r["t_last"] - max(r["t_first"], done_at)) for r in runs) if done_at else 0
+            elapsed = time.monotonic() - t_arm_m
+            if elapsed >= a.secs and (not with_burst or (done_at and loaded_after >= MARGIN_S)):
+                break
+            if elapsed > a.secs + 900:
+                raise SystemExit(f"arm {name} ran 15 minutes past --secs: the burst never finished?")
+            echo = Echo(CHUNK)
+            echo.wait_ready()
+    finally:
+        echo.close()
     d = ds.with_dev(snapshot)
     # Time with nothing in flight: between runs, and each loss's wait.
-    idle = [[r0["end"], r1["start"]] for r0, r1 in zip(runs, runs[1:])]
-    idle += [[t, round(t + r["timeout_ms"] / 1000.0, 3)] for r in runs for t in r["lost_at"]]
+    idle = [[r0["t_last"], r1["t_first"]] for r0, r1 in zip(runs, runs[1:])]
+    idle += [[t0, t1] for r in runs for t0, t1 in zip(r["lost_at"], r["lost_until"])]
     arm = {"arm": name, "byte_mode": byte_mode, "burst_asked": a.n if with_burst else 0,
            "start": round(t_arm, 3), "end": round(time.time(), 3), "burst_start": b0,
-           "burst_done_seen": round(burst_done_at, 3) if burst_done_at else None, "board": d, "echo_runs": runs,
+           "burst_done_by": done_at, "board": d, "echo_runs": runs,
+           "load_s": round(sum(r["t_last"] - r["t_first"] for r in runs), 2),
            "echo_sent": sum(r["n"] for r in runs), "echo_lost": sum(r["lost"] for r in runs),
            "idle_intervals": sorted(idle), "idle_s": round(sum(b - a_ for a_, b in idle), 2)}
     s = d["summary"]
     cm.say(f"  OE {s['oe_obs']} (+{s['oe_drain']} in the drain), refused {s['rx_drop']}, with PCF {s['ctx_pcf']}; "
            f"burst {d['burst']['done']} done of {arm['burst_asked']}; echo lost {arm['echo_lost']} of "
-           f"{arm['echo_sent']}, {arm['idle_s']} s with nothing in flight")
+           f"{arm['echo_sent']} over {arm['load_s']} s of load, {arm['idle_s']} s with nothing in flight")
     return arm
 
 
@@ -221,11 +261,13 @@ def run_ab(a):
             arms.append(run_arm(name, a))
     finally:
         # Whatever happened: no burst left running, and the lock span back to
-        # per transaction, as the board boots.
-        def cleanup(h):
-            burst(h, 2)
-            summary(h, 2)
-        ds.with_dev(cleanup)
+        # per transaction, as the board boots. Each tried on its own, so one
+        # failing does not skip the other (nor hide the original error).
+        for what, fn in (("stop the burst", lambda h: burst(h, 2)), ("restore per transaction", lambda h: summary(h, 2))):
+            try:
+                ds.with_dev(fn)
+            except (Exception, SystemExit) as e:
+                cm.say(f"cleanup: could not {what}: {e}")
     return arms
 
 
