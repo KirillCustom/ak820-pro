@@ -1184,3 +1184,93 @@ sender's 300 ms.
 set `stop_requested`. The loop then returns and the sender restores what
 it owes. Before this, the default action killed the daemon mid-frame.
 A second signal kills at once (`SA_RESETHAND`).
+
+## The wireless clock: design (Gremlin, 10-20, for codex)
+
+Resume item 5, asked for by JD 10-20 once now-playing over BT worked. The
+board's own time off USB: the PCF8563 (whole seconds, ~58 ppm, ~5 s a day,
+the Mac session's measurement) disciplines the SN32 RTC, which snaps to it at
+2 s (`rtc.c`, "Legacy discipline"; `docs/clock.md`). With no host, the board
+is seconds out within a day.
+
+**Measured** (`history/lockchan-clock-jitter-20261020/`): Windows over BLE,
+host write completion to the board's `anchor_ms`, 40/40 frames: min 7, p10
+20, median 38, p90 54, max 147 ms (an earlier 30: max 179). One frame
+corrected by a constant lands within about ±15 ms typically, ~100 ms in the
+tail: against seconds of drift and a whole-second display, enough. The Mac's
+is unmeasured and differs in kind (its write completes at the ATT response,
+after the byte reached the board; 88-430 ms writes), so the correction is
+per platform.
+
+### C1. Type 4, clock
+
+Payload: exactly 12 bytes, the layout of raw HID's `RTC_SET_TIME_MS` after
+its header: `yy mm dd wd hh mi ss ms_lo ms_hi flags bias_lo bias_hi`, local
+wall time (the board's RTC is local; the PCF stores year % 100), **meaning
+"at the frame's anchor, true local time was this"**. `flags` must be 0 and
+`bias` 0x7FFF (the board never feeds a wireless sample to any learner). An
+older board rejects type 4 whole (unknown type) and changes nothing.
+
+### C2. The board
+
+On a committed type 4 (`lockchan_media.c` parses, `ch582f_ajazz.c` applies):
+1. **Validate** with the same rules as raw HID: `rtc_ms_payload_valid`,
+   moved where both can call it, plus flags == 0 and bias == 0x7FFF.
+2. **One clock owner:** refused while `usb_mode`, or within 10 minutes of a
+   raw-HID clock set (`RTC_SET_TIME` or `RTC_SET_TIME_MS`, by USB or raw81),
+   counted from that set's completion. The media lease (10 s) is separate.
+3. **Apply** through a new wrapper in `rtc.c` (the Mac session's file; it
+   agreed to review it): `rtc_set_local_ms(int64_t local_epoch_ms, uint8_t
+   flags, int16_t *off)`, which splits into fields and ms with the board's
+   `mktime`/`localtime_r` (year 2026-2098) and calls `rtc_set_time_ms(&t, ms,
+   0, 0x7FFF, &off)`. The handler passes the payload's epoch ms **plus
+   (now_ms - anchor_ms) at the call**, so the time spent between the anchor
+   and the apply is added in epoch space (second, minute and day carries).
+   Flags 0: not INTERNAL (it bumps `host_sync_gen`, outranks the boot
+   acquisition and a deep sleep's PCF recovery), not SKIP_PCF (the PCF is
+   written phase-correct by `rtc_fast_task`, so the 2 s snap does not undo
+   it; one ~2.6 ms I2C transaction per sync, so not per frame).
+4. **RETRY** (the RTC unreadable this pass): kept and retried on a later
+   pass with the elapsed time recomputed, for at most 2 s, then dropped.
+5. Counters for op 17 sub 7 (or a new sub): applied, refused (owner),
+   rejected, retried, and the last offset `off` (board minus target, ms).
+
+### C3. The host
+
+**Late payload.** The frame executor gains a second kind of payload: the
+preamble is written first (it does not depend on the payload: three
+transitions of the profile's preamble bits from the user's state), and only
+after the third write completes is the payload built, from that completion
+instant, encoded whole, its first three writes checked equal to what was
+written, and the rest sent. The ordinary pick (R4-5) is unchanged; this is a
+separate path used only by type 4. The deadline after the anchor (the
+header's first write) holds: encoding is microseconds against a 300 ms data
+gap (450 on the Mac).
+
+**The time.** `local time at the anchor's completion + L`, where `L` is the
+platform's latency correction: Windows 38 ms (the median above); the Mac's
+measured before it sends. Platform-specific, like `data_gap`:
+`LockLights::clock_latency() -> Option<Duration>`, `None` meaning "do not
+send clock frames" (the default until measured).
+
+**When.** Only with `--clock` (the daemon owns the clock) and the channel
+granted (USB Absent, the radio not carrying: raw HID's clock owns the board
+then). One clock frame after each acquisition (after the handover wait), then
+every 10 minutes; never more often than every 5 minutes. Its own policy
+slot, after text and transport in priority (a clock frame never delays a
+track change), not superseding anything and not superseded (it carries its
+own time). A failed or abandoned clock frame retries after 30 s. The daemon's
+clock learner and its status never take a wireless sample; the status file
+says when the last clock frame was sent.
+
+**Local time on the host:** the same local-time conversion the USB clock
+transaction uses (`clock/`), so DST and the time zone match USB's.
+
+### C4. Limits stated
+
+- One way: the board's offset is never seen by the host (the `off` counter
+  is for the bench). A wrong latency constant biases every sync by the same
+  amount; the tail (~100 ms) is per frame.
+- A sync takes effect through the RTC's slew or step exactly as raw HID's.
+- Two hosts on one board: the board's 10-minute rule favours raw HID; two BT
+  hosts at once (two machines paired) would fight, as they would for text.
