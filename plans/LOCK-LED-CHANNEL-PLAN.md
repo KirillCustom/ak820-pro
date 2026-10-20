@@ -1073,3 +1073,88 @@ mid-frame staleness so far; the rest by construction, noted).
 | 4 | A completion credited without checking the picked epoch | **Fixed:** credited only with the owner, the epoch and the effective content unchanged |
 | 5 | A restore's reopen inherited the payload's backoff | **Fixed:** its own 1 s schedule |
 | tests | Several did not detect the old defects | The mid-wait test now counts every write after the change; A, B, A asserts the cut-off and the restore (**bites**); the poison test counts the guard's drops; the radio's `before_media` runs after the probe and before any media request, and a failed media request stamps the attempt |
+
+## Play times and the Mac's latency (the Mac session, 10-20)
+
+The first end-to-end title over BT worked, with two complaints: no play
+times (only the time of day), and ~8 s from a play pressed elsewhere to
+the board. The ~8 s comes from:
+- up to 0.5 s for the loop's expedite;
+- ~1 s of recovery and quiet;
+- ~2.5 s of writes;
+- ~3.5 s for each retry after a frame the sender abandoned.
+
+### Play times: a new frame type 3, the transport
+
+Built first as a bit 7 in type 1, which codex's review
+([verbatim](review-codex-lockchan-playback-2026-10-20.md); no P1) showed
+breaks R2-9's frozen type: an older board drops the whole frame and its
+text with it. So:
+- **Type 1 stays frozen** (text and icon, playback off), as does type 2
+  (clear, playback off).
+- **Type 3 is the transport:** exactly `[icon 0-3][state 0|1][pos_hi]
+  [pos_lo][dur_hi][dur_lo]`. The board sets the shown slot's icon alone
+  (`display_set_text_icon`, a no-op with no text shown) and the readout
+  (`display_set_playback_for`), the position advanced from the frame's
+  anchor to its commit, with a 135 s expiry.
+- **Firmware:** `mac/lockchan-playback` `81a1860c8c`, on Gremlin's
+  `1261ab2fa8`. The readout now runs from a base and the elapsed time
+  (`pb_at`), so a stretch in Fn+D or an animation no longer loses time. A
+  media key's optimistic freeze ends on its own after 15 s.
+- **Shared Rust (`lockchan/mod.rs`, `23457b9`):** `transport()`,
+  `Playback::of` (behind raw HID's duration gate), `text_identity` (the
+  lines), `transport_identity` (icon, readout, duration), `is_seek`
+  (clamped to the duration).
+- **The sender (Gremlin's):** two policies, text then type 3; the slot
+  holds the position with its own as-of instant, apart from `observed`.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | Bit 7 in type 1 breaks the frozen contract | **Fixed:** type 3 |
+| 2 | `observed` is not the position's as-of time | **For the sender:** the slot keeps `(pos_s, pos_at)` |
+| 3 | `Playback::of` took `pos=0, dur=0` | **Fixed:** behind `Snapshot::playback()`'s gate |
+| 4 | `is_seek` ignored the duration's clamp | **Fixed:** clamped, with a test at a track's end |
+| 5 | Fn+D or an animation lost elapsed time | **Fixed:** `pb_at` from a base and the elapsed time |
+| 6 | An ignored media key froze the readout for the lease | **Fixed:** the freeze's own 15 s |
+| 7 | The pick precedes the anchor | **Documented:** the position is the host's at its pick |
+
+**Codex's verify of the redesign**
+([verbatim](review-codex-lockchan-playback-verify-2026-10-20.md)): it
+clears `81a1860c8c` for an attended dev bench flash, with no P1. The P2s
+come before the playback sender is in daily use.
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | Type 3 renews the text lease: a lost type 1 leaves the old title alive for as long as type 3s land | **To fix:** type 3 leaves `text_stamp` alone and applies only while text is shown |
+| 2 | A second media-key press rebases the host's anchor, so an optimistic position becomes permanent | **To fix:** the host's anchor is never touched by a key; the guess is its own state (frozen or resumed) with a 15 s deadline, evaluated before the next press; the icon's guess gets the same deadline |
+| 3 | Every type 1 sent must leave a current type 3 owed (repeats, refreshes, wake and acquisition resends), since every type 1 turns playback off | **For the sender (Gremlin):** sent 10-20 |
+| 4 | P3: Fn+D's exit paints the cached position, then jumps | **To fix:** playback serviced before the clock band is painted |
+
+Its integration rules for the sender, also sent to Gremlin:
+- the position's own as-of instant: on the Mac it is the snapshot's
+  creation, not `observed`;
+- positions compared at one instant, unsaturated;
+- identity kept apart from the payload;
+- a CLEAR cancels both policies' work.
+
+### The Mac's retries: its BLE write latency
+
+The interference run (`history/lockchan-mac-interference-20261020/`) took
+the radio's lock, so the daemon stopped probing the 2.4G dongle: 14/20
+frames went, as with the cable in (15/20). So the dongle is not the cause.
+5 of the 6 frames abandoned were a data write of 343-379 ms against the
+sender's 300 ms.
+
+- **`LockLights::data_gap()`** (`63bc96d`) bounds the warm-up's return and
+  every data write. The default is 300 ms; `RECEIVER_GAP` names the
+  board's 500. **The Mac takes 450 ms:** its write completes at the ATT
+  response, after the board has the byte, so the board's gap is at most
+  450 ms plus that trail.
+- **Owed before the daemon is reinstalled with it:** the gap study at
+  450, cable in. Every `Sent` must still be a board commit.
+
+**The Mac daemon's orderly stop** (`63bc96d`, `stop.rs`): SIGTERM
+(launchd's bootout, run by `ak820 install` and `uninstall`) and SIGINT
+set `stop_requested`. The loop then returns and the sender restores what
+it owes. Before this, the default action killed the daemon mid-frame.
+A second signal kills at once (`SA_RESETHAND`).
