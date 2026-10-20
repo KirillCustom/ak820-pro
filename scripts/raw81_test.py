@@ -40,7 +40,7 @@ class RX(ctypes.Structure):
     _fields_ = [("state", ctypes.c_int), ("boundary", ctypes.c_bool), ("tainted", ctypes.c_bool),
                 ("buf", ctypes.c_uint8 * 34), ("len", ctypes.c_uint8), ("start_tick", ctypes.c_uint16),
                 ("last_tick", ctypes.c_uint16), ("have_session", ctypes.c_bool), ("session", ctypes.c_uint8),
-                ("last_seq", ctypes.c_uint16), ("admitted_ms", ctypes.c_uint32),
+                ("last_seq", ctypes.c_uint16), ("admitted_s", ctypes.c_uint32),
                 ("c_session", ctypes.c_uint8), ("c_seq", ctypes.c_uint16), ("inner", ctypes.c_uint8 * 26)] + \
                [(n, ctypes.c_uint32) for n in ("ok", "stale", "forbidden", "badenv", "badsum",
                                               "taint", "lifetime", "qbytes", "busy")]
@@ -101,10 +101,10 @@ class Board:
             if r == 2:                       # STARTED: the window starts over
                 self.w = [0, 0, 0]
             elif r == 3:                     # FRAME
-                v = self.L.raw81_commit(ctypes.byref(self.rx), self.err_at_commit, self.tick, LIFE_T, self.ms)
+                v = self.L.raw81_commit(ctypes.byref(self.rx), self.err_at_commit, self.tick, LIFE_T, self.ms // 1000)
                 if v == 0 and self.admit:
                     # the dispatch happened, with the identity reserved at commit
-                    self.L.raw81_admit(ctypes.byref(self.rx), self.rx.c_session, self.rx.c_seq, self.ms)
+                    self.L.raw81_admit(ctypes.byref(self.rx), self.rx.c_session, self.rx.c_seq, self.ms // 1000)
                 self.verdicts.append((V[v], self.rx.c_seq, bytes(self.rx.inner) if v == 0 else None))
             elif r == 0:                     # the window's turn
                 self.w = self.w[1:] + [c]
@@ -295,20 +295,22 @@ def run(L):
     check("forbidden does not advance", [v[0] for v in b.verdicts][-2:] == ["FORBIDDEN", "OK"], b.verdicts)
 
     # 12c. Sessions: another session is busy while this one is live, and may
-    #      start after RAW81_SESSION_IDLE_MS (1000) with no admitted request;
-    #      a reset or link loss ends the session at once.
+    #      start once the seconds count has advanced RAW81_SESSION_IDLE_S (2)
+    #      past the last admission (at least one whole second); a reset or
+    #      link loss ends the session at once.
     b = fresh(L)
+    b.ms = 5000                                     # seconds count 5
     b.drain(wire81(env(1, health, session=9))); b.advance(500)
     b.drain(wire81(env(1, health, session=10)))
     check("other session busy", b.verdicts[-1][0] == "BUSY", b.verdicts)
     b.advance(400)
-    b.drain(wire81(env(2, health, session=9)))     # the live session continues
-    b.advance(999)
+    b.drain(wire81(env(2, health, session=9)))     # the live session continues, admitted in second 5
+    b.advance(1000)                                 # second 6: one count past
     b.drain(wire81(env(1, health, session=10)))
-    check("still busy at 999 ms", b.verdicts[-1][0] == "BUSY", b.verdicts)
-    b.advance(1)
+    check("still busy one count on", b.verdicts[-1][0] == "BUSY", b.verdicts)
+    b.advance(1000)                                 # second 7: two counts
     b.drain(wire81(env(1, health, session=10)))
-    check("new session after 1 s idle", b.verdicts[-1][0] == "OK", b.verdicts)
+    check("new session after two counts", b.verdicts[-1][0] == "OK", b.verdicts)
     b.drain(wire81(env(3, health, session=9)))
     check("the old session is now busy", b.verdicts[-1][0] == "BUSY", b.verdicts)
     L.raw81_reset(ctypes.byref(b.rx))

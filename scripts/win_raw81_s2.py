@@ -75,9 +75,9 @@ class Owner:
             except Exception as e:
                 sys.exit(f"{STATE} is unreadable ({e}): refusing to allocate a session; delete it only "
                          "if no raw81 owner has run in the last second")
-        wait = float(st["opened"]) + 1.0 - time.time()
+        wait = float(st["opened"]) + 2.0 - time.time()
         if wait > 0:
-            time.sleep(wait)               # no reuse inside the 1 s lifetime
+            time.sleep(wait)               # 2 s: the board's two-count session idle, and no reuse inside the lifetime
         self.session = (int(st["session"]) % 255) + 1
         self.opened = time.time()
         tmp = STATE + ".tmp"               # persisted atomically, before any send
@@ -91,7 +91,7 @@ class Owner:
 
     def next(self):
         if self.issued >= ROTATE_SPAN:
-            time.sleep(1.0)                # the session idles 1 s, then a new one (R4-2)
+            time.sleep(2.0)                # the session idles two counts, then a new one (R4-2)
             self._open()
         self.seq = (self.seq + 1) & 0xFFFF
         self.issued += 1
@@ -244,7 +244,7 @@ def test_nak(r, h):
     time.sleep(0.05)                                      # the quarantine ends on silence
     other = (r.owner.session % 255) + 1
     t, _ = r.xact(b"\x07\x13\x01", session=other, seq=1)
-    check("another session inside 1 s -> NAK 4", t.result == "nak" and t.status == 4, (t.result, t.status))
+    check("another session inside the idle -> NAK 4", t.result == "nak" and t.status == 4, (t.result, t.status))
     t, _ = r.xact(b"\x07\x13\x01")
     check("own session still served", t.result == "ok", t.result)
 
