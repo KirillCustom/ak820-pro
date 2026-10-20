@@ -1,0 +1,13 @@
+**Pass for the short bench flash. Must-fix: none. Should-fix: none.** Reviewed `981631b9` against `b2a07e0d37`.
+
+- **Note — timer correctness:** [ch582f_ajazz.c:981](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:981). `r81_ensure()` completes `chVTObjectInit()` before any timer access. `chVTReset()` and `chVTIsArmed()` correctly take their own locks; the arm path correctly encloses `chVTIsArmedI()` and `chVTSetI()` in one lock. Repeated stop/arm is safe; arming an already armed timer preserves its deadline. This matches the vendored implementation and [ChibiOS API contract](https://www.chibios.org/doc/21.11/full_rm/group__time.html).
+
+- **Note — ISR race:** [ch582f_ajazz.c:704](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:704). No stop-versus-self-rearm race on this single-core MCU: the thread cannot execute midway through the ISR callback. Either reset removes the timer before dispatch, or the callback finishes rearming before reset removes it. The locked arm check also prevents double-arm.
+
+- **Note — validation:** [hid_protocol.c:1118](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/hid_protocol.c:1118). The length check short-circuits before argument reads; subs above 6 and sub-6 arguments above 2 are rejected. Mapping is correct: `0 → read`, `1 → arm`, `2 → stop`. The 28-byte reply clearing is bounded by the 32-byte minimum. Subs 0–5 retain their prior validation and execution paths.
+
+- **Note — stopped-clock limitation:** [ch582f_ajazz.c:1563](C:/Users/jdlien/code/ak820-pro/qmk_firmware-ak820pro/keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c:1563). Each task pass still refreshes the clock. Gaps exceeding approximately 349.5 ms can lose whole wraps, delaying raw81 session/response expiry; rearming cannot recover those wraps. QMK’s separate clock timer and keyboard TX timeouts continue running. Sleep/wake cleanup does not inadvertently rearm this timer. I found no added hang, fault, or keyboard-input-loss path.
+
+- **Note — daily builds:** The implementation, declaration, and HID dispatch changes are entirely inside existing `AK820_DEV_HOOKS` guards: `ch582f_ajazz.c:632`, `ch582f_ajazz.h:77`, and `hid_protocol.c:976`. No daily-build behavior change identified.
+
+Static review only: process execution was blocked, so I inspected the exact Git objects and local sources directly; no build or hardware test was run.

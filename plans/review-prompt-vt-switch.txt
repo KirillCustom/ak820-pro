@@ -1,0 +1,10 @@
+Review commit 981631b9 in qmk_firmware-ak820pro (branch gremlin/vt-switch, parent b2a07e0d37): `git -C qmk_firmware-ak820pro show 981631b9`. It adds HC_DEVHOOK op 17 sub 6, a run-time stop/re-arm of the raw81 long clock's ChibiOS virtual timer (r81_long_vt in keyboards/a_jazz/ak820pro/bluetooth/ch582f_ajazz.c, ~lines 680-720 and the new ch582_raw81_vt near op 19's ch582_raw81_window), dev builds only.
+
+Purpose: an A/B in ONE image layout for a deep-sleep regression. On b2a07e0d every deep sleep ends after one counted second as a "charge" wake; the timer (added in 145a8234) is the lead, but compiling it out moves the layout. A bench flashes this, stops the timer with sub 6, tests sleep, re-arms it, tests again.
+
+This is a flash gate for a short bench test, not a release. Check:
+1. Correctness and ChibiOS API use from thread context (hid_protocol.c's raw-HID handler context): chVTReset, chSysLock + chVTIsArmedI + chVTSetI, chVTIsArmed; any race with r81_long_tick re-arming itself from the ISR; double-arm; arming before r81_ensure's chVTObjectInit (r81_ensure is called first).
+2. The parameter validation in hid_protocol.c's case 17 and that subs 0-5 are unchanged.
+3. Anything that could make the board hang, fault or lose input while the timer is stopped (the stated limit: the long clock then refreshes only per ch582_task pass and loses time across a >0.35 s stall) or after re-arm.
+4. That daily builds are unaffected (all under AK820_DEV_HOOKS).
+Classify findings must-fix / should-fix / note, with file:line.
