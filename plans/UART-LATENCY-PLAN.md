@@ -227,9 +227,9 @@ the table wins:**
 | V6 | should: re-prime on the monitor's enable too; label the timing boundaries | **Taken.** |
 | V7 | should: keep the link's retry, give-up, replacement and queue-drop counters beside the delivered presses | **Taken.** |
 
-## Handoff (00:05 10-20): built, not yet reviewed or flashed
+## Handoff (23:39 10-19): built, not yet reviewed or flashed
 
-**JD's go (00:00 10-20):** flash it and test whatever is needed overnight,
+**JD's go (late 10-19):** flash it and test whatever is needed overnight,
 while he sleeps. No hands available.
 
 **The firmware:**
@@ -283,9 +283,9 @@ while he sleeps. No hands available.
 7. **History write-ups and a report to JD.** Then `ak820pro-jdlien` and
    `deps.lock` with Gremlin, then R5.
 
-## Codex's implementation review (00:40 10-20): dispositions
+## Codex's implementation review (23:52 10-19): dispositions
 
-[`review-codex-uart-latency-impl-2026-10-20.md`](review-codex-uart-latency-impl-2026-10-20.md),
+[`review-codex-uart-latency-impl-2026-10-19.md`](review-codex-uart-latency-impl-2026-10-19.md),
 verbatim. It found the lock round trip, every exit's relock, the three
 modes, the CT16B1 hold and UART2's priority sound.
 
@@ -297,9 +297,9 @@ modes, the CT16B1 hold and UART2's priority sound.
 | 4 | should: the masked spans in unlocked mode are partial; the monitor's maximum is threshold-crossing only, its thresholds round to 128/197/347 us, and "none" is `ACCT_UNACCOUNTED` (12) | **Taken** in the comments and wire descriptions; the host tool reads them so. |
 
 
-### Codex's verify of those fixes (01:10 10-20)
+### Codex's verify of those fixes (23:57 10-19)
 
-[`review-codex-uart-latency-impl-verify-2026-10-20.md`](review-codex-uart-latency-impl-verify-2026-10-20.md),
+[`review-codex-uart-latency-impl-verify-2026-10-19.md`](review-codex-uart-latency-impl-verify-2026-10-19.md),
 verbatim: **nothing blocks the dev flash.** Findings 1-4 close at runtime,
 including the release write, the bracket, the acquisition and the deep
 sleep's recovery under the new deferral.
