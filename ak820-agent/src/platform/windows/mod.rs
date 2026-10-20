@@ -68,8 +68,12 @@ impl crate::platform::Platform for Native {
         radio_lock::try_take().map(|held| held.map(|l| Box::new(l) as crate::platform::RadioGuard))
     }
 
+    /// SMTC is read every 0.5 s whatever the push interval, so a pause or a
+    /// track change is seen within half a second and the loop can push it at
+    /// once (`agent::expedite`); polled on the push's own 3 s, a pause went
+    /// out up to a poll late on a reading taken before it.
     fn spawn_media(interval: Duration, _log: &crate::logfile::Log) -> Result<smtc::MediaWorker, String> {
-        smtc::MediaWorker::spawn(interval)
+        smtc::MediaWorker::spawn(interval.min(Duration::from_millis(500)))
     }
 }
 

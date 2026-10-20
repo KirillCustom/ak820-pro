@@ -75,6 +75,21 @@ pub const HEALTH_INTERVAL: Duration = Duration::from_secs(300);
 /// The longest the loop sleeps between looking at its schedules.
 const SLICE: Duration = Duration::from_millis(500);
 
+/// Whether a change the media source has already seen should go out now
+/// rather than at the next scheduled poll. True when the snapshot's text
+/// (the icon included, so a pause) differs from what was pushed, once per
+/// distinct snapshot: a push that fails is retried on the schedule, not every
+/// slice. Nothing pushed yet, or a failed read, waits for the schedule.
+///
+/// Without it a pause reached the board up to a poll late, and the stale
+/// "playing" before it restarted the timer the media key had just frozen
+/// (seen on Windows 10-20; the Mac's source is event-driven).
+fn expedite(latest: &Snapshot, read_ok: bool, shown: Option<&Snapshot>, expedited: Option<&Snapshot>) -> bool {
+    read_ok
+        && shown.is_some_and(|s| latest.text_differs(s))
+        && expedited.is_none_or(|e| latest.text_differs(e))
+}
+
 /// Where the board is, as far as the last interaction could tell.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Presence {
@@ -273,10 +288,19 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
     let mut poll_was_ok = true;
     let history_path = history::beside(&opts.log);
     let mut history_ok = true;
+    let mut expedited: Option<Snapshot> = None;
 
     loop {
         let now = Instant::now();
         let mut worked = false;
+
+        if now < next_media {
+            let (latest, health) = worker.latest();
+            if expedite(&latest, health.last_poll_ok, publisher.shown(), expedited.as_ref()) {
+                next_media = now;
+                expedited = Some(latest);
+            }
+        }
 
         if now >= next_media {
             worked = true;
@@ -295,6 +319,7 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
             let snapshot = if health.last_poll_ok { snapshot } else { Snapshot::default() };
             if !watch.holding(now) {
                 let mut discarded = Vec::new();
+                let radio_pushes = radio.as_ref().map(|r| r.status.pushes);
                 let (outcome, transport) = media_tick(
                     opts.radio_only,
                     P::open_board,
@@ -319,6 +344,13 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
                     &mut &log,
                 );
                 st.transport = transport.into();
+                // A radio push is a push: the media keys say what the panel
+                // shows whichever transport carried it (seen stale 10-20).
+                if let Some(r) = radio.as_ref().filter(|r| Some(r.status.pushes) != radio_pushes) {
+                    st.media_last_push = r.status.last_push.clone();
+                    st.media_last_text = publisher.shown().map(Publisher::describe);
+                    st.media_last_error = None;
+                }
                 st.foreign_reports += foreign(&discarded);
                 if let Some(outcome) = outcome {
                     if let Some(line) = watch.observe(outcome.as_ref().map(|_| ()), now) {
@@ -1084,6 +1116,35 @@ mod tests {
 /// real boundaries (codex's daemon review, must-fix 3; the raw81 daemon plan,
 /// R2-6, R3-3, R4-3): the USB opener's every result, the radio on a fake
 /// dongle and a fake clock, and a lock guard whose release is observable.
+#[cfg(test)]
+mod expedite_tests {
+    use super::*;
+    use crate::text::Icon;
+
+    fn snap(title: &str, icon: Icon) -> Snapshot {
+        Snapshot { title: title.into(), icon, ..Snapshot::default() }
+    }
+
+    #[test]
+    fn a_pause_goes_out_at_once_and_only_once() {
+        let shown = snap("T", Icon::Play);
+        let paused = snap("T", Icon::Pause);
+        assert!(expedite(&paused, true, Some(&shown), None));
+        // The push failed: shown is unchanged, but the same change waits.
+        assert!(!expedite(&paused, true, Some(&shown), Some(&paused)));
+        // A further change goes out again.
+        assert!(expedite(&snap("U", Icon::Play), true, Some(&shown), Some(&paused)));
+    }
+
+    #[test]
+    fn nothing_new_nothing_pushed_or_a_failed_read_waits() {
+        let shown = snap("T", Icon::Play);
+        assert!(!expedite(&shown.clone(), true, Some(&shown), None));
+        assert!(!expedite(&snap("U", Icon::Play), true, None, None));
+        assert!(!expedite(&snap("U", Icon::Play), false, Some(&shown), None));
+    }
+}
+
 #[cfg(test)]
 mod media_tick_tests {
     use super::*;
