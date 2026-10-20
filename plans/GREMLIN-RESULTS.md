@@ -295,3 +295,20 @@ was stopped for the runs. Results in `history/ledchannel-2026-10-20-gremlin-ble-
 - **A sender should use 16 ms over BLE** (a 20-37-byte P0 frame in 2.5-3.6 s),
   10 ms over the dongle (section 3), until a longer error-rate run says
   closer is safe.
+
+## 9. The user's locks on a sender thread (10-20, R2-2)
+
+`scripts/win_keystate_probe.py`, for the lock-light sender's freshness
+contract (`LOCK-LED-CHANNEL-PLAN.md`, R2-2):
+
+- **Software toggles** (Scroll Lock by `SendInput` from the main thread, read
+  on a second thread every 5 ms, 3 rounds each): plain `GetKeyState` on a
+  thread with no message queue saw the change in **1-8 ms**; with a
+  `PeekMessage` before each read, 4 ms; **`GetKeyboardState` never** (1.5 s).
+- **JD's real Caps Lock presses on the AK820 over BT** (watch mode, plain
+  `GetKeyState`, second thread): all 8 changes seen at his pace (~200 ms
+  apart), ending on his final state.
+- So the sender reads the locks with plain `GetKeyState` on its own thread.
+  Not yet: Num and Scroll from a real keyboard (the AK820 has neither key),
+  another keyboard, and the daemon's own context (a Task Scheduler process in
+  the session, not a console): the soak checks those.
