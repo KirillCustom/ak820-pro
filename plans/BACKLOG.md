@@ -86,6 +86,27 @@ the board is awake, and without refreshes the title would expire mid-track.
 **Only the clock frame (type 4, being designed) is held while input is idle
 past 60 s,** with one sent at the wake guess instead.
 
+## The clock flashes for ~3 s at every title frame over the lock lights (2026-10-20) -- small fix proposed
+
+Seen by JD on the first supervised play-times run over BT (`6fda6cd1c2`, the
+daemon `v0.1.1-715`): the clock showed for a moment on returning to the
+board, and for a couple of seconds at a song change.
+- **Why:** the board turns playback off on every type 1
+  (`lockchan_media_commit`, so a new title never shows the old song's time).
+  The type 3 that restores it is a separate frame, about 3 s behind. In
+  between, the band falls back to the clock.
+- **When:**
+  - a song change (new title, then its type 3);
+  - the wake guess's resend after the first input past 30 s idle;
+  - **every 60 s refresh** (`sender.rs`: type 1 is refreshed and forces a
+    type 3), so a minutely flash while JD just listens.
+- **Fix 1, small, board-side:** a type 1 whose lines and icon match what is
+  shown leaves playback alone. That covers the refresh and the wake resend.
+  The sender still follows every type 1 with a type 3, as codex required.
+- **Fix 2, optional (JD's call):** a type 1 with a new title and the play
+  icon shows 0:00 counting instead of the clock, corrected by the type 3
+  within seconds.
+
 ## Slept seconds count the wake's awake seconds twice (2026-10-20) -- small, left
 
 From Gremlin's `rtc.c` work for the wireless clock. `wake_coarse()` adds
