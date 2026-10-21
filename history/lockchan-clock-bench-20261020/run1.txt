@@ -1,0 +1,10 @@
+1 Sent | before: offset +278 ms (target - board), slewing | after 20 s: offset board-host -13.1 ms
+2 Sent | before: offset +15 ms (target - board), slewing | after 20 s: 
+3 Sent | before: offset -15 ms (target - board), slewing | after 20 s: offset board-host -13.6 ms
+4 Sent | before: offset +26 ms (target - board), slewing | after 20 s: 
+5 Sent | before: offset -9 ms (target - board), slewing | after 20 s: 
+6 Sent | before: offset -4 ms (target - board), slewing | after 20 s: offset board-host -4.3 ms
+7 Sent | before: offset +2 ms (target - board), slewing | after 20 s: offset board-host -2.6 ms
+8 Sent | before: offset -2 ms (target - board), slewing | after 20 s: offset board-host -6.8 ms
+9 Sent | before: offset +11 ms (target - board), slewing | after 20 s: 
+10 Sent | before: offset -11 ms (target - board), slewing | after 20 s: offset board-host -5.4 ms

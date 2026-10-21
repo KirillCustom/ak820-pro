@@ -120,9 +120,12 @@ impl ClockSched {
         if let Some(s) = self.last_sent {
             t = t.max(s + MIN_GAP);
         }
-        // One held back by the idle gate goes after the wake delay too, not
-        // at once into the board's wake recovery.
-        self.due = self.due.map(|d| if d <= now { t } else { d.min(t) });
+        // The wake's delay is a lower bound whatever was due (codex, the
+        // clock's second verify, 2): one held back by the idle gate, or due
+        // a second from now, goes after it, not into the board's wake
+        // recovery. Past it, the sooner of the two.
+        let earliest = now + super::sender::WAKE_DELAY;
+        self.due = self.due.map(|d| d.min(t).max(earliest));
     }
 
     /// Each step while acquired: the offset now and the wall clock against
@@ -259,6 +262,10 @@ mod tests {
         c.sent(t0 + s(1000));
         c.woke(t0 + s(2000));
         assert_eq!(c.due(), Some(t0 + s(2000) + crate::lockchan::sender::WAKE_DELAY));
+        // Due a second after the wake: the delay still holds.
+        c.sent(t0 + s(3000));
+        c.woke(t0 + s(3000) + EVERY - s(1));
+        assert_eq!(c.due(), Some(t0 + s(3000) + EVERY - s(1) + crate::lockchan::sender::WAKE_DELAY));
     }
 
     #[test]

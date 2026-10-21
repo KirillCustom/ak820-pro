@@ -1027,11 +1027,11 @@ impl<P: Platform> Core<P> {
                 self.clock.sent(done);
                 // The clock the frame carried is the scheduler's reference
                 // now: a step before its time was taken is not seen again as
-                // a reason to resend (verify, note).
-                if let Some(w) = self.platform.wall_ms_at(done) {
-                    if let Some(l) = self.platform.local(w.div_euclid(1000)) {
-                        self.clock.rebase(done, w, clk::utc_offset_s(&l, w.div_euclid(1000)));
-                    }
+                // a reason to resend. From the time it took, not a new
+                // sample, which could hide a change after the last check
+                // (codex, the clock's second verify, 1).
+                if let Some((at, w0, off)) = taken.get() {
+                    self.clock.rebase(at, w0, off);
                 }
                 let line = described.borrow().clone();
                 self.publish(h, |st| {
@@ -1229,6 +1229,8 @@ mod tests {
         offset_from_call: Option<(usize, i64)>,
         /// Called at each open (a change while the lights are opened).
         open_hook: Option<Box<dyn FnMut()>>,
+        /// A wall step that lands after this many more `wall_ms_at` calls.
+        wall_step_after: Option<(usize, i64)>,
     }
 
     struct Lights {
@@ -1308,6 +1310,18 @@ mod tests {
             self.input.get()
         }
         fn wall_ms_at(&self, at: Instant) -> Option<i64> {
+            {
+                let mut k = self.kb.borrow_mut();
+                if let Some((n, d)) = k.wall_step_after {
+                    if n == 0 {
+                        let (t, w) = k.wall.unwrap();
+                        k.wall = Some((t, w + d));
+                        k.wall_step_after = None;
+                    } else {
+                        k.wall_step_after = Some((n - 1, d));
+                    }
+                }
+            }
             let (t0, w0) = self.kb.borrow().wall?;
             Some(w0 + at.duration_since(t0).as_millis() as i64)
         }
@@ -2420,6 +2434,23 @@ mod tests {
         let f = clock_frames(&r, 38);
         assert_eq!(f.len(), 1);
         assert!(bravo_at < f[0].0, "Bravo before the clock");
+    }
+
+    #[test]
+    fn a_step_after_the_final_check_is_still_seen_and_resent() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        let mut dry = clock_rig(Some(38));
+        let td = granted(&mut dry, title("A"));
+        run_until(&mut dry, td + Duration::from_secs(20));
+        let (_, b) = clock_frames(&dry, 38)[0].clone();
+        let len = crate::lockchan::encode(&b, super::super::TYPE_CLOCK, 0, Profile::P0, 0).unwrap().len();
+        // At the frame's last write: the final continuity check's sample sees
+        // the old clock, every later one a minute on.
+        in_clock(&r, 2 + len - 1, |_, kb| kb.borrow_mut().wall_step_after = Some((1, 60_000)));
+        run_until(&mut r, t0 + Duration::from_secs(40));
+        assert_eq!(r.h.status().clock_frames, 2, "credited, then the step seen and resent");
+        assert_eq!(clock_frames(&r, 38).len(), 1, "the resend carries the stepped clock");
     }
 }
 

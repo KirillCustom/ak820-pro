@@ -1,0 +1,31 @@
+**Not yet for daily installation on gremlin with `--clock --radio --lockchan`.** The original must-fix is closed, but the new rebase introduces another clock-invalidation race. The Mac’s unmeasured latency is not the blocker.
+
+1. **Must-fix — Rebase can hide a clock change that the transmitted frame did not carry.**  
+   The final continuity check passes at [sender.rs:1019](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/sender.rs:1019), then [sender.rs:1031](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/sender.rs:1031) independently samples wall time and local offset for the rebase.
+
+   A wall step or zone change between those operations becomes the scheduler’s new baseline. The next `observe()` sees no change, while the board retains the previous time until the ten-minute refresh. I reproduced both a +60-second wall step and a one-hour offset change in a scheduling model.
+
+   Rebase from the frame’s existing `taken` tuple—`(anchor, w0, payload_offset)`—or from a sample actually validated against it. That also fixes the original unnecessary resend after a warm-up step. Add a regression changing the clock **after final continuity succeeds, before rebase**; the existing last-write test changes it earlier.
+
+2. **Should-fix — A near-future deadline still bypasses the full wake delay.**  
+   At [clock.rs:125](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/clock.rs:125), `d.min(t)` preserves an existing future deadline even when it precedes `now + WAKE_DELAY`. For example, refresh due at second 600, wake at 599: the clock remains due at 600, not 603. The same issue occurs with an acquisition floor just ahead of the wake.
+
+   The two reported ordering bugs are fixed, but the general four-second delay guarantee remains incomplete. Preserve the wake deadline as a lower bound for this case and test waking immediately before an existing deadline.
+
+| Original verify item | Closure |
+|---|---|
+| **Must-fix 1 — Payload/continuity offset mismatch** | **Closed.** `taken` uses the offset of the actual payload conversion. A subsequent disagreement aborts instead of blessing the old payload. [sender.rs:1005](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/sender.rs:1005) |
+| **Should-fix 2 — Input snapshot and acquisition ordering** | **Both reported orderings closed; overall delay guarantee partially open.** One snapshot feeds wake detection and the idle gate, and `woke()` follows `acquired()`. See the remaining deadline case above. [sender.rs:554](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/sender.rs:554), [sender.rs:616](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/sender.rs:616) |
+| **Should-fix 3 — Failure cleared prematurely** | **Closed.** The extra fallible conversion is removed; `failed` clears after wall sampling, both conversions, and payload construction succeed. [sender.rs:987](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/sender.rs:987), [sender.rs:1002](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/sender.rs:1002) |
+| **Should-fix 4 — Media epochs captured too late** | **Closed.** The selecting pass captures epochs under the slot lock, passes them through opening, and checks them before guarded writes. [sender.rs:577](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/sender.rs:577), [sender.rs:746](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/sender.rs:746), [sender.rs:966](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/sender.rs:966) |
+| **Should-fix 5 — Mac wall-sampling gap** | **Closed by `ea9fe20`.** Monotonic reads bracket the wall sample; wide brackets are retried, at most four times. Mac clock transmission remains disabled through the default `None` latency. [macos/lock_lights.rs:379](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/platform/macos/lock_lights.rs:379), [frame.rs:26](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/frame.rs:26) |
+| **Should-fix 6 — RX-tap size check** | **Closed.** Nonzero whole-page sizes accept both 208 and 260 bytes; page reads follow the advertised size. [devhook.py:144](C:/Users/jdlien/code/ak820-pro/scripts/devhook.py:144) |
+| **Should-fix — Ownership-floor mismatch** | **Closed for gremlin’s stated 13–16% sleep slowdown.** At 16% slow, 735 real seconds provide about 617 counted seconds, past the firmware’s inclusive 600-second refusal. The separate floor still constrains every scheduling reason. This is an empirical margin, not a universal oscillator bound. [clock.rs:46](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/clock.rs:46), [clock.rs:91](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/clock.rs:91) |
+| **Note — Rebase after a credited frame** | **Partially addressed, not closed safely.** It suppresses the redundant resend in the stable case but introduces must-fix 1 above. |
+| **Coverage — Corrected C stamp-age example** | **Closed.** `(100,0) → (1102,1000)` correctly expects age 2; pre-stamp and negative-credit cases are added. All these examples passed my arithmetic model. [lockchan_media_test.c:411](C:/Users/jdlien/code/ak820-pro/scripts/lockchan_media_test.c:411) |
+
+**Should-fix — Production Windows latency validation remains open.** The `+38 ms` correction is still explicitly provisional, and continuity checks still perform wall sampling/local conversion per guarded write. Measure the production executor with those checks enabled. This is separate from the installation blocker above. [windows/lock_lights.rs:341](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/platform/windows/lock_lights.rs:341), [sender.rs:946](C:/Users/jdlien/code/ak820-pro/ak820-agent/src/lockchan/sender.rs:946)
+
+**Notes — The other firmware observations are unchanged:** credit subtraction measures uncorrected counted ticks, including the negative-credit caveat; credit accesses remain in main-loop context. The C pending-machine coverage still does not verify actual board wake/drop-hook wiring. Neither reviewed commit changes that firmware code.
+
+I inspected both commits’ exact parent differences through Git objects; main is `178c743`, and the firmware checkout is `9e52400e`. Process launch was denied, so validation was source inspection and JavaScript boundary models—not fresh Rust/C test runs or hardware measurements. No files or installation were changed.
