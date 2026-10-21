@@ -370,6 +370,20 @@ impl crate::lockchan::sender::Platform for Mac {
         self.last.set(Some(last));
         Some((last, now))
     }
+
+    /// The system clock at `at`: now, less the monotonic time since `at`
+    /// (the anchor's completion has just passed, so this is microseconds).
+    fn wall_ms_at(&self, at: std::time::Instant) -> Option<i64> {
+        let wall = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?;
+        let since = std::time::Instant::now().saturating_duration_since(at);
+        Some(wall.as_millis() as i64 - since.as_millis() as i64)
+    }
+
+    /// The USB clock's own `localtime_r`, so the zone and DST match it.
+    fn local(&self, unix_s: i64) -> Option<crate::clock::host::LocalTime> {
+        use crate::clock::host::Host;
+        Some(super::host::SystemHost.local(unix_s))
+    }
 }
 
 #[cfg(test)]

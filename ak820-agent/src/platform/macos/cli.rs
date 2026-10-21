@@ -64,8 +64,12 @@ pub fn main() -> ExitCode {
             _ => Err("--repeat takes 1-500".into()),
         },
         ["lockchan", "clear"] => lockchan_send("", "", 1),
+        ["lockchan", "anchor", n] => match n.parse::<u32>() {
+            Ok(n) if (1..=200).contains(&n) => lockchan_anchor(n),
+            _ => Err("lockchan anchor takes 1-200 frames".into()),
+        },
         _ => {
-            eprintln!("usage: ak820 --version | list | info | health [--crash] [--stalls] [--rows] [--isr] [--json] [--raw] | lighting | selftest | clock [--raw] [--anyway] | probe [--seconds N] [--applescript] [--dylib PATH] | install [--in-place] [--clock] [--radio] [--lockchan] [--dylib PATH] | uninstall [--keep-bash-off] [--keep-timekeeper-off] | status | lockchan check | lockchan send [--repeat N] ARTIST TITLE | lockchan clear");
+            eprintln!("usage: ak820 --version | list | info | health [--crash] [--stalls] [--rows] [--isr] [--json] [--raw] | lighting | selftest | clock [--raw] [--anyway] | probe [--seconds N] [--applescript] [--dylib PATH] | install [--in-place] [--clock] [--radio] [--lockchan] [--dylib PATH] | uninstall [--keep-bash-off] [--keep-timekeeper-off] | status | lockchan check | lockchan send [--repeat N] ARTIST TITLE | lockchan clear | lockchan anchor N");
             eprintln!("(install, uninstall and status change LaunchAgents and touch no board; lockchan send and clear write the board's LED report over BLE, a development check; every other command only reads the board)");
             return ExitCode::from(2);
         }
@@ -470,6 +474,144 @@ fn lockchan_check() -> Result<(), String> {
     Ok(())
 }
 
+/// Where a lock-LED frame's anchor lands on the board, in time: the Mac's
+/// latency constant for the clock frame (type 4; plans/LOCK-LED-CHANNEL-PLAN.md,
+/// "The wireless clock"). scripts/win_lockchan_anchor_jitter.py's method,
+/// through the daemon's own writer: for each of `n` short frames (type 9,
+/// which the board counts and rejects), the instant its anchor write
+/// completed, taken where run_late hands it to a type 4's build, against the
+/// board's anchor_ms (devhook op 10, over USB). The board's timer is mapped
+/// onto this process's clock through the tightest of 40 op-10 round trips at
+/// the start and at the end (the offset and the drift). Needs a dev build,
+/// the slider on BT, the cable in for the readback, and the daemon quiet:
+/// its raw-HID media pushes drop a frame being assembled (R4-3), so stop it
+/// first (`kill -STOP`, then `-CONT`).
+fn lockchan_anchor(n: u32) -> Result<(), String> {
+    use crate::lockchan::frame::{self, Late, Line};
+    use std::cell::Cell;
+    use std::time::{Duration, Instant};
+
+    const DEVHOOK: u8 = 0x76;
+    const OP_FRAMES: u8 = 10;
+    let _owner = super::radio_lock::try_take_lockchan()?
+        .ok_or("another sender holds the lock-LED channel (the daemon, or another ak820 lockchan)")?;
+    let dev = device::open_board().map_err(|e| e.to_string())?;
+    // One op-10 read: the host's midpoint of the exchange, the board's ms in
+    // it, the round trip, and the reply.
+    let read = || -> Result<(Instant, u32, Duration, [u8; 32]), String> {
+        let sent = Cell::new(None);
+        let r = dev
+            .request_at(Channel::Health, DEVHOOK, &[OP_FRAMES], REQUEST_TIMEOUT, |t| sent.set(Some(t)))
+            .map_err(|e| format!("devhook op 10: {e}"))?;
+        let recv = Instant::now();
+        let rep = r.report;
+        if rep[0] == 0xFF || rep[3] != OP_FRAMES {
+            return Err(format!("devhook op 10 not answered as itself ({:02X?}): a dev build?", &rep[..4]));
+        }
+        let rtt = recv - sent.get().unwrap_or(recv);
+        Ok((recv - rtt / 2, u32::from_le_bytes([rep[25], rep[26], rep[27], rep[28]]), rtt, rep))
+    };
+    let best = || -> Result<(Instant, u32, Duration), String> {
+        let mut b: Option<(Instant, u32, Duration)> = None;
+        for _ in 0..40 {
+            let (t, ms, rtt, _) = read()?;
+            if b.is_none_or(|x| rtt < x.2) {
+                b = Some((t, ms, rtt));
+            }
+        }
+        Ok(b.expect("40 reads"))
+    };
+    let le32 = |b: &[u8]| u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+
+    let mut lights = super::lock_lights::BleLights::open()?
+        .ok_or("the board's BLE keyboard is not listed (paired, connected, the slider on BT?)")?;
+    let mut line = Line::default();
+    let first = best()?;
+    let mut samples: Vec<(Instant, u32)> = Vec::new();
+    for i in 0..n {
+        let seq = (i & 0xFF) as u8;
+        let before = le32(&read()?.3[4..8]);
+        let anchor = Cell::new(None);
+        let out = frame::run_late(&mut lights, &Wall, &Never, &mut line, || {
+            Some(Late {
+                kind: 9,
+                seq,
+                build: Box::new(|at| {
+                    anchor.set(Some(at));
+                    Some(vec![seq, 1, 2, 3, 4])
+                }),
+            })
+        });
+        if out == frame::Outcome::Poisoned {
+            std::mem::forget(lights);
+            std::mem::forget(_owner);
+            return Err("a write did not retire: the channel is poisoned".into());
+        }
+        std::thread::sleep(Duration::from_millis(600));
+        let rep = read()?.3;
+        let (frames, anchor_ms) = (le32(&rep[4..8]), le32(&rep[17..21]));
+        match anchor.get() {
+            Some(at) if out == frame::Outcome::Sent && frames == before.wrapping_add(1) && rep[15] == seq => {
+                samples.push((at, anchor_ms));
+            }
+            _ => println!("{i:3}: {out:?}, not committed (frames {before} -> {frames}, seq {})", rep[15]),
+        }
+    }
+    let last = best()?;
+
+    // Host instants onto board ms, linear between the two tight pairs.
+    let rate = last.1.wrapping_sub(first.1) as f64 / last.0.duration_since(first.0).as_secs_f64();
+    let lat: Vec<f64> = samples
+        .iter()
+        .map(|&(at, a)| a.wrapping_sub(first.1) as i32 as f64 - at.duration_since(first.0).as_secs_f64() * rate)
+        .collect();
+    println!("frames {n}, committed {}, board ms per host s {rate:.3}", lat.len());
+    println!("sync rtt ms        {:.2} at the start, {:.2} at the end", first.2.as_secs_f64() * 1e3, last.2.as_secs_f64() * 1e3);
+    if lat.is_empty() {
+        return Err("no frame committed".into());
+    }
+    let mean = lat.iter().sum::<f64>() / lat.len() as f64;
+    let sd = (lat.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / lat.len() as f64).sqrt();
+    let mut sorted = lat.clone();
+    sorted.sort_by(f64::total_cmp);
+    let pct = |p: f64| sorted[((sorted.len() - 1) as f64 * p).round() as usize];
+    println!(
+        "board anchor minus host completion, ms: mean {mean:.1}, sd {sd:.1}, min {:.1}, p10 {:.1}, median {:.1}, p90 {:.1}, max {:.1}",
+        sorted[0],
+        pct(0.1),
+        pct(0.5),
+        pct(0.9),
+        sorted[sorted.len() - 1]
+    );
+    let each: Vec<String> = lat.iter().map(|x| format!("{x:.1}")).collect();
+    println!("each               {}", each.join(" "));
+    Ok(())
+}
+
+/// The wall clock, for the development senders below (the daemon's executor
+/// brings its own).
+struct Wall;
+impl crate::lockchan::frame::Time for Wall {
+    fn now(&self) -> std::time::Instant {
+        std::time::Instant::now()
+    }
+    fn sleep_until(&self, t: std::time::Instant) -> bool {
+        std::thread::sleep(t.saturating_duration_since(std::time::Instant::now()));
+        true
+    }
+    fn sleep_through(&self, t: std::time::Instant) {
+        std::thread::sleep(t.saturating_duration_since(std::time::Instant::now()));
+    }
+}
+
+/// Nothing aborts a development frame.
+struct Never;
+impl crate::lockchan::frame::Control for Never {
+    fn abort(&self) -> Option<crate::lockchan::frame::Abort> {
+        None
+    }
+}
+
 /// Lock-LED frames over BLE through the daemon's own executor: the
 /// development check of the Mac's route. Empty artist and title send CLEAR.
 /// Takes the channel's owner lock for the whole run, so it never interleaves
@@ -477,28 +619,8 @@ fn lockchan_check() -> Result<(), String> {
 /// interference study, 10-20: `--repeat N` frames, each titled with its
 /// number, one line each and a tally).
 fn lockchan_send(artist: &str, title: &str, repeat: u32) -> Result<(), String> {
-    use crate::lockchan::frame::{self, Abort, Control, Line, Payload, Time};
+    use crate::lockchan::frame::{self, Line, Payload};
     use std::time::Instant;
-
-    struct Wall;
-    impl Time for Wall {
-        fn now(&self) -> Instant {
-            Instant::now()
-        }
-        fn sleep_until(&self, t: Instant) -> bool {
-            std::thread::sleep(t.saturating_duration_since(Instant::now()));
-            true
-        }
-        fn sleep_through(&self, t: Instant) {
-            std::thread::sleep(t.saturating_duration_since(Instant::now()));
-        }
-    }
-    struct Never;
-    impl Control for Never {
-        fn abort(&self) -> Option<Abort> {
-            None
-        }
-    }
 
     let _owner = super::radio_lock::try_take_lockchan()?
         .ok_or("another sender holds the lock-LED channel (the daemon, or another ak820 lockchan)")?;
