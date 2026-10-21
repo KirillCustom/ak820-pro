@@ -42,6 +42,9 @@ pub fn main() -> ExitCode {
         // command that writes, and only the keyboard's LED report).
         ["lockchan", "send", artist, title] => lockchan_send(artist, title),
         ["lockchan", "clear"] => lockchan_send("", ""),
+        // Development: one clock frame (type 4), the daemon's way, while no
+        // clock owner runs.
+        ["lockchan", "clock"] => lockchan_clock(),
         ["status"] => status(),
         ["--version"] | ["version"] => {
             println!("{}", crate::version_line("ak820"));
@@ -1125,32 +1128,98 @@ mod install_tests {
     }
 }
 
+struct CliWall;
+impl crate::lockchan::frame::Time for CliWall {
+    fn now(&self) -> std::time::Instant {
+        std::time::Instant::now()
+    }
+    fn sleep_until(&self, t: std::time::Instant) -> bool {
+        std::thread::sleep(t.saturating_duration_since(std::time::Instant::now()));
+        true
+    }
+    fn sleep_through(&self, t: std::time::Instant) {
+        self.sleep_until(t);
+    }
+}
+
+struct CliNever;
+impl crate::lockchan::frame::Control for CliNever {
+    fn abort(&self) -> Option<crate::lockchan::frame::Abort> {
+        None
+    }
+}
+
+/// One clock frame (type 4) over BLE, built as the daemon builds it: the
+/// wall clock at the anchor's completion plus the lights' latency, in the
+/// USB clock's local time. A clock set, so it refuses while the daemon (with
+/// --clock) or the Python timekeeper runs, as `ak820 clock` does: one clock
+/// owner. The board refuses it within ten minutes of a raw-HID clock set;
+/// `HC_DEVHOOK` op 17 sub 8 says what it did.
+fn lockchan_clock() -> Result<(), String> {
+    use crate::lockchan::frame::{self, Late, Line, LockLights};
+    use crate::lockchan::sender::Platform;
+    use std::time::Instant;
+
+    clock_ownership(false)?;
+    let guard = super::radio_lock::try_take_named("lockchan.lock")?
+        .ok_or("another process (the daemon with --lockchan?) holds the lock-LED lock")?;
+    let mut lights = match super::lock_lights::BleLights::open() {
+        Ok(Some(l)) => l,
+        Ok(None) => return Err("the board's BLE keyboard is not listed (paired and connected?)".into()),
+        Err((e, stuck)) => {
+            if stuck {
+                std::mem::forget(guard);
+            }
+            return Err(e);
+        }
+    };
+    let latency = lights.clock_latency_ms().ok_or("these lights have no measured latency")?;
+    let plat = super::lock_lights::WinPlat::default();
+    let described = std::cell::RefCell::new(String::new());
+    let mut line = Line::default();
+    let t0 = Instant::now();
+    let out = frame::run_late(&mut lights, &CliWall, &CliNever, &mut line, || {
+        let (plat, described) = (&plat, &described);
+        Some(Late {
+            kind: crate::lockchan::TYPE_CLOCK,
+            seq: 0,
+            build: Box::new(move |anchor: Instant| {
+                let w = plat.wall_ms_at(anchor)? + latency as i64;
+                let l = plat.local(w.div_euclid(1000))?;
+                let ms = w.rem_euclid(1000) as u32;
+                *described.borrow_mut() = format!(
+                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03} local at the anchor (latency {:+} ms)",
+                    l.year, l.month, l.day, l.hour, l.minute, l.second, ms, latency
+                );
+                crate::lockchan::clock_payload(&l, ms)
+            }),
+        })
+    });
+    println!(
+        "type 4: {out:?}, {} writes in {:.2} s{}; {}",
+        line.writes,
+        t0.elapsed().as_secs_f64(),
+        if line.restore_pending { " (restore pending)" } else { "" },
+        described.borrow()
+    );
+    if out == frame::Outcome::Poisoned {
+        std::mem::forget(lights);
+        std::mem::forget(guard);
+        return Err("a write is stuck; the lock is held until this process exits".into());
+    }
+    if out != frame::Outcome::Sent || line.restore_pending {
+        return Err(format!("not sent cleanly: {out:?}"));
+    }
+    drop(guard);
+    Ok(())
+}
+
 /// One lock-LED frame over BLE, through the daemon's own executor: the
 /// development check of the Windows route before the sender thread exists.
 /// Empty artist and title send CLEAR.
 fn lockchan_send(artist: &str, title: &str) -> Result<(), String> {
-    use crate::lockchan::frame::{self, Abort, Control, Line, Payload, Time};
+    use crate::lockchan::frame::{self, Line, Payload};
     use std::time::Instant;
-
-    struct Wall;
-    impl Time for Wall {
-        fn now(&self) -> Instant {
-            Instant::now()
-        }
-        fn sleep_until(&self, t: Instant) -> bool {
-            std::thread::sleep(t.saturating_duration_since(Instant::now()));
-            true
-        }
-        fn sleep_through(&self, t: Instant) {
-            self.sleep_until(t);
-        }
-    }
-    struct Never;
-    impl Control for Never {
-        fn abort(&self) -> Option<Abort> {
-            None
-        }
-    }
 
     let snapshot = crate::smtc::Snapshot {
         artist: artist.into(),
@@ -1175,7 +1244,7 @@ fn lockchan_send(artist: &str, title: &str) -> Result<(), String> {
     };
     let mut line = Line::default();
     let t0 = Instant::now();
-    let out = frame::run(&mut lights, &Wall, &Never, &mut line, || Some(Payload { kind, seq: 0, bytes: bytes.clone() }));
+    let out = frame::run(&mut lights, &CliWall, &CliNever, &mut line, || Some(Payload { kind, seq: 0, bytes: bytes.clone() }));
     println!(
         "type {kind}, {} payload bytes: {out:?}, {} writes in {:.2} s{}",
         bytes.len(),
