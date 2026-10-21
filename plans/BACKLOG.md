@@ -120,6 +120,19 @@ board, and for a couple of seconds at a song change.
     or after a deep sleep's wake), a pause, and the same title resumed.
 - A pause already hands the band to the clock (type 3 state 0), so it
   needs nothing.
+- **JD's check over BT, 20:31-20:54 10-20** (flashed 20:30): no clock
+  flashes. At a new track the guess shows no total time, and runs a couple
+  of seconds behind Music until its type 3 lands (~3 s after the title).
+  Both are the guess as designed:
+  - the title frame carries no duration;
+  - the time before the title frame's anchor goes uncounted: the change
+    reaching the sender (MediaRemote's notice, the loop's 500 ms slice),
+    then the warm-up and quiet.
+
+  **Option, not built:** a combined frame (title, position and duration).
+  It would show the total at once and need no guess, for about 6 bytes
+  more airtime per title. It means a new type, the sender and the board.
+  Worth it only if the guess bothers JD in use.
 
 ## Slept seconds count the wake's awake seconds twice (2026-10-20) -- small, left
 
