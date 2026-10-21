@@ -96,6 +96,94 @@ def stray_diag(h):
             "last": icsr(u32(24))}
 
 
+HC_RTC = 0x03
+SYNC_RE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) sync \(([^)]*)\): (.*)$")
+BEFORE_RE = re.compile(r"before ([+-]?[\d.]+) ms")
+SYNC_BEFORE_MAX_MS = 2000   # a second-scale error before the SET fails the cycle (codex, the mainline review)
+
+
+def rtc_state(h):
+    """HC_RTC pages 1 and 4 (hostagent/rtc_phase0.py decodes them whole): the
+    period and the reference, and the PCF writer's state, its completed runs
+    and the stale flag (page 4 [24], the RTC fixes). None if either page
+    does not answer as itself."""
+    p1 = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, HC_RTC, 1] + [0] * 28)
+    p4 = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, HC_RTC, 4] + [0] * 28)
+    if len(p1) < 32 or len(p4) < 32 or p1[3] != 1 or p4[3] != 4:
+        return None
+    u16 = lambda b, i: int.from_bytes(b[i:i + 2], "little")
+    return {"period_active": u16(p1, 9), "period_nominal": u16(p1, 11), "ref_state": p1[18],
+            "ps": p4[4], "stop": p4[5], "runs_ok": u16(p4, 7), "restarts": u16(p4, 9),
+            "maybe_stopped": p4[11], "pending": p4[18], "slews": u16(p4, 20), "stale": p4[28]}
+
+
+def wait_sync(log_off, limit_s=60.0):
+    """The daemon's first clock sync logged past log_off (the agent log's size
+    at data-on): its reason, its offset before the SET, and its line, or None
+    within limit_s. The log only, no HID, so it cannot hold the board from
+    the daemon's own open (codex, the mainline review, P2 1)."""
+    deadline = time.time() + limit_s
+    while True:
+        try:
+            with open(AGENT_LOG, errors="replace") as f:
+                f.seek(log_off)
+                for ln in f:
+                    m = SYNC_RE.match(ln)
+                    if m:
+                        b = BEFORE_RE.search(m.group(3))
+                        return {"why": m.group(2), "before_ms": float(b.group(1)) if b else None,
+                                "line": ln.strip()[:200]}
+        except OSError:
+            pass
+        if time.time() > deadline:
+            return None
+        time.sleep(1)
+
+
+def rtc_settled(r0, limit_s=90.0):
+    """After a sync: the PCF write it asks for done (runs_ok past r0's) and the
+    writer at rest: idle, nothing pending (a slew finishes first), STOP and
+    maybe-stopped clear, stale clear. Polled every 3 s through the retrying
+    opener. The last state read, and whether it settled."""
+    deadline = time.time() + limit_s
+    while True:
+        st = ds.with_dev(rtc_state)
+        done = (st is not None and r0 is not None and ((st["runs_ok"] - r0["runs_ok"]) & 0xFFFF) >= 1
+                and st["ps"] == 0 and not st["pending"] and not st["stop"] and not st["maybe_stopped"]
+                and not st["stale"])
+        if done or time.time() > deadline:
+            return st, bool(done)
+        time.sleep(3)
+
+
+def rtc_head(c):
+    """The cycle line's RTC part: the sync's offset before the SET, the PCF
+    runs it took, and whatever kept the writer from rest."""
+    s, st, r0 = c.get("sync"), c.get("rtc"), c.get("rtc0")
+    if not s:
+        return ", NO SYNC"
+    out = f", sync {s['why']} before {s['before_ms']} ms"
+    if st and r0:
+        out += f", PCF runs +{(st['runs_ok'] - r0['runs_ok']) & 0xFFFF}, period {st['period_active']}"
+    if not c.get("rtc_settled"):
+        out += f", NOT AT REST {st}"
+    return out
+
+
+def rtc_summary(cycles):
+    """The run's clock: the offsets before each SET (signed and absolute), the
+    cycles whose PCF write came to rest, and the periods seen."""
+    b = [c["sync"]["before_ms"] for c in cycles if c.get("sync") and c["sync"]["before_ms"] is not None]
+    per = [c["rtc"]["period_active"] for c in cycles if c.get("rtc")]
+    if not b:
+        return None
+    ab = sorted(abs(x) for x in b)
+    return {"synced": len(b), "at_rest": sum(1 for c in cycles if c.get("rtc_settled")),
+            "rtc_ok": sum(1 for c in cycles if c.get("rtc_ok")),
+            "before_ms": {"min": min(b), "max": max(b), "median_abs": ab[len(ab) // 2], "max_abs": ab[-1]},
+            "period_active": {"min": min(per), "max": max(per)} if per else None}
+
+
 def frames_now(n, tag):
     """n lock-light frames over BT through the daemon's own stack, waited for:
     the deliberate traffic for the stray test. The outcome line, or the error."""
@@ -176,6 +264,10 @@ def main():
     ap.add_argument("--pause-daemon", action="store_true",
                     help="SIGSTOP the daemon for the run (its own lock-light frames and raw HID kept out), "
                          "SIGCONT at the end")
+    ap.add_argument("--rtc-gate", action="store_true",
+                    help="each data-on waits for the daemon's sync and the PCF write it asks for, then the "
+                         "writer at rest (stale clear), before the counters; the cycle fails without them or "
+                         f"with an offset before the SET over {SYNC_BEFORE_MAX_MS} ms")
     ap.add_argument("--log", default=os.path.join(HERE, "..", "history", "power-bench-2026-10-15", "power.csv"))
     ap.add_argument("--out", default=os.path.join(HERE, "..", "history", "deep-cycles-" + time.strftime("%Y%m%d-%H%M")))
     a = ap.parse_args()
@@ -214,7 +306,8 @@ def main():
     with hid.Device(path=devs[0]["path"]) as dev:
         sb.hold_relay(dev)
         resume = lambda: [os.kill(p, signal.SIGCONT) for p in paused]
-        guard = sb.deadline_guard(a.n * (a.sleep_s + 145 + a.frames * 20) + 300,
+        per_cycle = a.sleep_s + 145 + a.frames * 20 + (a.dwell or 0) + (160 if a.rtc_gate else 0)
+        guard = sb.deadline_guard(a.n * per_cycle + 300,
                                   lambda: (resume(), ds.restore(dev, *controls)))
         try:
             if a.pause_daemon:   # inside the try: the finally resumes it, whatever stops the run
@@ -250,6 +343,7 @@ def main():
                     ok = False
                     break
                 s0 = ds.with_dev(snap)
+                r0 = ds.with_dev(rtc_state) if a.rtc_gate else None
                 w0 = time.time()
                 if a.arm:
                     ds.with_dev(ds.deep, 1, DELAY_S, CAP_S, False)
@@ -280,12 +374,21 @@ def main():
                 time.sleep(1.0)
                 downs = [t for t, k in kd.listener_events(off) if k == "down"]
                 c["mac_latency_ms"] = round((downs[0] - t_press) * 1000, 1) if downs else None
+                log_off = os.path.getsize(AGENT_LOG) if a.rtc_gate else 0
                 ds.uhub("on")
                 c["t_data_on"] = time.time()
                 ds.need_bus(30)
                 if not a.awake:
                     pg_end = recovered()
                     c["recovered"] = pg_end is not None and not pg_end["open"]
+                if a.rtc_gate:
+                    # The sync, then its PCF write at rest, then the counters, so
+                    # they include the write (codex, the mainline review, P2 1).
+                    c["sync"] = wait_sync(log_off)
+                    st, settled = rtc_settled(r0) if c["sync"] else (ds.with_dev(rtc_state), False)
+                    c["rtc0"], c["rtc"], c["rtc_settled"] = r0, st, settled
+                    b = c["sync"]["before_ms"] if c["sync"] else None
+                    c["rtc_ok"] = bool(settled and b is not None and abs(b) <= SYNC_BEFORE_MAX_MS)
                 s1 = ds.with_dev(snap)
                 w1 = time.time()
                 c["key_gain"] = (s1["presses"] - s0["presses"]) & 0xFFFF
@@ -295,16 +398,19 @@ def main():
                 c["link"] = {k: s1["link"][k] - s0["link"][k] for k in ("sent", "timeouts") + LINK_GATED}
                 link_ok = all(c["link"][k] == 0 for k in LINK_GATED)
                 mac_ok = a.board_only or (c["mac_latency_ms"] is not None and c["mac_latency_ms"] < 1000)
+                rtc_ok = not a.rtc_gate or c["rtc_ok"]
                 if a.awake:
                     good = (c["stayed_awake"] and c["key_gain"] == 1 and c["no_reset"] and c["new_ge25"] == 0
-                            and link_ok and mac_ok)
+                            and link_ok and mac_ok and rtc_ok)
                     head = f"stayed awake {c['stayed_awake']}, {dwell + DELAY_S + 2:4.1f} s silent"
                 else:
                     rec = ds.with_dev(ds.deep)
                     pg = s1["page"]
                     c["record"], c["page"] = rec, pg
                     c["fresh"] = pg["sleeps"] == s0["page"]["sleeps"] + 1
-                    ed = ds.edges(ds.tail_rows(a.log), t_off, time.time())
+                    # From a sample before the cut: a board already idle past the
+                    # sleep time (the first cycle) falls asleep within a sample of it.
+                    ed = ds.edges(ds.tail_rows(a.log), t_off - 1.5, time.time())
                     c["asleep_s"] = round(ed[1] - ed[0], 1) if ed else None
                     c["pcf_ok"] = ("pcf" in pg["valid"] and c["asleep_s"] is not None
                                    and abs(pg["pcf_s"] - c["asleep_s"]) <= 2.0)
@@ -314,7 +420,7 @@ def main():
                     good = (c["asleep"] and c["awake_seen"] and rec["slept"] and rec["reason"] == "key"
                             and rec["p2"] & RIG_P2 and rec["strays"] == 0 and c["key_gain"] == 1 and c["fresh"]
                             and c["no_reset"] and c["new_ge25"] == 0 and link_ok and c["pcf_ok"] and mac_ok
-                            and c["recovered"])
+                            and c["recovered"] and rtc_ok)
                     head = (f"asleep {c['asleep_s']} s (PCF {pg['pcf_s']}, counted {pg['counted_s']}), "
                             f"woke {rec['reason']}, p2 {rec['p2']:#x}, seq {pg['sleeps']}"
                             + (f", timed out {' '.join(pg['timed_out'])}" if pg["timed_out"] else "")
@@ -329,6 +435,7 @@ def main():
                        + ("" if c["no_reset"] else " RESET") + (f" ge25 +{c['new_ge25']}" if c["new_ge25"] else "")
                        + (f", frames {c['frames'][0][-60:]}" if c.get("frames") else "")
                        + (f", STRAY {c['stray_diag']}" if c.get("stray_diag") else "")
+                       + (rtc_head(c) if a.rtc_gate else "")
                        + f"  {'ok' if c['ok'] else 'FAIL'}")
         except (Exception, SystemExit) as e:   # a stop mid-run keeps the cycles so far (the 10-19 soak lost its JSON)
             ok = False
@@ -356,6 +463,7 @@ def main():
                "path": "ladder" if ladder else "arm" if a.arm else "awake",
                "mac_latency_ms": {"median": lat[len(lat) // 2], "max": lat[-1]} if lat else None,
                "clock_before_abs_ms": {"median": offs[len(offs) // 2], "max": offs[-1]} if offs else None,
+               "rtc": rtc_summary(cycles) if a.rtc_gate else None,
                "timed_out": {st: sum(1 for c in cycles if st in c.get("timed_out", []))
                              for st in ds.RC_STEPS if any(st in c.get("timed_out", []) for c in cycles)}}
     os.makedirs(a.out, exist_ok=True)
