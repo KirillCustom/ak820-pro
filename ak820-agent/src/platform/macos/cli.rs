@@ -525,6 +525,11 @@ fn lockchan_anchor(n: u32) -> Result<(), String> {
 
     let mut lights = super::lock_lights::BleLights::open()?
         .ok_or("the board's BLE keyboard is not listed (paired, connected, the slider on BT?)")?;
+    // Locked, the user's locks are unknown and every frame would come back
+    // Unknown without a write (R4-1): say so once instead.
+    if !super::lock_lights::session_active() {
+        return Err("the screen is locked (or this session is not on the console): no frame can go".into());
+    }
     let mut line = Line::default();
     let first = best()?;
     let mut samples: Vec<(Instant, u32)> = Vec::new();
