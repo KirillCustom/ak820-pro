@@ -1185,6 +1185,30 @@ set `stop_requested`. The loop then returns and the sender restores what
 it owes. Before this, the default action killed the daemon mid-frame.
 A second signal kills at once (`SA_RESETHAND`).
 
+### The clock flash at title frames
+
+JD saw the clock for a moment on returning to the board and at a song
+change, during the first supervised run over BT
+([`BACKLOG.md`](BACKLOG.md), "The clock flashes"). Every type 1 turned the
+readout off, and its type 3 lands ~3 s later.
+- **The fix** (`dd8391c28d`, `mac/lockchan-pm`, flashed 20:30 10-20, token
+  `0x28e58a4c`): `lockchan_media_readout` decides from the slot as it was
+  before the frame.
+  - **Keep:** the same lines, playing in both the slot and the frame. The
+    readout's own expiry stays.
+  - **Guess:** a new title over a live one, playing. It counts from 0 at
+    the frame's anchor and lasts 10 s at most.
+  - **Off:** everything else.
+- **Codex** ([verbatim](review-codex-clock-flash-2026-10-20.md)) clears
+  it for an attended dev bench flash, with no P1 or P2:
+
+| # | finding (short) | disposition |
+|---|---|---|
+| 1 | P3: a guess over an active readout repaints only at the band's next second, so the old track's time can sit under the new title for up to ~1 s | **To fix in the next build:** ask for a band update when a guess is installed; the glyph diff handles it without a clear |
+| note | A guessed PAUSE icon shown when the host's PLAY refresh lands gives OFF, so that case can still flash | Accepted: the key's guess was wrong, and the correction shows |
+| note | Keep can carry raw HID's own readout (untitled) for its remaining <10 s after the 10 s arbitration lease | Accepted: bounded, not renewed, and still under its own 20 s lease |
+| note | `ch582_task`'s stack grows 272 to 320 bytes (inlined), within the 2,048-byte PSP | Accepted |
+
 ## The wireless clock: design (Gremlin, 10-20, for codex)
 
 Resume item 5, asked for by JD 10-20 once now-playing over BT worked. The
