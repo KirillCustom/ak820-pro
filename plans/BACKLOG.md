@@ -22,6 +22,29 @@ The order agreed after the sleep experiments:
    - a final pass for anything personal (the public-repo rule: no family or
      household details).
 
+## Lock-light frames into a sleeping board cost ~1.6 mA on average (2026-10-21) -- proposed, not built
+
+Found in the mainline soak's hour asleep
+([`../history/mainline-soak-20261020/`](../history/mainline-soak-20261020/README.md)).
+The hour passed at 3.01 mA, but its first 19 minutes carried 19 bursts at
+~13 mA, each 8-11 s long, every ~63 s. The 10-19 hour, with no lock-light
+channel, had none. The bursts were the Mac daemon's now-playing frames: the
+cable's data was cut, so it took BT, a track was playing, and the last frame
+(01:00:23 by its status file) ends the last burst (01:00:15-25). After that
+the Mac's screen locked and the frames stopped. The board never woke (no
+strays): the cost is the module's radio taking the writes.
+- **What it costs:** about 10 mA for 10 s a minute, so ~1.6 mA on average
+  on top of 3 mA asleep, about +50%, whenever the board sleeps on BT while
+  the Mac plays music and is unlocked.
+- **A fix, for discussion:** hold every frame type, not only the clock
+  (`5354c63` holds type 4 after 60 s idle), while the host's input has been
+  idle past the shortest sleep time. Then send the current state on the
+  first input after, which is the waking key. A board that is awake but
+  untouched for that long would miss title changes until the next key; that
+  is the trade-off to decide.
+- **Not a regression** in anything shipped: a cost of the channel in daily
+  use, where the board sleeps at 7 min (Balanced) beside a Mac playing music.
+
 ## A stray-wake storm in a soak beside lock-light frames (2026-10-20) -- not the frames; cause not known yet
 
 Found in the power-modes flash's BT soak (`845996c39c`,

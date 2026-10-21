@@ -111,12 +111,29 @@ Four things from that work that bite outside it:
 Measured results and audit findings from completed work: [`history/`](history/).
 ChibiOS patch inventory: `keyboards/a_jazz/ak820pro/PATCHES.md`.
 
-## Current state (2026-10-20)
+## Current state (2026-10-21)
 
-**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-20
-evening — RESUME HERE").
+**Resume from [`plans/current-status.md`](plans/current-status.md)** ("2026-10-21
+morning — RESUME HERE").
 
-**On the board since 17:11 10-20: `845996c39c`** (`mac/lockchan-pm`, a
+**On the board since 01:50 10-21: `9e52400ec9`** (dev, token
+`0x3c899a32`), the mainline with everything in one build: `ak820pro-jdlien`
+and `deps.lock` point at it. It is `7ae8575c1a` plus Gremlin's wireless
+clock (type 4), which the Mac does not send yet: its latency needs an
+unlocked screen to measure.
+- **`7ae8575c1a`'s overnight soak** (21:58-01:41,
+  [`history/mainline-soak-20261020/`](history/mainline-soak-20261020/README.md)):
+  139/150 sleep cycles, every failure a known kind (6 wake paints, 5 UART
+  overruns); 15 min awake off USB within the ±2 s bound, with the legacy
+  trim seen running; an hour asleep at 3.01 mA; every reconnect synced and
+  every PCF write settled.
+- ⚠️ **Lock-light frames into a sleeping board cost ~1.6 mA on average**
+  while the Mac plays music (`plans/BACKLOG.md`).
+
+**Before it, from ~21:50 10-20: `7ae8575c1a`** (dev, token `0x350912aa`):
+`dd8391c28d` plus Gremlin's PCF writer fixes and the repaint at a guess.
+
+**On the board from 17:11 10-20: `845996c39c`** (`mac/lockchan-pm`, a
 `dev` build, token `0x2e279a39`). It is the power modes revised
 (`5df4e0e3b7`, which `ak820pro-jdlien` and `deps.lock` now point at) plus
 the lock-LED handler and play times, which stay on their branch.

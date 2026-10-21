@@ -15,7 +15,47 @@ loop stopped next time. The crash hunt adds what they cannot say (a CPU fault
 versus a hang, the PC, stack depth, why blits time out) and tries to provoke
 the next reset instead of waiting for it.
 
-## 2026-10-20 evening — RESUME HERE
+## 2026-10-21 morning — RESUME HERE
+
+**On the board since 01:50 10-21: `9e52400ec9`** (dev, token `0x3c899a32`).
+It is the mainline, now everything in one build: the power modes, deep
+sleep, the lock-light channel with play times and the clock-flash fix,
+Gremlin's PCF writer fixes, and Gremlin's wireless clock (type 4).
+- **`ak820pro-jdlien` is fast-forwarded to it, and `deps.lock` pins it.**
+  The diagnostic branches (`mac/sleep-*`) and `bulb-slash-preview` were
+  never for merge; they can be deleted.
+- **The overnight soak on `7ae8575c1a` passed, apart from known items**
+  ([`../history/mainline-soak-20261020/`](../history/mainline-soak-20261020/README.md)):
+  - 139/150 sleep cycles; the 11 failures were 6 of the 25 ms wake paint
+    and 5 UART overruns, both known;
+  - 15 min awake off USB, the board within the standalone ±2 s bound;
+  - an hour asleep at 3.01 mA;
+  - every reconnect synced, and every PCF write settled.
+- **New, for the backlog:** lock-light frames into a sleeping board cost
+  ~1.6 mA on average while the Mac plays music (`BACKLOG.md`); a fix is
+  proposed, not built.
+- **The ILRC's period moves ~0.6% with temperature** (32331 cool and dark,
+  32537 warm on USB), which matters to type 4's slew limit (Gremlin's).
+
+**JD's morning, in order:**
+1. **Unlock the Mac.** The latency measurement (`ak820 lockchan anchor 40`,
+   the daemon paused, ~5 min, no hands) only runs on an unlocked screen:
+   `BleLights::user()` is None while it is locked, so every frame came back
+   `Unknown` at 01:47.
+2. **I set `clock_latency_ms` from it, build, sign, and reinstall the Mac
+   daemon** with JD there, in case macOS asks again. The number goes to
+   Gremlin first.
+3. **The clock test, on both machines:** the cable out (or its data cut),
+   the slider on BT, about 15 min of normal use, then the cable back. The
+   daemon's USB sync on the replug logs a "before" offset, which is the real
+   error. Gremlin's board already runs `9e52400e` with its daemon
+   (`d557e13`, cleared by codex for a supervised first day); Gremlin reads
+   op 17 sub 8 too.
+
+**Owed:** codex's RTC failure-path tests (Gremlin); the stack watermarks
+after a long run (the type-4 flash reset them before they were read).
+
+## 2026-10-20 evening
 
 **On the board since 17:11: `845996c39c`** (`mac/lockchan-pm`, dev, token
 `0x2e279a39`). It is the power modes revised (`5df4e0e3b7`) plus the

@@ -1,0 +1,9 @@
+2026-10-21 00:40:59 relay 2 off; light sleep off; stage forced to SCREEN_OFF
+2026-10-21 00:41:08 armed (15 s delay, cap 3700 s); awake 32.87 mA with data; data off
+2026-10-21 00:41:27 asleep (the current fell); pressing F19 in 3600 s
+2026-10-21 01:41:32 data on
+2026-10-21 01:41:35 link across the run: {'sent': 7, 'timeouts': 3, 'giveups': 0, 'queue_full': 0, 'uart_overrun': 0, 'uart_framing': 0, 'uart_parity': 0}
+2026-10-21 01:41:36 record: {'state': 2, 'reason': 'key', 'blocked': 0, 'flags': 91, 'slept': True, 'pcf': True, 'usb_back_20s': True, 'pll_ceiling': False, 'bound': False, 'reattach': True, 'secs': 3019, 'strays': 0, 'p0': 0, 'p2': 256, 'p1': 0, 'pll_loops': 87, 'key_gain': 1, 'seq': 155, 'timed_out': []}
+2026-10-21 01:41:36 asleep: 3.01 mA (awake 32.87)
+2026-10-21 01:41:38 restored: relay 1 open, relay 2 on, data on, the arm cancelled, stage released
+deep sleep: PASS {"state": 2, "reason": "key", "blocked": 0, "flags": 91, "slept": true, "pcf": true, "usb_back_20s": true, "pll_ceiling": false, "bound": false, "reattach": true, "secs": 3019, "strays": 0, "p0": 0, "p2": 256, "p1": 0, "pll_loops": 87, "key_gain": 1, "seq": 155, "timed_out": []}

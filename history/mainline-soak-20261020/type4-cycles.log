@@ -1,0 +1,33 @@
+2026-10-21 01:54:48 30 cycles through the ladder: Minimal, the bench sleep time 30 s; relay 2 off; light sleep off; the mode was 1
+2026-10-21 01:55:48 cycle   1: asleep 30.0 s (PCF 30, counted 25), woke key, p2 0x100, seq 1, key 1, Mac nothing, link sent 7 timeouts 4, sync enumerated before 50.1 ms, PCF runs +1, period 32501  ok
+2026-10-21 01:56:36 cycle   2: asleep 21.0 s (PCF 20, counted 17), woke key, p2 0x100, seq 2, key 1, Mac nothing, link sent 8 timeouts 3, sync enumerated before 67.1 ms, PCF runs +1, period 32501  ok
+2026-10-21 01:57:23 cycle   3: asleep 20.0 s (PCF 21, counted 17), woke key, p2 0x100, seq 3, key 1, Mac nothing, link sent 7 timeouts 3, sync enumerated before 29.9 ms, PCF runs +1, period 32501  ok
+2026-10-21 01:58:26 cycle   4: asleep 27.1 s (PCF 26, counted 22), woke key, p2 0x100, seq 4, key 1, Mac nothing, link sent 9 timeouts 4, sync enumerated before 92.6 ms, PCF runs +1, period 32501  ok
+2026-10-21 01:59:12 cycle   5: asleep 24.0 s (PCF 25, counted 21), woke key, p2 0x100, seq 5, key 1, Mac nothing, link sent 8 timeouts 5, sync enumerated before 61.3 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:00:16 cycle   6: asleep 26.9 s (PCF 26, counted 22), woke key, p2 0x100, seq 6, key 1, Mac nothing, link sent 10 timeouts 7, sync enumerated before 82.2 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:01:03 cycle   7: asleep 17.9 s (PCF 19, counted 16), woke key, p2 0x100, seq 7, key 1, Mac nothing, link sent 8 timeouts 5, sync enumerated before 83.5 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:01:50 cycle   8: asleep 17.0 s (PCF 16, counted 14), woke key, p2 0x100, seq 8, key 1, Mac nothing, link sent 8 timeouts 5, sync enumerated before 60.8 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:02:22 cycle   9: asleep 14.0 s (PCF 14, counted 12), woke key, p2 0x100, seq 9, key 1, Mac nothing, link sent 5 timeouts 4, sync enumerated before 59.8 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:03:12 cycle  10: asleep 15.0 s (PCF 15, counted 12), woke key, p2 0x100, seq 10, key 1, Mac nothing, link sent 9 timeouts 5, sync enumerated before 43.0 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:04:15 cycle  11: asleep 21.0 s (PCF 21, counted 18), woke key, p2 0x100, seq 11, key 1, Mac nothing, link sent 11 timeouts 5, sync enumerated before 89.0 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:05:01 cycle  12: asleep 18.0 s (PCF 19, counted 16), woke key, p2 0x100, seq 12, key 1, Mac nothing, link sent 8 timeouts 4, sync enumerated before 103.7 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:05:50 cycle  13: asleep 18.1 s (PCF 17, counted 14), woke key, p2 0x100, seq 13, key 1, Mac nothing, link sent 8 timeouts 7, sync enumerated before 82.7 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:06:37 cycle  14: asleep 24.0 s (PCF 25, counted 21), woke key, p2 0x100, seq 14, key 1, Mac nothing, link sent 6 timeouts 5, sync enumerated before 42.9 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:07:39 cycle  15: asleep 30.0 s (PCF 30, counted 25), woke key, p2 0x100, seq 15, key 1, Mac nothing, link sent 10 timeouts 4, sync enumerated before 91.4 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:08:11 cycle  16: asleep 8.0 s (PCF 8, counted 6), woke key, p2 0x100, seq 16, key 1, Mac nothing, link sent 7 timeouts 4, sync enumerated before 49.0 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:08:59 cycle  17: asleep 12.0 s (PCF 12, counted 10), woke key, p2 0x100, seq 17, key 1, Mac nothing, link sent 9 timeouts 7, sync enumerated before 70.7 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:09:46 cycle  18: asleep 13.0 s (PCF 13, counted 11), woke key, p2 0x100, seq 18, key 1, Mac nothing, link sent 9 timeouts 8, sync enumerated before 92.9 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:10:33 cycle  19: asleep 22.0 s (PCF 23, counted 19), woke key, p2 0x100, seq 19, key 1, Mac nothing, link sent 7 timeouts 5, sync enumerated before 52.2 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:11:21 cycle  20: asleep 22.0 s (PCF 22, counted 18), woke key, p2 0x100, seq 20, key 1, Mac nothing, link sent 7 timeouts 3, sync enumerated before 51.5 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:12:08 cycle  21: asleep 10.0 s (PCF 10, counted 8), woke key, p2 0x100, seq 21, key 1, Mac nothing, link sent 9 timeouts 7, sync enumerated before 75.4 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:13:11 cycle  22: asleep 32.0 s (PCF 32, counted 27), woke key, p2 0x100, seq 22, key 1, Mac nothing, link sent 9 timeouts 8, sync enumerated before 96.6 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:13:44 cycle  23: asleep 10.1 s (PCF 9, counted 8), woke key, p2 0x100, seq 23, key 1, Mac nothing, link sent 7 timeouts 4, sync enumerated before 61.7 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:14:31 cycle  24: asleep 18.0 s (PCF 19, counted 16), woke key, p2 0x100, seq 24, key 1, Mac nothing, link sent 8 timeouts 3, sync enumerated before 46.6 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:15:18 cycle  25: asleep 13.0 s (PCF 13, counted 11), woke key, p2 0x100, seq 25, key 1, Mac nothing, link sent 9 timeouts 5, sync enumerated before 44.3 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:16:06 cycle  26: asleep 14.0 s (PCF 13, counted 11), woke key, p2 0x100, seq 26, key 1, Mac nothing, link sent 9 timeouts 5, sync enumerated before 78.0 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:16:53 cycle  27: asleep 14.0 s (PCF 14, counted 12), woke key, p2 0x100, seq 27, key 1, Mac nothing, link sent 9 timeouts 6, sync enumerated before 91.4 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:17:41 cycle  28: asleep 20.0 s (PCF 19, counted 16), woke key, p2 0x100, seq 28, key 1, Mac nothing, link sent 8 timeouts 6, sync enumerated before 71.1 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:18:27 cycle  29: asleep 24.0 s (PCF 24, counted 20), woke key, p2 0x100, seq 29, key 1, Mac nothing, link sent 6 timeouts 1, sync enumerated before 45.0 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:19:15 cycle  30: asleep 18.1 s (PCF 19, counted 16), woke key, p2 0x100, seq 30, key 1, Mac nothing, link sent 9 timeouts 4, sync enumerated before 37.1 ms, PCF runs +1, period 32501  ok
+2026-10-21 02:19:18 restored: relay 1 open, relay 2 on, data on, the arm cancelled, the bench sleep time cleared, the mode put back, stage released
+deep cycles: PASS {"cycles": 30, "passed": 30, "stopped": null, "path": "ladder", "mac_latency_ms": null, "clock_before_abs_ms": {"median": 67.1, "max": 103.7}, "rtc": {"synced": 30, "at_rest": 30, "rtc_ok": 30, "before_ms": {"min": 29.9, "max": 103.7, "median_abs": 67.1, "max_abs": 103.7}, "period_active": {"min": 32501, "max": 32501}}, "timed_out": {}}
