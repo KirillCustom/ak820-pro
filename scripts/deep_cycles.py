@@ -52,7 +52,7 @@ sleeping board), data on, the board back on USB (a rig tap if it does not
 come: a full pack gives no charge edge), then the arm cancelled, the bench
 sleep time cleared, the mode put back, the stage released.
 """
-import argparse, json, os, random, re, subprocess, sys, time
+import argparse, json, os, random, re, signal, subprocess, sys, time
 
 import hid
 
@@ -68,7 +68,33 @@ DELAY_S, CAP_S = 6, 60   # --arm
 RIG_P2 = 1 << 8          # the wake rig's column, P2.8 (matrix (0,13))
 MINIMAL = 3              # POWER_MODE_MINIMAL
 AGENT_LOG = os.path.expanduser("~/Library/Logs/ak820pro/ak820-agent.log")
+AK820 = os.path.join(HERE, "..", "ak820-agent", "target", "debug", "ak820")
 LINK_GATED = ("giveups", "queue_full", "replaced", "uart_overrun", "uart_framing", "uart_parity")
+
+
+def stray_diag(h):
+    """op 24 slot 8 (a dev build from a5a176bef4): the last sleep with a stray,
+    its first stray's whole RIS, NVIC pending and ICSR, and how many strays
+    came within that counted second (plans/BACKLOG.md, "A stray-wake storm");
+    None on an older build, which answers slot 8 as unhandled."""
+    r = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 24, 8] + [0] * 27)
+    if len(r) < 32 or r[3] != 24:
+        return None
+    b = bytes(r[4:32])
+    u16 = lambda i: int.from_bytes(b[i:i + 2], "little")
+    u32 = lambda i: int.from_bytes(b[i:i + 4], "little")
+    icsr = u32(24)
+    return {"seq": u16(0), "same_s": u16(2), "first_s": u32(4), "ris0": hex(u32(8)), "ris1": hex(u32(12)),
+            "ris2": hex(u32(16)), "ispr": hex(u32(20)), "icsr": hex(icsr), "vectpending": (icsr >> 12) & 0x3F,
+            "pendsv": bool(icsr & (1 << 28)), "pendst": bool(icsr & (1 << 26))}
+
+
+def frames_now(n, tag):
+    """n lock-light frames over BT through the daemon's own stack, waited for:
+    the deliberate traffic for the stray test. The outcome line, or the error."""
+    r = subprocess.run([AK820, "lockchan", "send", "--repeat", str(n), "Stray test", tag],
+                       capture_output=True, text=True, timeout=n * 20 + 30)
+    return (r.stdout + r.stderr).strip().splitlines()[-1:] or [""]
 
 
 def snap(h):
@@ -136,6 +162,13 @@ def main():
                      help="the control: the stage forced dark, so the board stays awake through the silence")
     ap.add_argument("--sleep-s", type=int, default=30, help="the ladder's bench sleep time (at least 30 s)")
     ap.add_argument("--tap-ms", type=int, default=40, help="the rig's press (validation 5: 25 ms taps)")
+    ap.add_argument("--dwell", type=float, help="a fixed dwell asleep before the tap, seconds (default random 5-25)")
+    ap.add_argument("--frames", type=int, default=0,
+                    help="lock-light frames sent over BT while asleep, waited for, as the dwell (the stray test; "
+                         "the slider on BT)")
+    ap.add_argument("--pause-daemon", action="store_true",
+                    help="SIGSTOP the daemon for the run (its own lock-light frames and raw HID kept out), "
+                         "SIGCONT at the end")
     ap.add_argument("--log", default=os.path.join(HERE, "..", "history", "power-bench-2026-10-15", "power.csv"))
     ap.add_argument("--out", default=os.path.join(HERE, "..", "history", "deep-cycles-" + time.strftime("%Y%m%d-%H%M")))
     a = ap.parse_args()
@@ -155,6 +188,11 @@ def main():
             sys.exit("the F19 listener is not running")
     if not os.path.exists(a.log):
         sys.exit("the power logger's CSV is missing")
+    if a.frames and not os.path.exists(AK820):
+        sys.exit(f"--frames needs {AK820} (cargo build)")
+    if a.frames and a.arm:
+        sys.exit("--frames runs on the ladder's path, not --arm's 60 s cap")
+    paused = []   # the daemon's pid while SIGSTOPped: resumed by the finally, or first by the guard
     if ds.with_dev(ba.sleep_page) is None:
         sys.exit("no deep-sleep page (HC_POWER page 1): flash the deep-sleep build")
     mode0, _ = ds.with_dev(ds.power_op)
@@ -168,8 +206,16 @@ def main():
                 (f"mode {mode0} put back", ds.power_op, 1, mode0), ("stage released", cm.force_stage, None)]
     with hid.Device(path=devs[0]["path"]) as dev:
         sb.hold_relay(dev)
-        guard = sb.deadline_guard(a.n * (a.sleep_s + 145) + 300, lambda: ds.restore(dev, *controls))
+        resume = lambda: [os.kill(p, signal.SIGCONT) for p in paused]
+        guard = sb.deadline_guard(a.n * (a.sleep_s + 145 + a.frames * 20) + 300,
+                                  lambda: (resume(), ds.restore(dev, *controls)))
         try:
+            if a.pause_daemon:   # inside the try: the finally resumes it, whatever stops the run
+                r = subprocess.run(["pgrep", "-x", "ak820-agent"], capture_output=True, text=True)
+                if r.returncode == 0:
+                    paused.append(int(r.stdout.split()[0]))
+                    os.kill(paused[0], signal.SIGSTOP)
+                    cm.say(f"the daemon (pid {paused[0]}) paused for the run")
             path = ("the ladder: Minimal, the bench sleep time " + f"{a.sleep_s} s" if ladder else
                     "the arm (op 14 sub 4), stage forced to SCREEN_OFF" if a.arm else
                     "the awake control: stage forced to SCREEN_OFF, never asleep")
@@ -202,7 +248,7 @@ def main():
                     ds.with_dev(ds.deep, 1, DELAY_S, CAP_S, False)
                 t_off = time.time()
                 ds.uhub("off")
-                dwell = random.uniform(5, 25)
+                dwell = a.dwell if a.dwell is not None else random.uniform(5, 25)
                 c["dwell_s"] = round(dwell, 1)
                 t_sleep = None
                 if a.awake:
@@ -213,7 +259,11 @@ def main():
                     limit = DELAY_S + 25 if a.arm else a.sleep_s + 40   # the ladder counts from the last tap
                     t_sleep = wait_current(a.log, lambda x: x < 10.0, t_off + (DELAY_S if a.arm else 0), limit)
                     c["asleep"] = t_sleep is not None
-                    if t_sleep:
+                    if t_sleep and a.frames:
+                        t_f = time.time()
+                        c["frames"] = frames_now(a.frames, f"cycle {i + 1}")
+                        c["dwell_s"] = round(time.time() - t_f, 1)
+                    elif t_sleep:
                         time.sleep(dwell)
                 off = os.path.getsize(kd.LOG)
                 t_press = time.time()
@@ -252,6 +302,8 @@ def main():
                     c["pcf_ok"] = ("pcf" in pg["valid"] and c["asleep_s"] is not None
                                    and abs(pg["pcf_s"] - c["asleep_s"]) <= 2.0)
                     c["timed_out"] = pg["timed_out"]
+                    if rec["strays"]:
+                        c["stray_diag"] = ds.with_dev(stray_diag)
                     good = (c["asleep"] and c["awake_seen"] and rec["slept"] and rec["reason"] == "key"
                             and rec["p2"] & RIG_P2 and rec["strays"] == 0 and c["key_gain"] == 1 and c["fresh"]
                             and c["no_reset"] and c["new_ge25"] == 0 and link_ok and c["pcf_ok"] and mac_ok
@@ -268,6 +320,8 @@ def main():
                        + f", link sent {c['link']['sent']} timeouts {c['link']['timeouts']}"
                        + ("" if link_ok else f" ERRORS {[k for k in LINK_GATED if c['link'][k]]}")
                        + ("" if c["no_reset"] else " RESET") + (f" ge25 +{c['new_ge25']}" if c["new_ge25"] else "")
+                       + (f", frames {c['frames'][0][-60:]}" if c.get("frames") else "")
+                       + (f", STRAY {c['stray_diag']}" if c.get("stray_diag") else "")
                        + f"  {'ok' if c['ok'] else 'FAIL'}")
         except (Exception, SystemExit) as e:   # a stop mid-run keeps the cycles so far (the 10-19 soak lost its JSON)
             ok = False
@@ -279,6 +333,9 @@ def main():
             done = ds.restore(dev, *controls)
             guard.cancel()
             caf.terminate()
+            if paused:
+                resume()
+                cm.say(f"the daemon (pid {paused[0]}) resumed")
             if done:
                 cm.say("restored: relay 1 open, relay 2 on, data on, the arm cancelled, the bench sleep time "
                        "cleared, the mode put back, stage released")
