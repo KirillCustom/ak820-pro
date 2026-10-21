@@ -10,6 +10,11 @@
 //! - Then every [`EVERY`] after the last frame sent whole.
 //! - At the wake guess, a frame after [`WAKE_DELAY`](super::sender::WAKE_DELAY),
 //!   but never sooner than [`MIN_GAP`] after the last sent.
+//! - None while the host's input has been idle [`IDLE`] or more (the
+//!   sender's gate): the board on battery is likely asleep, losing it, and
+//!   one that is awake would hold its deep sleep off through the slew a
+//!   correction starts (20 ms a second; the Mac session, 10-20). A frame
+//!   held so goes at the wake guess.
 //! - A change of the host's UTC offset (DST, a zone change) or a step of its
 //!   wall clock against the monotonic one: a frame at once, exempt from the
 //!   gap (review, 7).
@@ -29,6 +34,9 @@ pub const EVERY: Duration = Duration::from_secs(600);
 pub const MIN_GAP: Duration = Duration::from_secs(300);
 /// After a failed write.
 pub const RETRY: Duration = Duration::from_secs(30);
+/// No clock frame past this much input idleness: longer than the wake
+/// guess's arming, so a frame held back is always sent at its fire.
+pub const IDLE: Duration = Duration::from_secs(60);
 /// The board refuses a clock frame this long after raw HID set its clock
 /// (`LOCKCHAN_CLOCK_OWNER_S`), counted from the set; plus a margin for the
 /// board's whole seconds and this side's timing.
@@ -101,7 +109,9 @@ impl ClockSched {
         if let Some(s) = self.last_sent {
             t = t.max(s + MIN_GAP);
         }
-        self.due = self.due.map(|d| d.min(t));
+        // One held back by the idle gate goes after the wake delay too, not
+        // at once into the board's wake recovery.
+        self.due = self.due.map(|d| if d <= now { t } else { d.min(t) });
     }
 
     /// Each step while acquired: the offset now and the wall clock against
@@ -207,6 +217,10 @@ mod tests {
         c.sent(t0 + s(405));
         c.woke(t0 + s(500)); // inside it: at the gap's end
         assert_eq!(c.due(), Some(t0 + s(405) + MIN_GAP));
+        // Overdue (held back while idle): after the wake delay, not at once.
+        c.sent(t0 + s(1000));
+        c.woke(t0 + s(2000));
+        assert_eq!(c.due(), Some(t0 + s(2000) + crate::lockchan::sender::WAKE_DELAY));
     }
 
     #[test]

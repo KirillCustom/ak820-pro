@@ -688,7 +688,12 @@ impl<P: Platform> Core<P> {
         let text_due = self.text.due();
         let tr_due = if shown { self.tr.due() } else { None };
         // A clock frame after both (review, 11).
-        let clock_due = if clock_on && !self.clock_unmeasured { self.clock.due() } else { None };
+        // Not while the input is idle (the schedule's IDLE): it goes at the wake.
+        let input_idle = self
+            .platform
+            .input()
+            .is_some_and(|(last, now)| Duration::from_millis(now.wrapping_sub(last) as u64) >= clk::IDLE);
+        let clock_due = if clock_on && !self.clock_unmeasured && !input_idle { self.clock.due() } else { None };
         let kind = match (text_due, tr_due, clock_due) {
             (Some(t), _, _) if t <= now => Kind::Text,
             (_, Some(t), _) if t <= now => Kind::Transport,
@@ -2135,5 +2140,24 @@ mod tests {
         run_until(&mut r, t1 + Duration::from_secs(20));
         assert_eq!(r.h.status().clock_frames, 2, "again after the new acquisition");
     }
-}
 
+    #[test]
+    fn no_clock_frame_while_the_input_is_idle_then_one_after_the_wake() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        assert_eq!(r.h.status().clock_frames, 1);
+        let first = r.h.status().clock_last.unwrap();
+        // Idle from a minute in, through the ten-minute mark.
+        r.input.set(Some((1000, 1000 + 61_000)));
+        run_until(&mut r, first + clk::EVERY + Duration::from_secs(60));
+        assert_eq!(r.h.status().clock_frames, 1, "held back while idle");
+        // A key: the wake guess fires; the frame goes after its delay.
+        let t1 = r.t.now();
+        r.input.set(Some((900_000, 900_000)));
+        run_until(&mut r, t1 + crate::lockchan::sender::WAKE_DELAY - Duration::from_millis(500));
+        assert_eq!(r.h.status().clock_frames, 1, "not before the wake delay");
+        run_until(&mut r, t1 + crate::lockchan::sender::WAKE_DELAY + Duration::from_secs(10));
+        assert_eq!(r.h.status().clock_frames, 2);
+    }
+}
