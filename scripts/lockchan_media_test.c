@@ -169,6 +169,58 @@ int main(void) {
         if (!rejects(frame(t, NULL, 0))) { printf("FAIL: type %u accepted\n", t); fails++; }
     }
 
+    /* What a type 1 does to the readout (lockchan_media_readout). */
+    {
+        enum { OFF = LOCKCHAN_READOUT_OFF, KEEP = LOCKCHAN_READOUT_KEEP, GUESS = LOCKCHAN_READOUT_GUESS };
+        lockchan_media_t t;
+        lockchan_frame_t f1 = now_playing(1, "Song", "Artist");
+        CHECK(lockchan_media_parse(&f1, &t));
+#define RO(shown, a, b, icon) lockchan_media_readout(&t, shown, a, (uint8_t)strlen(a), b, (uint8_t)strlen(b), icon)
+        CHECK(RO(true, "Song", "Artist", 1) == KEEP);     /* the refresh, the wake's resend */
+        CHECK(RO(false, "Song", "Artist", 1) == OFF);     /* the title expired, or a wake */
+        CHECK(RO(true, "Song", "Artist", 2) == OFF);      /* resumed: the position is the type 3's */
+        CHECK(RO(true, "Song", "Artist", 0) == OFF);
+        CHECK(RO(true, "Other", "Artist", 1) == GUESS);   /* a new track */
+        CHECK(RO(true, "Song", "Other", 1) == GUESS);     /* line 1 alone is a new track too */
+        CHECK(RO(true, "Other", "Artist", 2) == GUESS);   /* a new track from paused, playing */
+        CHECK(RO(true, "Sang", "Artist", 1) == GUESS);    /* the same length, other bytes */
+        CHECK(RO(true, "Song", "Artisu", 1) == GUESS);
+        CHECK(RO(true, "Son", "Artist", 1) == GUESS);     /* a prefix is not the same line */
+        CHECK(RO(true, "Song!", "Artist", 1) == GUESS);
+        CHECK(RO(true, "Song", "", 1) == GUESS);
+        CHECK(RO(false, "Other", "Artist", 1) == OFF);
+        /* Not playing: the readout goes, whatever the slot held. */
+        lockchan_frame_t f2 = now_playing(2, "Song", "Artist");
+        CHECK(lockchan_media_parse(&f2, &t));
+        CHECK(RO(true, "Song", "Artist", 2) == OFF);
+        CHECK(RO(true, "Song", "Artist", 1) == OFF);      /* paused */
+        CHECK(RO(true, "Other", "Artist", 1) == OFF);
+        lockchan_frame_t f3 = now_playing(3, "Song", "Artist");
+        CHECK(lockchan_media_parse(&f3, &t));
+        CHECK(RO(true, "Song", "Artist", 3) == OFF);
+        lockchan_frame_t f0 = now_playing(0, "Song", "Artist");
+        CHECK(lockchan_media_parse(&f0, &t));
+        CHECK(RO(true, "Song", "Artist", 0) == OFF);
+        /* Empty lines, the play icon alone, are a title like any other. */
+        lockchan_frame_t fe = now_playing(1, "", "");
+        CHECK(lockchan_media_parse(&fe, &t));
+        CHECK(RO(true, "", "", 1) == KEEP);
+        CHECK(RO(true, "Song", "", 1) == GUESS);
+        /* Types 2 and 3 never reach it, but would get OFF. */
+        CHECK(lockchan_media_parse(&(lockchan_frame_t){.type = 2, .len = 0}, &t));
+        CHECK(RO(true, "", "", 1) == OFF);
+        uint8_t tp[6] = {1, 1, 0, 10, 0, 100};
+        lockchan_frame_t ft = frame(3, tp, 6);
+        CHECK(lockchan_media_parse(&ft, &t));
+        CHECK(RO(true, "", "", 1) == OFF);
+#undef RO
+        /* The guess's position: 0 at the anchor, the frame's airtime added. */
+        lockchan_media_t start = {0};
+        CHECK(lockchan_media_position(&start, 1000, 4499) == 3);
+        CHECK(lockchan_media_position(&start, 1000, 4500) == 4);
+        CHECK(lockchan_media_position(&start, 1000, 1000) == 0);
+    }
+
     printf(fails ? "%d FAILED\n" : "lockchan_media: all passed\n", fails);
     return fails != 0;
 }

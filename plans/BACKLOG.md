@@ -86,7 +86,7 @@ the board is awake, and without refreshes the title would expire mid-track.
 **Only the clock frame (type 4, being designed) is held while input is idle
 past 60 s,** with one sent at the wake guess instead.
 
-## The clock flashes for ~3 s at every title frame over the lock lights (2026-10-20) -- small fix proposed
+## The clock flashes for ~3 s at every title frame over the lock lights (2026-10-20) -- both fixes built (`dd8391c28d`), awaiting codex and the flash
 
 Seen by JD on the first supervised play-times run over BT (`6fda6cd1c2`, the
 daemon `v0.1.1-715`): the clock showed for a moment on returning to the
@@ -106,6 +106,20 @@ board, and for a couple of seconds at a song change.
 - **Fix 2, optional (JD's call):** a type 1 with a new title and the play
   icon shows 0:00 counting instead of the clock, corrected by the type 3
   within seconds.
+- **Built, both, in `dd8391c28d`** (`mac/lockchan-pm`, JD wanted both).
+  `lockchan_media_readout` (pure; `scripts/lockchan_media_test.c`, 8
+  planted mutants killed) decides from what the slot showed before the
+  frame:
+  - **keep:** the same lines, with the play icon in both the slot and the
+    frame. The readout's own expiry is not renewed.
+  - **guess:** other lines replacing a live title, playing. It counts from
+    0 at the frame's anchor, so a title frame's own airtime (3-5 s) is
+    counted, and lasts 10 s at most. A track resumed part way reads low
+    until its type 3.
+  - **off:** anything else, as before. That covers no live title (expired,
+    or after a deep sleep's wake), a pause, and the same title resumed.
+- A pause already hands the band to the clock (type 3 state 0), so it
+  needs nothing.
 
 ## Slept seconds count the wake's awake seconds twice (2026-10-20) -- small, left
 

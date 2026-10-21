@@ -1,0 +1,21 @@
+Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md.
+
+Review a dev bench build before it is flashed: qmk_firmware-ak820pro, branch mac/lockchan-pm, commit dd8391c28d on 6fda6cd1c2 (`git -C qmk_firmware-ak820pro show dd8391c28d`). Artifact: ak820pro-builds/out/via-dev-dd8391c28d-20261020-202008.{bin,elf,json} (token 0x28e58a4c); the daily build of the same commit is via-daily-dd8391c28d-20261020-202033.*. The host test is scripts/lockchan_media_test.c (uncommitted in the main repo; build line at its top); it passes, and 8 planted mutants of lockchan_media_readout are all killed.
+
+The problem (plans/BACKLOG.md, "The clock flashes for ~3 s at every title frame over the lock lights"): lockchan_media_commit turned the playback readout off at every type 1, and the type 3 that restores it follows ~3 s later, so the band showed the clock at every track change, at the sender's resend after a wake, and at every 60 s refresh (ak820-agent/src/lockchan/sender.rs and policy.rs: each Sent type 1 forces a type 3).
+
+The change: before the type 1's setters, the handler reads what the slot shows (display_get_text_line, both lines and the icon) and whether its lease is live (display_text_lease_left), and lockchan_media_readout (lockchan_media.c, pure) decides:
+- KEEP: the same lines, the play icon in both the slot and the frame. The readout is left as it is, its own expiry not renewed.
+- GUESS: other lines replace a live title, the frame playing. display_set_playback_for(1, 0 + the frame's anchor-to-commit time, dur 0, LOCKCHAN_GUESS_MS = 10 s), titled.
+- OFF: anything else, as before (display_set_playback(0, 0, 0)).
+Type 2 is unchanged. Type 3 is unchanged.
+
+Check:
+1. That the readout still never outlives its title (codex, plans/review-codex-lockchan-lease-2026-10-20.md and review-codex-stray-diag-2026-10-20.md): KEEP keeps the timeout set at the last type 3 (capped at the lease left then); GUESS's 10 s against the fresh lease; every path that clears, empties or expires the title (playback_title_gone, display_sleep_wake), and the band's repaint (clock_force_repaint) when the readout starts, changes or stops.
+2. That the compare is exact: the parser's bounds and printable range against display_set_text_line's truncation and '?' mapping (the _Static_asserts), display_get_text_line's copy with max DISPLAY_TEXT_MAX + 1, and any way a slot could show a frame's lines yet compare unequal, or the reverse.
+3. The media key's optimistic icon and freeze (display_toggle_play_icon, icon_guessed, icon_host, display_playback_key, PLAYBACK_KEY_GUESS_MS): what KEEP and OFF do when the shown icon is a guess, and whether any case leaves a readout ticking while the host says paused, or a frozen one past the host's word.
+4. Raw HID beside it: hid_rawhid_media_within and LOCKCHAN_LEASE_MS (10 s) against raw HID's own 20 s readout (pb_titled false). Can KEEP leave raw HID's readout up in a way the old OFF did not, and does it matter?
+5. The guess itself: a track resumed part way (reads low until the type 3), a lost type 3 (the guess ends at 10 s), skipping through tracks quickly, a title that changes only in line 1, a type 1 arriving while a GUESS is up, and whether 10 s is a sensible bound given the frame times in history/lockchan-mac-gaps-20261020/.
+6. The cost: lockchan_media_commit's new 44 bytes of stack in its calling context, and that the dev build's RAM is unchanged (heap gap 64 B; ds_deep_wfi still in SRAM at 0x2000150c).
+
+Findings ranked P1 (must fix before an attended dev bench flash), P2, P3, each with a failure scenario and fix, then a one-line verdict.
