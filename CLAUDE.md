@@ -126,6 +126,9 @@ the lock-LED handler and play times, which stay on their branch.
   stray-wake diagnostic (op 24 slot 8). Lock-light frames into a sleeping
   board proved harmless (80 frames, no strays); the soak's one stray, about
   one in 50 sleeps, is unexplained (`plans/BACKLOG.md`).
+- **Since 20:30: `dd8391c28d`** (dev, token `0x28e58a4c`), the same plus
+  the fix for the clock flashing at lock-light title frames
+  (`plans/BACKLOG.md`, "The clock flashes"; codex cleared it).
 
 **Before it, from 15:16 10-20: `8b06e4dcc4`** (a `dev` build, token
 `0x3e1c880c`). It is

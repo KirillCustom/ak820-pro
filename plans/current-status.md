@@ -30,6 +30,12 @@ lock-LED handler and the play times (type 3) with codex's fixes.
 - **Since 18:30 on the board: `6fda6cd1c2`** (dev, token `0xa647bcb6`):
   the stray diagnostic (op 24 slot 8) and the readout tied to its title,
   both cleared by codex.
+- **Since 20:30 on the board: `dd8391c28d`** (dev, token `0x28e58a4c`):
+  a lock-light title frame no longer flashes the clock. A repeat of the
+  shown title keeps the play time, and a new title starts a guess until its
+  type 3 (`BACKLOG.md`, "The clock flashes"). Codex cleared it; its P3,
+  the repaint lag at a guess, goes into the next build with Gremlin's
+  `rtc.c` fixes.
 - **Lock-light frames do not end the deep sleep:** 80 frames into 10
   sleeps, no strays and no overruns, and a control the same
   ([`../history/stray-test-20261020/`](../history/stray-test-20261020/README.md)).
