@@ -34,6 +34,19 @@ int main(void) {
     CHECK(!pcf_sync_run_ok(&s));
     CHECK(!s.pending && !s.stale);
 
+    /* The rtc fixes' review, must-fix 1: a request during a run marks it
+     * superseded (the writer re-plans before writing), and re-starting the
+     * run clears that. */
+    s = (pcf_sync_t){0};
+    pcf_sync_request(&s);
+    pcf_sync_run_start(&s);
+    CHECK(!pcf_sync_superseded(&s));
+    pcf_sync_request(&s);            /* a legacy set mid-run */
+    CHECK(pcf_sync_superseded(&s));
+    pcf_sync_run_start(&s);          /* the writer re-plans */
+    CHECK(!pcf_sync_superseded(&s));
+    CHECK(!pcf_sync_run_ok(&s));
+
     /* Must-fix 5: a give-up is not pending (the board may sleep) but stays
      * stale, and is asked for again after the retry delay, not before. */
     s = (pcf_sync_t){0};
