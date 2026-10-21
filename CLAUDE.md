@@ -122,8 +122,10 @@ evening — RESUME HERE").
 the lock-LED handler and play times, which stay on their branch.
 - **Validated:** deep sleep on BT and 2.4G, and `ladder_check --rig`
   ([`history/power-modes-20261020/`](history/power-modes-20261020/README.md)).
-- ⚠️ **Open: one stray-wake storm beside the daemon's lock-light frames**
-  (`plans/BACKLOG.md`); a diagnostic is built.
+- **Since 18:30: `6fda6cd1c2`** (dev, token `0xa647bcb6`), the same plus a
+  stray-wake diagnostic (op 24 slot 8). Lock-light frames into a sleeping
+  board proved harmless (80 frames, no strays); the soak's one stray, about
+  one in 50 sleeps, is unexplained (`plans/BACKLOG.md`).
 
 **Before it, from 15:16 10-20: `8b06e4dcc4`** (a `dev` build, token
 `0x3e1c880c`). It is

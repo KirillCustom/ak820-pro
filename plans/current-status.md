@@ -27,12 +27,14 @@ lock-LED handler and the play times (type 3) with codex's fixes.
     by its key;
   - `ladder_check --rig` passes once its Heatmap floor is fixed (re-judged
     from the run's data).
-- ⚠️ **Open: a stray-wake storm beside lock-light frames** (`BACKLOG.md`).
-  One BT cycle ended its sleep on `strays: 1000` while the daemon sent
-  frames; its cause is not known. The diagnostic is built
-  (`a5a176bef4`, op 24 slot 8), with the readout tied to its title (codex's
-  last P2). It needs codex, then a flash, then a deliberate test: frames
-  into a long bench sleep against a control, slider on BT.
+- **Since 18:30 on the board: `6fda6cd1c2`** (dev, token `0xa647bcb6`):
+  the stray diagnostic (op 24 slot 8) and the readout tied to its title,
+  both cleared by codex.
+- **Lock-light frames do not end the deep sleep:** 80 frames into 10
+  sleeps, no strays and no overruns, and a control the same
+  ([`../history/stray-test-20261020/`](../history/stray-test-20261020/README.md)).
+  The soak's one stray, about one in 50 sleeps, is unexplained; the
+  diagnostic names it next time. The long soak is where to catch one.
 - **The Mac's 450 ms data gap is measured:** 20/20 `Sent` frames committed
   with the daemon's raw HID quiet. The daemon's release build
   (`v0.1.1-699`) is signed but not installed; reinstalling it brings play

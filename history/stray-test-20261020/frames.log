@@ -1,0 +1,15 @@
+2026-10-20 18:33:37 the daemon (pid 19355) paused for the run
+2026-10-20 18:33:37 10 cycles through the ladder: Minimal, the bench sleep time 30 s; relay 2 off; light sleep off; the mode was 1
+2026-10-20 18:34:23 cycle   1: asleep 27.9 s (PCF 28, counted 22), woke key, p2 0x100, seq 1, key 1, Mac 54 ms, link sent 5 timeouts 1, frames es: Sent, 49 writes in 2.54 s, slowest 146 ms, 1 over 100 ms  ok
+2026-10-20 18:35:25 cycle   2: asleep 32.0 s (PCF 32, counted 26), woke key, p2 0x100, seq 2, key 1, Mac 39 ms, link sent 9 timeouts 3, frames es: Sent, 49 writes in 3.18 s, slowest 305 ms, 4 over 100 ms  ok
+2026-10-20 18:36:27 cycle   3: asleep 31.0 s (PCF 32, counted 26), woke key, p2 0x100, seq 3, key 1, Mac 43 ms, link sent 9 timeouts 3, frames es: Sent, 49 writes in 2.85 s, slowest 290 ms, 2 over 100 ms  ok
+2026-10-20 18:37:27 cycle   4: asleep 31.0 s (PCF 30, counted 24), woke key, p2 0x100, seq 4, key 1, Mac 43 ms, link sent 9 timeouts 2, frames tes: Sent, 49 writes in 2.43 s, slowest 67 ms, 0 over 100 ms  ok
+2026-10-20 18:38:29 cycle   5: asleep 32.1 s (PCF 32, counted 26), woke key, p2 0x100, seq 5, key 1, Mac 42 ms, link sent 9 timeouts 2, frames es: Sent, 49 writes in 2.94 s, slowest 340 ms, 2 over 100 ms  ok
+2026-10-20 18:39:33 cycle   6: asleep 33.0 s (PCF 33, counted 27), woke key, p2 0x100, seq 6, key 1, Mac 28 ms, link sent 9 timeouts 2, frames es: Sent, 49 writes in 2.80 s, slowest 276 ms, 2 over 100 ms  ok
+2026-10-20 18:40:34 cycle   7: asleep 32.0 s (PCF 32, counted 26), woke key, p2 0x100, seq 7, key 1, Mac 43 ms, link sent 9 timeouts 1, frames es: Sent, 49 writes in 2.70 s, slowest 158 ms, 1 over 100 ms  ok
+2026-10-20 18:41:37 cycle   8: asleep 33.0 s (PCF 33, counted 27), woke key, p2 0x100, seq 8, key 1, Mac 42 ms, link sent 9 timeouts 1, frames tes: Sent, 49 writes in 2.58 s, slowest 85 ms, 0 over 100 ms  ok
+2026-10-20 18:42:39 cycle   9: asleep 32.0 s (PCF 32, counted 26), woke key, p2 0x100, seq 9, key 1, Mac 38 ms, link sent 9 timeouts 3, frames es: Sent, 49 writes in 2.84 s, slowest 257 ms, 2 over 100 ms  ok
+2026-10-20 18:43:43 cycle  10: asleep 34.0 s (PCF 34, counted 28), woke key, p2 0x100, seq 10, key 1, Mac 39 ms, link sent 9 timeouts 0, frames es: Sent, 51 writes in 3.32 s, slowest 307 ms, 3 over 100 ms  ok
+2026-10-20 18:43:45 the daemon (pid 19355) resumed
+2026-10-20 18:43:45 restored: relay 1 open, relay 2 on, data on, the arm cancelled, the bench sleep time cleared, the mode put back, stage released
+deep cycles: PASS {"cycles": 10, "passed": 10, "stopped": null, "path": "ladder", "mac_latency_ms": {"median": 42.2, "max": 53.8}, "clock_before_abs_ms": null, "timed_out": {}}

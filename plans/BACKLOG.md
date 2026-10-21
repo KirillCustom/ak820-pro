@@ -22,7 +22,7 @@ The order agreed after the sleep experiments:
    - a final pass for anything personal (the public-repo rule: no family or
      household details).
 
-## ⚠️ A stray-wake storm in a soak beside lock-light frames (2026-10-20) -- cause not known yet
+## A stray-wake storm in a soak beside lock-light frames (2026-10-20) -- not the frames; cause not known yet
 
 Found in the power-modes flash's BT soak (`845996c39c`,
 `history/power-modes-20261020/deep-bt*`): 17 of 20 cycles passed. The
@@ -37,6 +37,16 @@ cycle 20).
   frames meeting the wake's masked stretches (the PCF's reads).
 - **2.4G, no frames:** 9 of 10, no strays, no overruns (the one failure a
   known 25 ms wake paint).
+
+**Tested the same evening** ([`../history/stray-test-20261020/`](../history/stray-test-20261020/README.md)):
+80 frames sent into 10 sleeps gave no stray and no overrun; neither did a
+10-sleep control. **Frames into a sleeping board are harmless.** The soak's
+overruns most likely came from the daemon's clock syncs at each data-on: a
+sync writes the PCF. The stray is still unexplained, about one in 50 sleeps.
+The diagnostic (`6fda6cd1c2`, op 24 slot 8) now names its source the next
+time; the long soak is the place to catch one. The stray cycle's 39 ms
+tap-to-Mac latency is no sign of an awake board: 28-54 ms is ordinary while
+the BLE link carries traffic.
 
 **First claimed, then corrected the same hour: that each frame ends the
 sleep.** One stray wake in about 45 frames says frames do not reliably do
@@ -75,6 +85,16 @@ mean the board is asleep: in Always on, or while JD listens without typing,
 the board is awake, and without refreshes the title would expire mid-track.
 **Only the clock frame (type 4, being designed) is held while input is idle
 past 60 s,** with one sent at the wake guess instead.
+
+## Slept seconds count the wake's awake seconds twice (2026-10-20) -- small, left
+
+From Gremlin's `rtc.c` work for the wireless clock. `wake_coarse()` adds
+`diff` (the PCF's elapsed seconds against the counted ones) to
+`rtc_seconds_count`. The seconds awake between the wake and the coarse read
+are in both, so each sleep's slept total runs about a second or two long,
+and the gauge's slept seconds with it. Left as is: small against a sleep of
+minutes to hours. Fix it with `wk_ticks0` (Gremlin's branch has it) if the
+gauge's energy count ever needs it.
 
 ## The agent in its own repo: a notarized Mac release, a signed Windows build (2026-10-20) -- pending, for later
 
