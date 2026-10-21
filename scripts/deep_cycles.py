@@ -73,20 +73,25 @@ LINK_GATED = ("giveups", "queue_full", "replaced", "uart_overrun", "uart_framing
 
 
 def stray_diag(h):
-    """op 24 slot 8 (a dev build from a5a176bef4): the last sleep with a stray,
-    its first stray's whole RIS, NVIC pending and ICSR, and how many strays
-    came within that counted second (plans/BACKLOG.md, "A stray-wake storm");
-    None on an older build, which answers slot 8 as unhandled."""
+    """op 24 slot 8 (a dev build from a5a176bef4's successor): the last sleep
+    with a stray. Its first stray's NVIC pending and ICSR, whether any pin
+    outside the wake masks had IE (or RIS & IE), whether the NVIC's enabled
+    set was the wake set, how many strays came within that counted second, and
+    the pending state at the latest stray (plans/BACKLOG.md, "A stray-wake
+    storm"). None on a build that answers slot 8 as unhandled."""
     r = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 24, 8] + [0] * 27)
     if len(r) < 32 or r[3] != 24:
         return None
     b = bytes(r[4:32])
     u16 = lambda i: int.from_bytes(b[i:i + 2], "little")
     u32 = lambda i: int.from_bytes(b[i:i + 4], "little")
-    icsr = u32(24)
-    return {"seq": u16(0), "same_s": u16(2), "first_s": u32(4), "ris0": hex(u32(8)), "ris1": hex(u32(12)),
-            "ris2": hex(u32(16)), "ispr": hex(u32(20)), "icsr": hex(icsr), "vectpending": (icsr >> 12) & 0x3F,
-            "pendsv": bool(icsr & (1 << 28)), "pendst": bool(icsr & (1 << 26))}
+    icsr = lambda v: {"icsr": hex(v), "vectpending": (v >> 12) & 0x3F, "pendsv": bool(v & (1 << 28)),
+                      "pendst": bool(v & (1 << 26))}
+    f = u16(16)
+    return {"seq": u16(0), "same_s": u16(2), "first_s": u32(4), "ispr": hex(u32(8)), **icsr(u32(12)),
+            "ie_outside": [p for p in range(3) if f & (1 << p)], "mis_outside": [p for p in range(3) if f & (8 << p)],
+            "iser_not_wake_set": bool(f & 64), "last_n": u16(18), "last_ispr": hex(u32(20)),
+            "last": icsr(u32(24))}
 
 
 def frames_now(n, tag):
