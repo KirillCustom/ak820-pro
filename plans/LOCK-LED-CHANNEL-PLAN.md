@@ -1253,11 +1253,15 @@ On a committed type 4 (`lockchan_media.c` parses, `ch582f_ajazz.c` applies):
    Flags 0: not INTERNAL (it bumps `host_sync_gen`, outranks the boot
    acquisition and a deep sleep's PCF recovery), not SKIP_PCF (the PCF is
    written phase-correct by `rtc_fast_task`, so the 2 s snap does not undo
-   it; one ~2.6 ms I2C transaction per sync, so not per frame).
+   it; the phase-correct writer's several transactions and its bracket
+   reads, one a pass, per sync, so not per frame; codex's implementation
+   review, 13).
 4. **RETRY** (the RTC unreadable this pass): kept and retried on a later
    pass with the elapsed time recomputed, for at most 2 s, then dropped.
-5. Counters for op 17 sub 7 (or a new sub): applied, refused (owner),
-   rejected, retried, and the last offset `off` (board minus target, ms).
+5. Counters for op 17 sub 8: applied, refused (owner), rejected, retried,
+   dropped, and the last offset `off` (**target minus board**, ms, as
+   `rtc_set_time_ms` reports it; corrected per codex's implementation review,
+   13).
 
 ### C3. The host
 

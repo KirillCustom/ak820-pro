@@ -13,6 +13,21 @@
 #include "rtc/rtc_payload.h"
 
 static int fails;
+
+/* The board's hooks, faked: who owns the clock, what the setter answers, and
+ * what it was asked. */
+static bool              fk_owned;
+static uint8_t           fk_status;
+static int               fk_sets;
+static lockchan_clock_t  fk_at;
+static bool fk_owned_elsewhere(void) { return fk_owned; }
+static uint8_t fk_set(const lockchan_clock_t *at, int16_t *off) {
+    fk_sets++;
+    fk_at = *at;
+    *off  = -42;
+    return fk_status;
+}
+static const lockchan_clock_hooks_t fk_hooks = {fk_owned_elsewhere, fk_set};
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
 
 static lockchan_frame_t frame(uint8_t type, const uint8_t *p, uint8_t len) {
@@ -309,8 +324,92 @@ int main(void) {
                 if (o.yy != nyy || o.mo != nmo || o.dd != 1 || o.hh || o.mi || o.ss || o.wd != 1) days_ok = 0;
             }
         CHECK(days_ok);
+
+        /* The pending machine (implementation review, 7). */
+        uint8_t now12[12] = CLK(26, 10, 20, 2, 21, 0, 0, 0);
+        lockchan_frame_t fc = frame(4, now12, 12);
+        fc.anchor_ms = 1000;
+        fc.commit_ms = 4000;
+        lockchan_clock_state_t st = LOCKCHAN_CLOCK_STATE_INIT;
+        /* Applied at once: the time advanced from the anchor, not the commit. */
+        fk_owned = false; fk_status = 1; fk_sets = 0;
+        lockchan_clock_commit(&st, &fc, 4000, &fk_hooks);
+        CHECK(!st.pending && st.applied == 1 && st.status == 1 && st.off == -42);
+        CHECK(fk_at.ss == 3 && fk_at.ms == 0);
+        /* Another owner: refused, the setter never asked. */
+        st = (lockchan_clock_state_t)LOCKCHAN_CLOCK_STATE_INIT;
+        fk_owned = true; fk_sets = 0;
+        lockchan_clock_commit(&st, &fc, 4000, &fk_hooks);
+        CHECK(!st.pending && st.refused == 1 && fk_sets == 0 && st.status == 0xFF);
+        /* A RETRY: kept; each poll recomputes from the original anchor and
+         * rechecks the owner. */
+        st = (lockchan_clock_state_t)LOCKCHAN_CLOCK_STATE_INIT;
+        fk_owned = false; fk_status = LOCKCHAN_SET_RETRY; fk_sets = 0;
+        lockchan_clock_commit(&st, &fc, 4000, &fk_hooks);
+        CHECK(st.pending && st.retried == 1 && st.applied == 0);
+        lockchan_clock_poll(&st, 4500, &fk_hooks);
+        CHECK(st.pending && fk_sets == 2 && fk_at.ss == 3 && fk_at.ms == 500);
+        fk_owned = true;                 /* USB takes the clock meanwhile */
+        lockchan_clock_poll(&st, 4600, &fk_hooks);
+        CHECK(!st.pending && st.refused == 1 && fk_sets == 2);
+        /* A retry that lands, late in its window: the elapsed time is all of it. */
+        st = (lockchan_clock_state_t)LOCKCHAN_CLOCK_STATE_INIT;
+        fk_owned = false; fk_status = LOCKCHAN_SET_RETRY;
+        lockchan_clock_commit(&st, &fc, 4000, &fk_hooks);
+        fk_status = 0;
+        lockchan_clock_poll(&st, 4000 + LOCKCHAN_CLOCK_RETRY_MS, &fk_hooks);
+        CHECK(!st.pending && st.applied == 1 && fk_at.ss == 5 && fk_at.ms == 0);
+        /* The deadline is fixed from the commit: one ms past it, dropped
+         * without asking. */
+        st = (lockchan_clock_state_t)LOCKCHAN_CLOCK_STATE_INIT;
+        fk_status = LOCKCHAN_SET_RETRY;
+        lockchan_clock_commit(&st, &fc, 4000, &fk_hooks);
+        fk_sets = 0;
+        lockchan_clock_poll(&st, 4000 + LOCKCHAN_CLOCK_RETRY_MS + 1, &fk_hooks);
+        CHECK(!st.pending && st.dropped == 1 && fk_sets == 0);
+        lockchan_clock_poll(&st, 99999, &fk_hooks);   /* idle: nothing */
+        CHECK(st.dropped == 1 && fk_sets == 0);
+        /* A drop (a link change, a wake, a raw-HID set) ends a pending one. */
+        st = (lockchan_clock_state_t)LOCKCHAN_CLOCK_STATE_INIT;
+        lockchan_clock_commit(&st, &fc, 4000, &fk_hooks);
+        lockchan_clock_drop(&st);
+        CHECK(!st.pending && st.dropped == 1);
+        lockchan_clock_drop(&st);                      /* none pending: not counted */
+        CHECK(st.dropped == 1);
+        /* A newer frame replaces a pending one, counted dropped. */
+        lockchan_clock_commit(&st, &fc, 4000, &fk_hooks);
+        lockchan_frame_t fc2 = fc;
+        fc2.anchor_ms = 5000; fc2.commit_ms = 6000;
+        lockchan_clock_commit(&st, &fc2, 6000, &fk_hooks);
+        CHECK(st.pending && st.dropped == 2 && st.anchor_ms == 5000);
+        /* The timer's wrap between anchor and set. */
+        st = (lockchan_clock_state_t)LOCKCHAN_CLOCK_STATE_INIT;
+        fk_status = 0;
+        fc.anchor_ms = 0xFFFFFF00u; fc.commit_ms = 0x00000064u;
+        lockchan_clock_commit(&st, &fc, 0x00000064u, &fk_hooks);
+        CHECK(st.applied == 1 && fk_at.ss == 0 && fk_at.ms == 356);
+        /* An invalid frame: rejected, the setter never asked. */
+        st = (lockchan_clock_state_t)LOCKCHAN_CLOCK_STATE_INIT;
+        fk_sets = 0;
+        lockchan_frame_t fbad = frame(4, ok, 11);
+        lockchan_clock_commit(&st, &fbad, 1, &fk_hooks);
+        CHECK(st.rejected == 1 && fk_sets == 0 && !st.pending);
+        /* The setter's REJECT is counted rejected. */
+        fk_status = LOCKCHAN_SET_REJECT;
+        fc.anchor_ms = 1000; fc.commit_ms = 4000;
+        lockchan_clock_commit(&st, &fc, 4000, &fk_hooks);
+        CHECK(st.rejected == 2 && st.applied == 0 && !st.pending);
 #undef CLK
     }
+
+    /* The owner stamp's age (implementation review, 1): a wake's credit made
+     * after the stamp is taken back out; wraps. */
+    CHECK(rtc_stamp_age_s(100, 0, 160, 0) == 60);
+    CHECK(rtc_stamp_age_s(100, 0, 102, 1000) == 0);             /* USB set mid-recovery, then +1000 credit */
+    CHECK(rtc_stamp_age_s(100, 5, 700, 1005) == 0);             /* still inside: 600 - 1000 < 0 */
+    CHECK(rtc_stamp_age_s(100, 5, 1702, 1005) == 602);
+    CHECK(rtc_stamp_age_s(0xFFFFFFF0u, 0xFFFFFFFFu, 20, 9) == 26);   /* both wrap */
+    CHECK(rtc_stamp_age_s(100, 0, 200, (uint32_t)-30) == 130);  /* a negative credit adds */
 
     printf(fails ? "%d FAILED\n" : "lockchan_media: all passed\n", fails);
     return fails != 0;

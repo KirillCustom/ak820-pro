@@ -43,8 +43,10 @@ pub const IDLE: Duration = Duration::from_secs(60);
 pub const BOARD_OWNER: Duration = Duration::from_secs(600);
 pub const OWNER_MARGIN: Duration = Duration::from_secs(15);
 /// A wall clock this far from where the monotonic one says it should be has
-/// stepped.
-pub const STEP_SLACK_MS: i64 = 2000;
+/// stepped: between steps, and within a frame once its time is taken. Half a
+/// second: a clock frame is worth tens of milliseconds, and the two clocks
+/// drift ~0.1 ms a second against each other at most.
+pub const STEP_SLACK_MS: i64 = 500;
 /// The longest a frame can take from its anchor to the board's set: the
 /// receiver's 12 s lifetime and its 2 s of retries. An offset change inside
 /// this from the anchor would land the board on the old offset's civil time:
@@ -74,6 +76,10 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 #[derive(Debug, Default)]
 pub struct ClockSched {
     due: Option<Instant>,
+    /// Not before this, whatever the reason: the handover and the board's
+    /// window after a USB sync, held apart from `due` so a wake or an offset
+    /// change cannot bring a frame inside it (implementation review, 3).
+    floor: Option<Instant>,
     last_sent: Option<Instant>,
     offset: Option<i64>,
     wall_ref: Option<(Instant, i64)>,
@@ -81,7 +87,7 @@ pub struct ClockSched {
 
 impl ClockSched {
     pub fn due(&self) -> Option<Instant> {
-        self.due
+        self.due.map(|d| self.floor.map_or(d, |f| d.max(f)))
     }
 
     pub fn last_sent(&self) -> Option<Instant> {
@@ -92,12 +98,15 @@ impl ClockSched {
     /// and the board's refusal window after `usb_clock_last`.
     pub fn acquired(&mut self, not_before: Instant, usb_clock_last: Option<Instant>) {
         let owner_end = usb_clock_last.map(|t| t + BOARD_OWNER + OWNER_MARGIN);
-        self.due = Some(owner_end.map_or(not_before, |e| e.max(not_before)));
+        let floor = owner_end.map_or(not_before, |e| e.max(not_before));
+        self.floor = Some(floor);
+        self.due = Some(floor);
     }
 
     /// The channel was revoked: nothing is due until the next acquisition.
     pub fn revoked(&mut self) {
         self.due = None;
+        self.floor = None;
     }
 
     /// The wake guess fired at `now`.
@@ -192,6 +201,26 @@ mod tests {
     }
 
     #[test]
+    fn no_reason_brings_a_frame_inside_the_boards_window() {
+        let t0 = Instant::now();
+        let w0 = 1_792_540_799_000;
+        let mut c = ClockSched::default();
+        c.acquired(t0 + s(12), Some(t0));
+        let floor = t0 + BOARD_OWNER + OWNER_MARGIN;
+        c.woke(t0 + s(40));
+        assert_eq!(c.due(), Some(floor), "a wake");
+        c.observe(t0 + s(50), w0, 0);
+        assert!(c.observe(t0 + s(60), w0 + 10_000, 3600));
+        assert_eq!(c.due(), Some(floor), "an offset change");
+        c.again(t0 + s(70));
+        assert_eq!(c.due(), Some(floor), "a loss");
+        // Past the floor, the reasons act as before.
+        c.sent(floor + s(1));
+        c.woke(floor + s(400));
+        assert_eq!(c.due(), Some(floor + s(400) + crate::lockchan::sender::WAKE_DELAY));
+    }
+
+    #[test]
     fn sent_frames_repeat_every_ten_minutes_and_stop_when_revoked() {
         let t0 = Instant::now();
         let mut c = ClockSched::default();
@@ -231,12 +260,15 @@ mod tests {
         c.acquired(t0, None);
         c.sent(t0);
         assert!(!c.observe(t0, w0, -6 * 3600));
-        assert!(!c.observe(t0 + s(10), w0 + 10_000 + 1500, -6 * 3600)); // drift within the slack
+        assert!(!c.observe(t0 + s(10), w0 + 10_000 + 400, -6 * 3600)); // drift within the slack
         assert_eq!(c.due(), Some(t0 + EVERY));
-        assert!(c.observe(t0 + s(20), w0 + 21_500, -7 * 3600)); // DST ends
+        assert!(c.observe(t0 + s(11), w0 + 11_000 + 400 + 1000, -6 * 3600)); // a one-second step
+        c.sent(t0);
+        assert_eq!(c.due(), Some(t0 + EVERY));
+        assert!(c.observe(t0 + s(20), w0 + 20_400, -7 * 3600)); // DST ends
         assert_eq!(c.due(), Some(t0 + s(20)));
         c.sent(t0 + s(22));
-        assert!(c.observe(t0 + s(30), w0 + 21_500 + 10_000 + 60_000, -7 * 3600)); // a minute's step
+        assert!(c.observe(t0 + s(30), w0 + 20_400 + 10_000 + 60_000, -7 * 3600)); // a minute's step
         assert_eq!(c.due(), Some(t0 + s(30)));
         c.revoked();
         assert!(!c.observe(t0 + s(40), w0, 0)); // not acquired: nothing due

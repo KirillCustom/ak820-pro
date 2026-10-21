@@ -24,7 +24,7 @@ frames committed, preambles reached, each abort reason's count, and the last
 frame (profile, type, seq, payload, its anchor and commit times). `frames
 reset` zeroes it; `frames json` prints it as one JSON object.
 `rxtap` reads the RX tap (gremlin/rx-tap, ops 15-16): every raw byte from the
-CH582F while armed, the last 260 kept. `rxtap arm` clears and starts it,
+CH582F while armed, the last 208 kept (260 before the lock-LED clock). `rxtap arm` clears and starts it,
 `rxtap stop` stops it (stop before reading); the read splits the bytes into
 5A/5B/5C frames, 61 0D 0A ACKs and anything else, which is what it is for: a
 module frame type nobody has documented. `rxtap json` prints it as JSON.

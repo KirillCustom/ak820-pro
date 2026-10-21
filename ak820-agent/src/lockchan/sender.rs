@@ -929,42 +929,64 @@ impl<P: Platform> Core<P> {
         };
         self.publish_counts(h, "sending clock");
         let seq = self.seq;
-        // The epochs at the pick: a change of either cuts the frame.
-        let epochs: Cell<Option<(u64, u64)>> = Cell::new(None);
-        let across_offset = Cell::new(false);
+        // The epochs when the clock was chosen, before the warm-up: a change
+        // of either from here cuts the frame, the warm-up's too
+        // (implementation review, 4).
+        let epochs = {
+            let s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
+            (s.text_epoch, s.tr_epoch)
+        };
+        // The time taken (the anchor, the wall clock then, its offset): from
+        // then a step or an offset change cuts the frame (implementation
+        // review, 2).
+        let taken: Cell<Option<(Instant, i64, i64)>> = Cell::new(None);
+        let failed: Cell<Option<Duration>> = Cell::new(None);
         let described: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
-        struct ClockCtl<'a> {
-            ctl: Ctl<'a>,
-            epochs: &'a Cell<Option<(u64, u64)>>,
+        /// Whether the host's clock still runs on from what was taken.
+        fn continuous<P: Platform>(p: &P, taken: (Instant, i64, i64), now: Instant) -> bool {
+            let (at, w, off) = taken;
+            let Some(wn) = p.wall_ms_at(now) else { return false };
+            let expect = w + now.saturating_duration_since(at).as_millis() as i64;
+            (wn - expect).abs() <= clk::STEP_SLACK_MS
+                && p.local(wn.div_euclid(1000)).is_some_and(|l| clk::utc_offset_s(&l, wn.div_euclid(1000)) == off)
         }
-        impl Control for ClockCtl<'_> {
+        struct ClockCtl<'a, P: Platform, T: Time> {
+            ctl: Ctl<'a>,
+            epochs: (u64, u64),
+            platform: &'a P,
+            time: &'a T,
+            taken: &'a Cell<Option<(Instant, i64, i64)>>,
+        }
+        impl<P: Platform, T: Time> Control for ClockCtl<'_, P, T> {
             fn abort(&self) -> Option<Abort> {
                 let (a, te, re) = self.ctl.check();
                 if a.is_some() {
                     return a;
                 }
-                match self.epochs.get() {
-                    Some(e) if e != (te, re) => Some(Abort::Superseded),
+                if (te, re) != self.epochs {
+                    return Some(Abort::Superseded);
+                }
+                match self.taken.get() {
+                    Some(t) if !continuous(self.platform, t, self.time.now()) => Some(Abort::Superseded),
                     _ => None,
                 }
             }
         }
-        let ctl = ClockCtl { ctl: Ctl { h, owner }, epochs: &epochs };
         let platform = &self.platform;
+        let ctl = ClockCtl { ctl: Ctl { h, owner }, epochs, platform, time, taken: &taken };
         let lights = self.lights.as_mut().expect("opened by the caller");
         let line = &mut self.line;
         let out = frame::run_late(lights, time, &ctl, line, || {
-            let (te, re) = {
-                let s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
-                (s.text_epoch, s.tr_epoch)
-            };
-            epochs.set(Some((te, re)));
-            let (across, described) = (&across_offset, &described);
+            let (taken, failed, described) = (&taken, &failed, &described);
             Some(Late {
                 kind: super::TYPE_CLOCK,
                 seq,
                 build: Box::new(move |anchor: Instant| {
-                    let w = platform.wall_ms_at(anchor)? + latency as i64;
+                    // Unreadable or unrepresentable: after the retry, not at
+                    // once (implementation review, 6).
+                    failed.set(Some(clk::RETRY));
+                    let w0 = platform.wall_ms_at(anchor)?;
+                    let w = w0 + latency as i64;
                     let ws = w.div_euclid(1000);
                     let l = platform.local(ws)?;
                     // No frame across an offset change: the board's civil
@@ -972,11 +994,15 @@ impl<P: Platform> Core<P> {
                     let span = clk::SPAN.as_secs() as i64;
                     let later = platform.local(ws + span)?;
                     if clk::utc_offset_s(&l, ws) != clk::utc_offset_s(&later, ws + span) {
-                        across.set(true);
+                        failed.set(Some(clk::SPAN));
                         return None;
                     }
                     let ms = w.rem_euclid(1000) as u32;
                     let bytes = super::clock_payload(&l, ms)?;
+                    failed.set(None);
+                    let ws0 = w0.div_euclid(1000);
+                    let off0 = platform.local(ws0).map(|l0| clk::utc_offset_s(&l0, ws0))?;
+                    taken.set(Some((anchor, w0, off0)));
                     *described.borrow_mut() = format!(
                         "lockchan: sent clock {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03} (latency {:+} ms)",
                         l.year, l.month, l.day, l.hour, l.minute, l.second, ms, latency
@@ -986,7 +1012,12 @@ impl<P: Platform> Core<P> {
             })
         });
         let done = time.now();
-        let credited = {
+        // Credited only with the owner the frame's, and the host's clock
+        // continuous from the time it took to the end (implementation
+        // review, 2): otherwise the board has a time the host no longer
+        // keeps, and the next step sends the right one.
+        let continuous_to_end = taken.get().is_some_and(|t| continuous(&self.platform, t, done));
+        let credited = continuous_to_end && {
             let s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
             s.granted && s.owner_gen == owner
         };
@@ -1001,6 +1032,7 @@ impl<P: Platform> Core<P> {
                     st.log.push(line);
                 });
             }
+            Outcome::Sent if !continuous_to_end => self.clock.again(done),
             Outcome::Sent => {}
             Outcome::Unknown => {
                 self.locks_known = false;
@@ -1009,17 +1041,14 @@ impl<P: Platform> Core<P> {
             }
             Outcome::Poisoned => return self.poison(h),
             Outcome::Abandoned(why) => match why {
-                Why::Abort(Abort::Superseded) if across_offset.get() => {
-                    // After the offset change, which observe() then sees.
-                    self.clock.later(done, clk::SPAN);
-                }
-                Why::Abort(Abort::Superseded) => {
-                    // A media change cut it, or the wall clock could not be
-                    // read: still due, after what cut it.
-                    if epochs.get().is_none() || self.platform.wall_ms_at(done).is_none() {
-                        self.clock.later(done, clk::RETRY);
-                    }
-                }
+                Why::Abort(Abort::Superseded) => match failed.get() {
+                    // The builder could not: an offset change near (after
+                    // it, which observe() then sees), or no time to send.
+                    Some(wait) => self.clock.later(done, wait),
+                    // A media change or a clock discontinuity cut it: still
+                    // due, after what cut it.
+                    None => {}
+                },
                 Why::Abort(Abort::Revoked) | Why::RestorePending => {}
                 Why::Abort(Abort::Stop) => {
                     self.release_unless_pending();
@@ -1969,11 +1998,17 @@ mod tests {
     /// The clock frames sent whole: for each write that could be an anchor,
     /// the payload the sender would have built from it, found in the writes.
     fn clock_frames(r: &Rig, latency: i32) -> Vec<(usize, Vec<u8>)> {
+        clock_frames_on(r, latency, 0)
+    }
+
+    /// As [`clock_frames`], on the rig's wall clock less `shift_ms`: the
+    /// clock as it was before a test stepped it.
+    fn clock_frames_on(r: &Rig, latency: i32, shift_ms: i64) -> Vec<(usize, Vec<u8>)> {
         let w = r.kb.borrow().writes.clone();
         let p = &r.core.platform;
         let mut found = Vec::new();
         for (i, (at, _)) in w.iter().enumerate() {
-            let wall = p.wall_ms_at(*at).unwrap() + latency as i64;
+            let wall = p.wall_ms_at(*at).unwrap() - shift_ms + latency as i64;
             let l = p.local(wall.div_euclid(1000)).unwrap();
             let Some(b) = super::super::clock_payload(&l, wall.rem_euclid(1000) as u32) else { continue };
             let vals: Vec<u8> = w.iter().map(|x| x.1).collect();
@@ -2160,4 +2195,119 @@ mod tests {
         run_until(&mut r, t1 + crate::lockchan::sender::WAKE_DELAY + Duration::from_secs(10));
         assert_eq!(r.h.status().clock_frames, 2);
     }
+
+    /// A hook that fires once, `k` writes into the first clock frame (its
+    /// warm-up's first write is 0).
+    fn in_clock(r: &Rig, k: usize, f: impl FnOnce(&Handle, &Rc<RefCell<Kb>>) + 'static) -> Rc<Cell<Option<usize>>> {
+        let fired: Rc<Cell<Option<usize>>> = Rc::new(Cell::new(None));
+        let (h, kb, done) = (r.h.clone(), Rc::downgrade(&r.kb), fired.clone());
+        let start: Cell<Option<usize>> = Cell::new(None);
+        let mut f = Some(f);
+        r.kb.borrow_mut().hook = Some(Box::new(move |i| {
+            if done.get().is_some() || h.status().state != "sending clock" {
+                return;
+            }
+            let s0 = *start.get().get_or_insert(i);
+            start.set(Some(s0));
+            if i == s0 + k {
+                if let (Some(f), Some(kb)) = (f.take(), kb.upgrade()) {
+                    f(&h, &kb);
+                }
+                done.set(Some(i));
+            }
+        }));
+        fired
+    }
+
+    #[test]
+    fn a_track_change_in_a_clock_frames_warm_up_goes_first() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        let t = r.t.clone();
+        let fired = in_clock(&r, 0, move |h, _| h.set_text(title("Bravo"), t.now()));
+        run_until(&mut r, t0 + Duration::from_secs(30));
+        let at = fired.get().expect("a clock frame began");
+        let w: Vec<u8> = r.kb.borrow().writes.iter().map(|x| x.1).collect();
+        let bravo_at = (0..=255u8)
+            .find_map(|seq| {
+                let e = crate::lockchan::encode(&title("Bravo").1, title("Bravo").0, seq, Profile::P0, 0).unwrap();
+                w.windows(e.len()).position(|x| x == &e[..])
+            })
+            .expect("Bravo");
+        let f = clock_frames(&r, 38);
+        assert_eq!(f.len(), 1);
+        assert!(at < bravo_at && bravo_at < f[0].0, "the clock's warm-up, Bravo, then the clock");
+    }
+
+    #[test]
+    fn a_wall_step_during_a_clock_frame_cuts_it_and_the_next_has_the_new_time() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        // Thirty writes in: past the anchor, mid-payload; the wall clock
+        // jumps a minute.
+        let fired = in_clock(&r, 30, |_, kb| {
+            let mut k = kb.borrow_mut();
+            let (at, w) = k.wall.unwrap();
+            k.wall = Some((at, w + 60_000));
+        });
+        run_until(&mut r, t0 + Duration::from_secs(30));
+        let at = fired.get().expect("a clock frame began");
+        // Matched on the stepped clock: the one frame whole is after the step.
+        let f = clock_frames(&r, 38);
+        assert_eq!(f.len(), 1);
+        assert!(f[0].0 > at);
+        assert_eq!(r.h.status().clock_frames, 1);
+        // And the frame with the old time never went whole: cut, not only
+        // left uncredited.
+        assert!(clock_frames_on(&r, 38, 60_000).is_empty(), "the stale frame was finished");
+    }
+
+    #[test]
+    fn a_wall_step_after_a_clock_frames_last_write_is_not_credited() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        // Learn the clock frame's length from a dry rig, then step the wall
+        // at its very last write.
+        let mut dry = clock_rig(Some(38));
+        let td = granted(&mut dry, title("A"));
+        run_until(&mut dry, td + Duration::from_secs(20));
+        let (anchor, b) = clock_frames(&dry, 38)[0].clone();
+        let len = crate::lockchan::encode(&b, super::super::TYPE_CLOCK, 0, Profile::P0, 0).unwrap().len();
+        let k = 2 + (len - 1); // the warm-up's 2, then the frame's last
+        let _ = anchor;
+        in_clock(&r, k, |_, kb| {
+            let mut k = kb.borrow_mut();
+            let (at, w) = k.wall.unwrap();
+            k.wall = Some((at, w - 5_000));
+        });
+        run_until(&mut r, t0 + Duration::from_secs(40));
+        // The first went whole but was not credited; another went at once.
+        assert_eq!(r.h.status().clock_frames, 1);
+        assert_eq!(clock_frames(&r, 38).len(), 1, "matched on the stepped clock: the resend");
+    }
+
+    #[test]
+    fn a_negative_latency_is_applied() {
+        let mut r = clock_rig(Some(-120));
+        let t0 = granted(&mut r, title("A"));
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        assert_eq!(clock_frames(&r, -120).len(), 1);
+        assert!(clock_frames(&r, 38).is_empty());
+    }
+
+    #[test]
+    fn a_time_the_board_cannot_take_backs_off() {
+        let mut r = clock_rig(Some(38));
+        // 2100-01-01: past the board's range, clock_payload refuses.
+        r.kb.borrow_mut().wall = Some((r.t.now(), 4_102_444_800_000));
+        let t0 = granted(&mut r, title("A"));
+        run_until(&mut r, t0 + Duration::from_secs(8));
+        let n = r.kb.borrow().writes.len();
+        // To 24 s: inside the retry from the first attempt (~3 s), and before
+        // the title goes stale (30 s) and its clear is sent.
+        run_until(&mut r, t0 + Duration::from_secs(24));
+        assert_eq!(r.kb.borrow().writes.len(), n, "no attempt inside the retry");
+        assert_eq!(r.h.status().clock_frames, 0);
+    }
 }
+

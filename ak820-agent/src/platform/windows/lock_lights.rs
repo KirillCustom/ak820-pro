@@ -388,12 +388,25 @@ impl crate::lockchan::sender::Platform for WinPlat {
         unsafe { GetLastInputInfo(&mut lii) }.as_bool().then(|| (lii.dwTime, unsafe { GetTickCount() }))
     }
 
-    /// The system clock at `at`: now, less the monotonic time since `at`
-    /// (the anchor's completion has just passed, so this is microseconds).
+    /// The system clock at `at`: a wall sample bracketed by two monotonic
+    /// ones, less the time from `at` to the bracket's middle. A bracket wider
+    /// than 2 ms (the thread preempted between the reads) is taken again, at
+    /// most four times (implementation review, 5).
     fn wall_ms_at(&self, at: std::time::Instant) -> Option<i64> {
-        let wall = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?;
-        let since = std::time::Instant::now().saturating_duration_since(at);
-        Some(wall.as_millis() as i64 - since.as_millis() as i64)
+        use std::time::{Instant, SystemTime, UNIX_EPOCH};
+        for _ in 0..4 {
+            let i1 = Instant::now();
+            let wall = SystemTime::now().duration_since(UNIX_EPOCH).ok()?;
+            let i2 = Instant::now();
+            let width = i2.saturating_duration_since(i1);
+            if width.as_micros() > 2000 {
+                continue;
+            }
+            let mid = i1 + width / 2;
+            let since = mid.saturating_duration_since(at);
+            return Some(wall.as_millis() as i64 - since.as_millis() as i64);
+        }
+        None
     }
 
     /// The USB clock's own `localtime`, so the zone and DST match it.
