@@ -61,6 +61,11 @@ pub struct LockchanStatus {
     pub restore_pending: bool,
     pub last_sent: Option<String>,
     pub last_error: Option<String>,
+    /// Clock frames (type 4) sent whole, the last one's age, and why none
+    /// go when the daemon owns the clock but cannot send them.
+    pub clock_frames: u64,
+    pub clock_last: Option<String>,
+    pub clock_off: Option<String>,
 }
 
 /// The radio's state for the status file (`crate::radio`).
@@ -239,6 +244,15 @@ pub fn render(s: &Status) -> String {
         }
         if let Some(v) = &l.last_error {
             put("lockchan_last_error", v);
+        }
+        if l.clock_frames > 0 {
+            put("lockchan_clock_frames", &l.clock_frames.to_string());
+        }
+        if let Some(v) = &l.clock_last {
+            put("lockchan_clock_last", v);
+        }
+        if let Some(v) = &l.clock_off {
+            put("lockchan_clock_off", v);
         }
     }
     match &s.clock {

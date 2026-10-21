@@ -13,6 +13,7 @@
 //! `0x02`, Scroll `0x04`). Every write keeps its Caps, and the frame ends back
 //! on it.
 
+pub mod clock;
 pub mod frame;
 pub mod policy;
 pub mod sender;

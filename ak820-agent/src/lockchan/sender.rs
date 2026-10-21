@@ -22,8 +22,10 @@ use std::cell::Cell;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use super::frame::{self, Abort, Control, Line, LockLights, Outcome, Payload, Time, Why};
+use super::clock::{self as clk, ClockSched};
+use super::frame::{self, Abort, Control, Late, Line, LockLights, Outcome, Payload, Time, Why};
 use super::policy::{Content, Policy};
+use crate::clock::host::LocalTime;
 
 /// Past this without a fresh observation the content becomes CLEAR (R3-7).
 pub const STALE_AFTER: Duration = Duration::from_secs(30);
@@ -58,6 +60,17 @@ pub trait Platform {
     fn lock(&mut self) -> Result<Option<Box<dyn Any + Send>>, String>;
     /// The last input's tick (`GetLastInputInfo`), and the tick now, if knowable.
     fn input(&self) -> Option<(u32, u32)>;
+    /// The wall clock, Unix ms, at a monotonic instant: the clock frame's
+    /// time is taken at the anchor's completion, not at whenever the builder
+    /// runs (codex, the wireless clock's review, 10). `None`: no clock frames.
+    fn wall_ms_at(&self, _at: Instant) -> Option<i64> {
+        None
+    }
+    /// The host's local time for a Unix second, through the USB clock's own
+    /// conversion, so the zone and DST match it. `None`: no clock frames.
+    fn local(&self, _unix_s: i64) -> Option<LocalTime> {
+        None
+    }
 }
 
 /// The loop's side of the slot.
@@ -75,6 +88,11 @@ pub struct Status {
     pub log: Vec<String>,
     pub restore_pending: bool,
     pub writes: u64,
+    /// Clock frames (type 4) sent whole, and the last one's completion.
+    pub clock_frames: u64,
+    pub clock_last: Option<Instant>,
+    /// Why no clock frames go, when the daemon owns the clock but none can.
+    pub clock_off: Option<&'static str>,
 }
 
 /// What the panel should show, as the loop sees it each poll: the text frame
@@ -110,6 +128,11 @@ struct Slot {
     owner_gen: u64,
     force: bool,
     not_before: Option<Instant>,
+    /// The daemon owns the clock (`--clock`): clock frames go while granted.
+    clock_on: bool,
+    /// This process's last USB clock sync: the board refuses a clock frame
+    /// for ten minutes after it (the schedule's first frame waits it out).
+    usb_clock_last: Option<Instant>,
     stop: bool,
     done: bool,
     status: Status,
@@ -187,6 +210,16 @@ impl Handle {
 
     pub fn force(&self) {
         self.with(|s| s.force = true);
+    }
+
+    /// The daemon owns the clock: send clock frames (type 4) while granted.
+    pub fn set_clock(&self, on: bool) {
+        self.with(|s| s.clock_on = on);
+    }
+
+    /// The daemon's clock synced the board over USB at `at`.
+    pub fn usb_clock_synced(&self, at: Instant) {
+        self.with(|s| s.usb_clock_last = Some(at));
     }
 
     pub fn stop(&self) {
@@ -306,6 +339,7 @@ fn describe(payload: &Content, m: &Media) -> String {
 enum Kind {
     Text,
     Transport,
+    Clock,
 }
 
 /// What a frame picked, for its in-flight checks and its credit.
@@ -351,6 +385,10 @@ pub struct Core<P: Platform> {
     seek_rev: u32,
     /// The generation of each kind last logged: a change frame logs once.
     logged: [Option<u64>; 2],
+    /// Type 4: when a clock frame is due.
+    clock: ClockSched,
+    /// The lights have no measured latency: no clock frames this process.
+    clock_unmeasured: bool,
     line: Line,
     next_open: Option<Instant>,
     armed: Option<u32>,
@@ -416,6 +454,8 @@ impl<P: Platform> Core<P> {
             sent_pos: None,
             seek_rev: 0,
             logged: [None, None],
+            clock: ClockSched::default(),
+            clock_unmeasured: false,
             line: Line::default(),
             next_open: None,
             armed: None,
@@ -510,7 +550,8 @@ impl<P: Platform> Core<P> {
         }
         let now = time.now();
         let woke = self.wake_guess();
-        let (granted, owner, stop, stale_at, view) = {
+        let mut handover_end = None;
+        let (granted, owner, stop, stale_at, view, clock_on, usb_clock_last) = {
             let mut s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
             let (view, stale_at) = current_of(&s, now);
             if let Some((m, _)) = &view {
@@ -528,9 +569,13 @@ impl<P: Platform> Core<P> {
             if let Some(nb) = s.not_before.take() {
                 self.text.not_before(nb);
                 self.tr.not_before(nb);
+                handover_end = Some(nb);
             }
-            (s.granted, s.owner_gen, s.stop, stale_at, view)
+            (s.granted, s.owner_gen, s.stop, stale_at, view, s.clock_on, s.usb_clock_last)
         };
+        if woke && clock_on {
+            self.clock.woke(now);
+        }
         // A seek: the position is not where the last type 3 said it would be.
         // A change of its own, with the change's repeat (type-3 sender, 3).
         if let (Some((m, pos_at)), Some(sent)) = (&view, self.sent_pos) {
@@ -562,6 +607,21 @@ impl<P: Platform> Core<P> {
             self.tr.acquired(now);
             self.text_sent = None;
             self.sent_pos = None;
+            if clock_on {
+                self.clock.acquired(handover_end.unwrap_or(now), usb_clock_last);
+            }
+        }
+        if !granted || !clock_on {
+            self.clock.revoked();
+        }
+        if clock_on && granted {
+            // An offset change (DST, a zone) or a wall-clock step: a clock
+            // frame at once (review, 7).
+            if let Some(w) = self.platform.wall_ms_at(now) {
+                if let Some(l) = self.platform.local(w.div_euclid(1000)) {
+                    self.clock.observe(now, w, clk::utc_offset_s(&l, w.div_euclid(1000)));
+                }
+            }
         }
 
         // A pending restore goes first, granted or not, every TICK, until it
@@ -627,11 +687,14 @@ impl<P: Platform> Core<P> {
             && self.text_sent == Some(self.text.generation());
         let text_due = self.text.due();
         let tr_due = if shown { self.tr.due() } else { None };
-        let kind = match (text_due, tr_due) {
-            (Some(t), _) if t <= now => Kind::Text,
-            (_, Some(t)) if t <= now => Kind::Transport,
+        // A clock frame after both (review, 11).
+        let clock_due = if clock_on && !self.clock_unmeasured { self.clock.due() } else { None };
+        let kind = match (text_due, tr_due, clock_due) {
+            (Some(t), _, _) if t <= now => Kind::Text,
+            (_, Some(t), _) if t <= now => Kind::Transport,
+            (_, _, Some(t)) if t <= now => Kind::Clock,
             _ => {
-                let due = [text_due, tr_due].into_iter().flatten().min();
+                let due = [text_due, tr_due, clock_due].into_iter().flatten().min();
                 self.publish_counts(h, if due.is_some() { "waiting" } else { "idle" });
                 return Next::WaitUntil(soonest(due));
             }
@@ -671,6 +734,9 @@ impl<P: Platform> Core<P> {
             self.tr.force(now);
         }
 
+        if kind == Kind::Clock {
+            return self.send_clock(h, time, owner);
+        }
         self.publish_counts(h, "sending");
         let seq = self.seq;
         // The newest media is picked after the warm-up and the quiet, and its
@@ -704,7 +770,7 @@ impl<P: Platform> Core<P> {
                     let view = current_of(&s, now).0;
                     let now_id = view.as_ref().map(|(m, _)| match self.kind {
                         Kind::Text => text_id(&m.text),
-                        Kind::Transport => tr_id(m),
+                        Kind::Transport | Kind::Clock => tr_id(m),
                     });
                     let seek = self.kind == Kind::Transport
                         && matches!((&view, p.pos), (Some((m, pos_at)), Some(pos)) if seeked(m, *pos_at, (pos, p.at), now));
@@ -724,6 +790,7 @@ impl<P: Platform> Core<P> {
                 };
                 let (m, pos_at) = view?;
                 let (gen, id, payload, pos) = match kind {
+                    Kind::Clock => return None,
                     Kind::Text => {
                         let id = text_id(&m.text);
                         text.set(id.clone(), at);
@@ -764,7 +831,7 @@ impl<P: Platform> Core<P> {
         }
         let policy = match kind {
             Kind::Text => &mut self.text,
-            Kind::Transport => &mut self.tr,
+            Kind::Transport | Kind::Clock => &mut self.tr,
         };
         let gen = p.map_or(policy.generation(), |p| p.gen);
         // Credited only if the owner, the epochs and the identity's freshness
@@ -774,7 +841,7 @@ impl<P: Platform> Core<P> {
             let view = current_of(&s, done).0;
             let id = view.as_ref().map(|(m, _)| match kind {
                 Kind::Text => text_id(&m.text),
-                Kind::Transport => tr_id(m),
+                Kind::Transport | Kind::Clock => tr_id(m),
             });
             let seek = kind == Kind::Transport
                 && matches!((&view, p.pos), (Some((m, pos_at)), Some(pos)) if seeked(m, *pos_at, (pos, p.at), done));
@@ -796,7 +863,7 @@ impl<P: Platform> Core<P> {
                         // transport goes right after (the Mac session).
                         self.tr.force(done);
                     }
-                    Kind::Transport => {}
+                    Kind::Transport | Kind::Clock => {}
                 }
                 let slot = if kind == Kind::Text { 0 } else { 1 };
                 let line = (self.logged[slot] != Some(gen)).then(|| described.borrow().clone());
@@ -837,6 +904,135 @@ impl<P: Platform> Core<P> {
                     self.publish(h, |st| st.retries += 1);
                 }
                 Why::RestorePending => {}
+            },
+        }
+        self.publish_counts(h, "waiting");
+        Next::WaitUntil(done)
+    }
+
+    /// A clock frame (type 4): the preamble, then the payload built from the
+    /// anchor's completion (`frame::run_late`): the host's wall clock at that
+    /// instant plus the lights' measured latency, in local time. Cut by the
+    /// owner, a stop, or any change of the text or the transport (review, 11).
+    fn send_clock<T: Time>(&mut self, h: &Handle, time: &T, owner: u64) -> Next {
+        let now = time.now();
+        let Some(latency) = self.lights.as_ref().and_then(|l| l.clock_latency_ms()) else {
+            // Unmeasured lights: none for the life of the process (review, 6).
+            self.clock_unmeasured = true;
+            self.publish(h, |st| st.clock_off = Some("this platform's latency is not measured"));
+            return Next::WaitUntil(now);
+        };
+        self.publish_counts(h, "sending clock");
+        let seq = self.seq;
+        // The epochs at the pick: a change of either cuts the frame.
+        let epochs: Cell<Option<(u64, u64)>> = Cell::new(None);
+        let across_offset = Cell::new(false);
+        let described: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
+        struct ClockCtl<'a> {
+            ctl: Ctl<'a>,
+            epochs: &'a Cell<Option<(u64, u64)>>,
+        }
+        impl Control for ClockCtl<'_> {
+            fn abort(&self) -> Option<Abort> {
+                let (a, te, re) = self.ctl.check();
+                if a.is_some() {
+                    return a;
+                }
+                match self.epochs.get() {
+                    Some(e) if e != (te, re) => Some(Abort::Superseded),
+                    _ => None,
+                }
+            }
+        }
+        let ctl = ClockCtl { ctl: Ctl { h, owner }, epochs: &epochs };
+        let platform = &self.platform;
+        let lights = self.lights.as_mut().expect("opened by the caller");
+        let line = &mut self.line;
+        let out = frame::run_late(lights, time, &ctl, line, || {
+            let (te, re) = {
+                let s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
+                (s.text_epoch, s.tr_epoch)
+            };
+            epochs.set(Some((te, re)));
+            let (across, described) = (&across_offset, &described);
+            Some(Late {
+                kind: super::TYPE_CLOCK,
+                seq,
+                build: Box::new(move |anchor: Instant| {
+                    let w = platform.wall_ms_at(anchor)? + latency as i64;
+                    let ws = w.div_euclid(1000);
+                    let l = platform.local(ws)?;
+                    // No frame across an offset change: the board's civil
+                    // arithmetic would land on the old offset (review, 7).
+                    let span = clk::SPAN.as_secs() as i64;
+                    let later = platform.local(ws + span)?;
+                    if clk::utc_offset_s(&l, ws) != clk::utc_offset_s(&later, ws + span) {
+                        across.set(true);
+                        return None;
+                    }
+                    let ms = w.rem_euclid(1000) as u32;
+                    let bytes = super::clock_payload(&l, ms)?;
+                    *described.borrow_mut() = format!(
+                        "lockchan: sent clock {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03} (latency {:+} ms)",
+                        l.year, l.month, l.day, l.hour, l.minute, l.second, ms, latency
+                    );
+                    Some(bytes)
+                }),
+            })
+        });
+        let done = time.now();
+        let credited = {
+            let s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
+            s.granted && s.owner_gen == owner
+        };
+        match out {
+            Outcome::Sent if credited => {
+                self.seq = self.seq.wrapping_add(1);
+                self.clock.sent(done);
+                let line = described.borrow().clone();
+                self.publish(h, |st| {
+                    st.clock_frames += 1;
+                    st.clock_last = Some(done);
+                    st.log.push(line);
+                });
+            }
+            Outcome::Sent => {}
+            Outcome::Unknown => {
+                self.locks_known = false;
+                self.publish_counts(h, "locks unknown");
+                return Next::WaitUntil(done + TICK);
+            }
+            Outcome::Poisoned => return self.poison(h),
+            Outcome::Abandoned(why) => match why {
+                Why::Abort(Abort::Superseded) if across_offset.get() => {
+                    // After the offset change, which observe() then sees.
+                    self.clock.later(done, clk::SPAN);
+                }
+                Why::Abort(Abort::Superseded) => {
+                    // A media change cut it, or the wall clock could not be
+                    // read: still due, after what cut it.
+                    if epochs.get().is_none() || self.platform.wall_ms_at(done).is_none() {
+                        self.clock.later(done, clk::RETRY);
+                    }
+                }
+                Why::Abort(Abort::Revoked) | Why::RestorePending => {}
+                Why::Abort(Abort::Stop) => {
+                    self.release_unless_pending();
+                    self.publish_counts(h, "stopped");
+                    return Next::Exit;
+                }
+                Why::Write(e) => {
+                    self.lights = None;
+                    self.clock.later(done, clk::RETRY);
+                    self.publish(h, |st| {
+                        st.failures += 1;
+                        st.last_error = Some(e);
+                    });
+                }
+                Why::Deadline | Why::UserChanged => {
+                    self.clock.again(done);
+                    self.publish(h, |st| st.retries += 1);
+                }
             },
         }
         self.publish_counts(h, "waiting");
@@ -978,6 +1174,13 @@ mod tests {
         /// Called after each write with its index: the test's hook to change
         /// the slot mid-frame.
         hook: Option<Box<dyn FnMut(usize)>>,
+        /// Type 4: the lights' latency; the wall clock as (instant, Unix ms)
+        /// at the rig's start; the local offset, and a change of it at a
+        /// Unix second (DST).
+        latency: Option<i32>,
+        wall: Option<(Instant, i64)>,
+        offset_s: i64,
+        offset_change: Option<(i64, i64)>,
     }
 
     struct Lights {
@@ -990,6 +1193,9 @@ mod tests {
         }
         fn spacing(&self) -> Duration {
             Duration::from_millis(16)
+        }
+        fn clock_latency_ms(&self) -> Option<i32> {
+            self.kb.borrow().latency
         }
         fn user(&mut self) -> Option<u8> {
             let k = self.kb.borrow();
@@ -1047,6 +1253,18 @@ mod tests {
         }
         fn input(&self) -> Option<(u32, u32)> {
             self.input.get()
+        }
+        fn wall_ms_at(&self, at: Instant) -> Option<i64> {
+            let (t0, w0) = self.kb.borrow().wall?;
+            Some(w0 + at.duration_since(t0).as_millis() as i64)
+        }
+        fn local(&self, unix_s: i64) -> Option<LocalTime> {
+            let k = self.kb.borrow();
+            let off = match k.offset_change {
+                Some((at, o)) if unix_s >= at => o,
+                _ => k.offset_s,
+            };
+            Some(crate::clock::host::utc_local(unix_s + off))
         }
     }
 
@@ -1725,4 +1943,197 @@ mod tests {
         assert_eq!(r.core.step(&r.h, &*r.t), Next::Exit);
         assert!(r.core.guard.is_none());
     }
+
+    // ---- Type 4, the clock (the plan's "The wireless clock", C3) ----
+
+    /// 2026-10-20 21:00:00 UTC, the rig's wall clock at its start.
+    const W0: i64 = 1_792_530_000_000;
+
+    fn clock_rig(latency: Option<i32>) -> Rig {
+        let r = rig();
+        {
+            let mut k = r.kb.borrow_mut();
+            k.latency = latency;
+            k.wall = Some((r.t.now(), W0));
+            k.offset_s = -6 * 3600;
+        }
+        r.h.set_clock(true);
+        r
+    }
+
+    /// The clock frames sent whole: for each write that could be an anchor,
+    /// the payload the sender would have built from it, found in the writes.
+    fn clock_frames(r: &Rig, latency: i32) -> Vec<(usize, Vec<u8>)> {
+        let w = r.kb.borrow().writes.clone();
+        let p = &r.core.platform;
+        let mut found = Vec::new();
+        for (i, (at, _)) in w.iter().enumerate() {
+            let wall = p.wall_ms_at(*at).unwrap() + latency as i64;
+            let l = p.local(wall.div_euclid(1000)).unwrap();
+            let Some(b) = super::super::clock_payload(&l, wall.rem_euclid(1000) as u32) else { continue };
+            let vals: Vec<u8> = w.iter().map(|x| x.1).collect();
+            for seq in 0..=255u8 {
+                let e = crate::lockchan::encode(&b, super::super::TYPE_CLOCK, seq, Profile::P0, 0).unwrap();
+                // Anchored at write i: the preamble's third write.
+                if i >= 2 && vals.len() >= i - 2 + e.len() && vals[i - 2..i - 2 + e.len()] == e[..] {
+                    found.push((i, b.clone()));
+                }
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn no_clock_frame_without_the_clock_or_a_measured_latency() {
+        // Not the clock's owner: none, whatever the lights.
+        let mut r = clock_rig(Some(38));
+        r.h.set_clock(false);
+        let t0 = granted(&mut r, title("A"));
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        assert!(sent(&r, &title("A"), 0));
+        assert_eq!(r.h.status().clock_frames, 0);
+        assert!(clock_frames(&r, 38).is_empty());
+        // The owner, but lights with no measured latency: none, and said so.
+        let mut r = clock_rig(None);
+        let t0 = granted(&mut r, title("A"));
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        assert!(sent(&r, &title("A"), 0), "the media still goes");
+        assert_eq!(r.h.status().clock_frames, 0);
+        assert!(r.h.status().clock_off.is_some());
+    }
+
+    #[test]
+    fn a_clock_frame_follows_the_title_with_the_anchors_time_plus_the_latency() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        assert_eq!(r.h.status().clock_frames, 1);
+        let f = clock_frames(&r, 38);
+        assert_eq!(f.len(), 1, "one frame, matched at exactly one anchor");
+        // Local time, the offset applied: 15:00 and some seconds.
+        let b = &f[0].1;
+        assert_eq!((b[0], b[1], b[2], b[4]), (26, 10, 20, 15));
+        assert_eq!((b[9], b[10], b[11]), (0, 0xFF, 0x7F), "flags 0, the bias unknown");
+        // After the title, which went first.
+        let w: Vec<u8> = r.kb.borrow().writes.iter().map(|x| x.1).collect();
+        let e = crate::lockchan::encode(&title("A").1, title("A").0, 0, Profile::P0, 0).unwrap();
+        let title_at = w.windows(e.len()).position(|x| x == &e[..]).expect("the title");
+        assert!(title_at < f[0].0);
+        assert!(r.h.take_log().iter().any(|l| l.starts_with("lockchan: sent clock 2026-10-20 15:00:")));
+    }
+
+    #[test]
+    fn clock_frames_repeat_every_ten_minutes() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        let first = r.h.status().clock_last.unwrap();
+        run_until(&mut r, first + clk::EVERY - Duration::from_secs(1));
+        assert_eq!(r.h.status().clock_frames, 1, "not before ten minutes");
+        run_until(&mut r, first + clk::EVERY + Duration::from_secs(10));
+        assert_eq!(r.h.status().clock_frames, 2);
+    }
+
+    #[test]
+    fn the_first_clock_frame_waits_out_the_boards_window_after_a_usb_sync() {
+        let mut r = clock_rig(Some(38));
+        r.h.usb_clock_synced(r.t.now() - Duration::from_secs(100));
+        let t0 = granted(&mut r, title("A"));
+        let open = t0 + Duration::from_secs(500) + clk::OWNER_MARGIN;
+        run_until(&mut r, open - Duration::from_secs(1));
+        assert!(sent(&r, &title("A"), 0), "the media does not wait");
+        assert_eq!(r.h.status().clock_frames, 0);
+        run_until(&mut r, open + Duration::from_secs(10));
+        assert_eq!(r.h.status().clock_frames, 1);
+    }
+
+    #[test]
+    fn a_track_change_cuts_a_clock_frame_and_goes_first() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        run_until(&mut r, t0 + Duration::from_secs(3));
+        assert!(sent(&r, &title("A"), 0));
+        assert_eq!(r.h.status().clock_frames, 0, "the clock not yet");
+        // Thirty writes into the clock frame itself (not the transport
+        // before it), Bravo.
+        let (h, t) = (r.h.clone(), r.t.clone());
+        let cut: Rc<Cell<Option<usize>>> = Rc::new(Cell::new(None));
+        let (start, c2) = (Rc::new(Cell::new(None::<usize>)), cut.clone());
+        r.kb.borrow_mut().hook = Some(Box::new(move |i| {
+            if c2.get().is_some() || h.status().state != "sending clock" {
+                return;
+            }
+            let s0 = *start.get().get_or_insert(i);
+            start.set(Some(s0));
+            if i == s0 + 30 {
+                h.set_text(title("Bravo"), t.now());
+                c2.set(Some(i));
+            }
+        }));
+        run_until(&mut r, t0 + Duration::from_secs(30));
+        let n = cut.get().expect("a clock frame was under way") - 30;
+        assert!(sent(&r, &title("Bravo"), 0));
+        let f = clock_frames(&r, 38);
+        assert_eq!(f.len(), 1, "the clock went whole once, after");
+        let w: Vec<u8> = r.kb.borrow().writes.iter().map(|x| x.1).collect();
+        let bravo_at = (0..=255u8)
+            .find_map(|seq| {
+                let e = crate::lockchan::encode(&title("Bravo").1, title("Bravo").0, seq, Profile::P0, 0).unwrap();
+                w.windows(e.len()).position(|x| x == &e[..])
+            })
+            .expect("Bravo");
+        assert!(bravo_at > n + 30 && bravo_at < f[0].0, "Bravo, then the clock");
+    }
+
+    #[test]
+    fn no_clock_frame_is_built_across_an_offset_change() {
+        // Where the first clock frame anchors, on this deterministic rig.
+        let mut dry = clock_rig(Some(38));
+        let t = granted(&mut dry, title("A"));
+        run_until(&mut dry, t + Duration::from_secs(20));
+        let a = clock_frames(&dry, 38)[0].0;
+        let at = dry.kb.borrow().writes[a].0;
+        let anchor_s = (dry.core.platform.wall_ms_at(at).unwrap() + 38) / 1000;
+        // The offset changes 5 s after that anchor: inside SPAN of it.
+        let mut r = clock_rig(Some(38));
+        let change = anchor_s + 5;
+        r.kb.borrow_mut().offset_change = Some((change, -5 * 3600));
+        let t0 = granted(&mut r, title("A"));
+        run_until(&mut r, t0 + Duration::from_secs(60));
+        assert_eq!(r.h.status().clock_frames, 1, "one, after the change");
+        let f = clock_frames(&r, 38);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].1[4], 16, "the new offset's hour: 16:00, not 15:00");
+        let anchor = r.kb.borrow().writes[f[0].0].0;
+        assert!(r.core.platform.wall_ms_at(anchor).unwrap() / 1000 >= change, "anchored after the change");
+    }
+
+    #[test]
+    fn an_offset_change_while_granted_sends_at_once() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        assert_eq!(r.h.status().clock_frames, 1);
+        // DST two minutes on, well inside the ten.
+        r.kb.borrow_mut().offset_change = Some((W0 / 1000 + 120, -5 * 3600));
+        run_until(&mut r, t0 + Duration::from_secs(150));
+        assert_eq!(r.h.status().clock_frames, 2);
+    }
+
+    #[test]
+    fn a_revoke_stops_clock_frames_and_a_grant_restarts_them() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        assert_eq!(r.h.status().clock_frames, 1);
+        r.h.revoke();
+        run_until(&mut r, t0 + clk::EVERY + Duration::from_secs(60));
+        assert_eq!(r.h.status().clock_frames, 1, "none while revoked");
+        let t1 = r.t.now();
+        r.h.set_text(title("A"), t1);
+        r.h.grant(Some(t1 - HANDOVER), t1);
+        run_until(&mut r, t1 + Duration::from_secs(20));
+        assert_eq!(r.h.status().clock_frames, 2, "again after the new acquisition");
+    }
 }
+

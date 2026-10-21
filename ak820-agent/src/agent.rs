@@ -314,6 +314,12 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
         }
         let _ = LOCKCHAN.set(lc.clone());
     }
+    if let (Some(lc), true) = (&lockchan, opts.clock) {
+        // The clock over the lock lights too, while granted: only the clock's
+        // one owner sends it (the plan's "The wireless clock", C3).
+        lc.set_clock(true);
+        log.line("lockchan: the clock over the lock lights too while granted (--clock)");
+    }
     let mut clock = if opts.clock {
         log.line(&format!(
             "clock loop: syncing every {}s ({}s while the residual exceeds {} ms); cache {}",
@@ -465,7 +471,16 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
             if now >= next_clock {
                 worked = true;
                 if !watch.holding(now) {
+                    let tries = clock.status.syncs + clock.status.failures;
                     clock.tick::<P>(&log, &mut st, &mut watch);
+                    // A USB sync, or an attempt at one that may have set the
+                    // board anyway: the board refuses a lock-light clock frame
+                    // for ten minutes after a set, so the first one waits.
+                    if clock.status.syncs + clock.status.failures != tries {
+                        if let Some(lc) = &lockchan {
+                            lc.usb_clock_synced(Instant::now());
+                        }
+                    }
                 }
                 st.clock = Some(clock.status.clone());
                 next_clock = Instant::now() + Duration::from_secs_f64(scheduler::LOOP);
@@ -545,6 +560,9 @@ pub fn run<P: Platform>(opts: Options) -> Result<(), String> {
                     restore_pending: s.restore_pending,
                     last_sent: s.last_sent.map(|t| format!("{} s ago", t.elapsed().as_secs())),
                     last_error: s.last_error,
+                    clock_frames: s.clock_frames,
+                    clock_last: s.clock_last.map(|t| format!("{} s ago", t.elapsed().as_secs())),
+                    clock_off: s.clock_off.map(String::from),
                 }
             });
             st.board = watch.state().word().to_string();

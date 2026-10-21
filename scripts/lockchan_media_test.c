@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "lockchan_media.h"
+#include "rtc/rtc_payload.h"
 
 static int fails;
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
@@ -219,6 +220,96 @@ int main(void) {
         CHECK(lockchan_media_position(&start, 1000, 4499) == 3);
         CHECK(lockchan_media_position(&start, 1000, 4500) == 4);
         CHECK(lockchan_media_position(&start, 1000, 1000) == 0);
+    }
+
+    /* Type 4, the clock: raw HID's RTC_SET_TIME_MS body, flags 0, bias
+     * 0x7FFF; and its advance by the anchor-to-set time (codex, the wireless
+     * clock's review, note 14: midnight, leap day, year end, the upper year,
+     * the timer's wrap). */
+    {
+#define CLK(yy, mo, dd, wd, hh, mi, ss, ms) \
+        {yy, mo, dd, wd, hh, mi, ss, (uint8_t)((ms) & 0xFF), (uint8_t)((ms) >> 8), 0, 0xFF, 0x7F}
+        lockchan_clock_t c, o;
+        uint8_t ok[12] = CLK(26, 10, 20, 2, 21, 59, 59, 999);
+        lockchan_frame_t f = frame(4, ok, 12);
+        CHECK(lockchan_clock_parse(&f, &c));
+        CHECK(c.yy == 26 && c.mo == 10 && c.dd == 20 && c.wd == 2 && c.hh == 21 && c.mi == 59 && c.ss == 59 && c.ms == 999);
+        /* Not a display frame: the media parser rejects it whole. */
+        lockchan_media_t m;
+        CHECK(!lockchan_media_parse(&f, &m));
+        /* Exact length; flags 0; bias exactly the sentinel. */
+        lockchan_frame_t fs = frame(4, ok, 11);
+        CHECK(!lockchan_clock_parse(&fs, &c));
+        uint8_t bad[12];
+        memcpy(bad, ok, 12); bad[9] = 1;                           /* FORCE_STEP */
+        f = frame(4, bad, 12); CHECK(!lockchan_clock_parse(&f, &c));
+        memcpy(bad, ok, 12); bad[9] = 2;                           /* SKIP_PCF */
+        f = frame(4, bad, 12); CHECK(!lockchan_clock_parse(&f, &c));
+        memcpy(bad, ok, 12); bad[10] = 0; bad[11] = 0;             /* a bias of 0 ppm */
+        f = frame(4, bad, 12); CHECK(!lockchan_clock_parse(&f, &c));
+        /* raw HID's rules: the calendar, the range, ms. */
+        uint8_t feb29_27[12] = CLK(27, 2, 29, 0, 0, 0, 0, 0);
+        f = frame(4, feb29_27, 12); CHECK(!lockchan_clock_parse(&f, &c));
+        uint8_t feb29_28[12] = CLK(28, 2, 29, 2, 0, 0, 0, 0);
+        f = frame(4, feb29_28, 12); CHECK(lockchan_clock_parse(&f, &c));
+        uint8_t y25[12] = CLK(25, 12, 31, 3, 0, 0, 0, 0);
+        f = frame(4, y25, 12); CHECK(!lockchan_clock_parse(&f, &c));
+        uint8_t y99[12] = CLK(99, 1, 1, 4, 0, 0, 0, 0);
+        f = frame(4, y99, 12); CHECK(!lockchan_clock_parse(&f, &c));
+        uint8_t ms1000[12] = CLK(26, 1, 1, 4, 0, 0, 0, 1000);
+        f = frame(4, ms1000, 12); CHECK(!lockchan_clock_parse(&f, &c));
+        uint8_t sec60[12] = CLK(26, 1, 1, 4, 0, 0, 60, 0);
+        f = frame(4, sec60, 12); CHECK(!lockchan_clock_parse(&f, &c));
+        /* Another type with a clock's body is not a clock. */
+        f = frame(3, ok, 12); CHECK(!lockchan_clock_parse(&f, &c));
+
+        /* The advance: nothing, within the second, across midnight. */
+        f = frame(4, ok, 12); lockchan_clock_parse(&f, &c);
+        CHECK(lockchan_clock_advance(&c, 0, &o) && o.ss == 59 && o.ms == 999 && o.dd == 20 && o.wd == 2);
+        CHECK(lockchan_clock_advance(&c, 1, &o) && o.hh == 22 && o.mi == 0 && o.ss == 0 && o.ms == 0 && o.dd == 20);
+        uint8_t eod[12] = CLK(26, 10, 20, 2, 23, 59, 59, 900);
+        f = frame(4, eod, 12); lockchan_clock_parse(&f, &c);
+        CHECK(lockchan_clock_advance(&c, 150, &o) && o.dd == 21 && o.mo == 10 && o.hh == 0 && o.mi == 0 && o.ss == 0 &&
+              o.ms == 50 && o.wd == 3);
+        /* Saturday into Sunday: the host's weekday numbering wraps at 7. */
+        uint8_t sat[12] = CLK(26, 10, 24, 6, 23, 59, 59, 999);
+        f = frame(4, sat, 12); lockchan_clock_parse(&f, &c);
+        CHECK(lockchan_clock_advance(&c, 1, &o) && o.dd == 25 && o.wd == 0);
+        /* Leap day, both ways. */
+        uint8_t feb28_28[12] = CLK(28, 2, 28, 1, 23, 59, 59, 999);
+        f = frame(4, feb28_28, 12); lockchan_clock_parse(&f, &c);
+        CHECK(lockchan_clock_advance(&c, 1, &o) && o.mo == 2 && o.dd == 29);
+        uint8_t feb28_27[12] = CLK(27, 2, 28, 0, 23, 59, 59, 999);
+        f = frame(4, feb28_27, 12); lockchan_clock_parse(&f, &c);
+        CHECK(lockchan_clock_advance(&c, 1, &o) && o.mo == 3 && o.dd == 1);
+        /* Year end; and the upper year's end leaves the range. */
+        uint8_t ye[12] = CLK(26, 12, 31, 4, 23, 59, 58, 500);
+        f = frame(4, ye, 12); lockchan_clock_parse(&f, &c);
+        CHECK(lockchan_clock_advance(&c, 2000, &o) && o.yy == 27 && o.mo == 1 && o.dd == 1 && o.ss == 0 && o.ms == 500);
+        uint8_t ye98[12] = CLK(98, 12, 31, 3, 23, 59, 59, 999);
+        f = frame(4, ye98, 12); lockchan_clock_parse(&f, &c);
+        CHECK(lockchan_clock_advance(&c, 0, &o) && o.yy == 98);
+        CHECK(!lockchan_clock_advance(&c, 1, &o));
+        /* The longest trusted anchor, and one past it. */
+        f = frame(4, ok, 12); lockchan_clock_parse(&f, &c);
+        CHECK(lockchan_clock_advance(&c, LOCKCHAN_CLOCK_MAX_ELAPSED_MS, &o) && o.hh == 22 && o.mi == 0 && o.ss == 59);
+        CHECK(!lockchan_clock_advance(&c, LOCKCHAN_CLOCK_MAX_ELAPSED_MS + 1, &o));
+        /* The timer's wrap: the handler passes now - anchor, unsigned. */
+        uint32_t anchor = 0xFFFFFF00u, now = 0x00000064u;   /* 356 ms later */
+        CHECK(lockchan_clock_advance(&c, now - anchor, &o) && o.hh == 22 && o.ss == 0 && o.ms == 355);
+        /* Every day of 2026-2098 round-trips one second past its end. */
+        int days_ok = 1;
+        for (uint8_t yy = 26; yy <= 97 && days_ok; yy++)
+            for (uint8_t mo = 1; mo <= 12 && days_ok; mo++) {
+                uint8_t dim = rtc_days_in_month((uint16_t)(2000 + yy), mo);
+                uint8_t last[12] = CLK(yy, mo, dim, 0, 23, 59, 59, 0);
+                f = frame(4, last, 12);
+                if (!lockchan_clock_parse(&f, &c) || !lockchan_clock_advance(&c, 1000, &o)) { days_ok = 0; break; }
+                uint8_t nmo = mo == 12 ? 1 : mo + 1, nyy = mo == 12 ? yy + 1 : yy;
+                if (o.yy != nyy || o.mo != nmo || o.dd != 1 || o.hh || o.mi || o.ss || o.wd != 1) days_ok = 0;
+            }
+        CHECK(days_ok);
+#undef CLK
     }
 
     printf(fails ? "%d FAILED\n" : "lockchan_media: all passed\n", fails);
