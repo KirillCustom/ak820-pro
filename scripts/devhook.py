@@ -141,7 +141,7 @@ elif cmd == "rxtap":
     for _ in range(5):
         r = xfer(h, 15, 0)
         armed, count, size = r[4], u32(r[5:9]), int.from_bytes(r[9:11], "little")
-        if size != 260: sys.exit(f"unexpected tap size {size}")
+        if size == 0 or size % 26: sys.exit(f"unexpected tap size {size}")   # 260, or 208 since the lock-LED clock
         pages = [xfer(h, 16, pg) for pg in range(size // 26)]
         if any(p[4] != pg or p[5] != 0 for pg, p in enumerate(pages)):
             sys.exit("a tap page did not echo its number")

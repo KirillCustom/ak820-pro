@@ -405,9 +405,15 @@ int main(void) {
     /* The owner stamp's age (implementation review, 1): a wake's credit made
      * after the stamp is taken back out; wraps. */
     CHECK(rtc_stamp_age_s(100, 0, 160, 0) == 60);
-    CHECK(rtc_stamp_age_s(100, 0, 102, 1000) == 0);             /* USB set mid-recovery, then +1000 credit */
-    CHECK(rtc_stamp_age_s(100, 5, 700, 1005) == 0);             /* still inside: 600 - 1000 < 0 */
+    /* A USB set mid-recovery, then the wake's +1000 credit, which moves both
+     * the count and the credit: 2 s on, the age is 2, not 1002 (the
+     * implementation review's own example; its verify corrected the test). */
+    CHECK(rtc_stamp_age_s(100, 0, 1102, 1000) == 2);
     CHECK(rtc_stamp_age_s(100, 5, 1702, 1005) == 602);
+    /* A credit made before the stamp is in both baselines. */
+    CHECK(rtc_stamp_age_s(1100, 1000, 1160, 1000) == 60);
+    /* A negative credit after the stamp (the count stepped back) cancels too. */
+    CHECK(rtc_stamp_age_s(100, 0, 72, (uint32_t)-30) == 2);
     CHECK(rtc_stamp_age_s(0xFFFFFFF0u, 0xFFFFFFFFu, 20, 9) == 26);   /* both wrap */
     CHECK(rtc_stamp_age_s(100, 0, 200, (uint32_t)-30) == 130);  /* a negative credit adds */
 

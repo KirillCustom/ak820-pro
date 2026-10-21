@@ -468,8 +468,8 @@ impl<P: Platform> Core<P> {
 
     /// The wake guess: armed after IDLE_ARM of input idleness, fired on any
     /// change of the last input's tick, forwards or backwards.
-    fn wake_guess(&mut self) -> bool {
-        let Some((last, now)) = self.platform.input() else { return false };
+    fn wake_guess(&mut self, input: Option<(u32, u32)>) -> bool {
+        let Some((last, now)) = input else { return false };
         match self.armed {
             Some(a) if a != last => {
                 self.armed = None;
@@ -549,9 +549,12 @@ impl<P: Platform> Core<P> {
             return Next::Exit;
         }
         let now = time.now();
-        let woke = self.wake_guess();
+        // One input snapshot for the pass: the wake guess and the clock's
+        // idle gate see the same input (codex, the clock's verify, 2).
+        let input = self.platform.input();
+        let woke = self.wake_guess(input);
         let mut handover_end = None;
-        let (granted, owner, stop, stale_at, view, clock_on, usb_clock_last) = {
+        let (granted, owner, stop, stale_at, view, clock_on, usb_clock_last, epochs) = {
             let mut s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
             let (view, stale_at) = current_of(&s, now);
             if let Some((m, _)) = &view {
@@ -571,11 +574,8 @@ impl<P: Platform> Core<P> {
                 self.tr.not_before(nb);
                 handover_end = Some(nb);
             }
-            (s.granted, s.owner_gen, s.stop, stale_at, view, s.clock_on, s.usb_clock_last)
+            (s.granted, s.owner_gen, s.stop, stale_at, view, s.clock_on, s.usb_clock_last, (s.text_epoch, s.tr_epoch))
         };
-        if woke && clock_on {
-            self.clock.woke(now);
-        }
         // A seek: the position is not where the last type 3 said it would be.
         // A change of its own, with the change's repeat (type-3 sender, 3).
         if let (Some((m, pos_at)), Some(sent)) = (&view, self.sent_pos) {
@@ -610,6 +610,11 @@ impl<P: Platform> Core<P> {
             if clock_on {
                 self.clock.acquired(handover_end.unwrap_or(now), usb_clock_last);
             }
+        }
+        // After an acquisition in the same pass, so it cannot replace the
+        // wake's delay (verify, 2).
+        if woke && clock_on {
+            self.clock.woke(now);
         }
         if !granted || !clock_on {
             self.clock.revoked();
@@ -689,10 +694,8 @@ impl<P: Platform> Core<P> {
         let tr_due = if shown { self.tr.due() } else { None };
         // A clock frame after both (review, 11).
         // Not while the input is idle (the schedule's IDLE): it goes at the wake.
-        let input_idle = self
-            .platform
-            .input()
-            .is_some_and(|(last, now)| Duration::from_millis(now.wrapping_sub(last) as u64) >= clk::IDLE);
+        let input_idle =
+            input.is_some_and(|(last, now)| Duration::from_millis(now.wrapping_sub(last) as u64) >= clk::IDLE);
         let clock_due = if clock_on && !self.clock_unmeasured && !input_idle { self.clock.due() } else { None };
         let kind = match (text_due, tr_due, clock_due) {
             (Some(t), _, _) if t <= now => Kind::Text,
@@ -740,7 +743,7 @@ impl<P: Platform> Core<P> {
         }
 
         if kind == Kind::Clock {
-            return self.send_clock(h, time, owner);
+            return self.send_clock(h, time, owner, epochs);
         }
         self.publish_counts(h, "sending");
         let seq = self.seq;
@@ -919,7 +922,7 @@ impl<P: Platform> Core<P> {
     /// anchor's completion (`frame::run_late`): the host's wall clock at that
     /// instant plus the lights' measured latency, in local time. Cut by the
     /// owner, a stop, or any change of the text or the transport (review, 11).
-    fn send_clock<T: Time>(&mut self, h: &Handle, time: &T, owner: u64) -> Next {
+    fn send_clock<T: Time>(&mut self, h: &Handle, time: &T, owner: u64, epochs: (u64, u64)) -> Next {
         let now = time.now();
         let Some(latency) = self.lights.as_ref().and_then(|l| l.clock_latency_ms()) else {
             // Unmeasured lights: none for the life of the process (review, 6).
@@ -929,13 +932,10 @@ impl<P: Platform> Core<P> {
         };
         self.publish_counts(h, "sending clock");
         let seq = self.seq;
-        // The epochs when the clock was chosen, before the warm-up: a change
-        // of either from here cuts the frame, the warm-up's too
-        // (implementation review, 4).
-        let epochs = {
-            let s = h.0.slot.lock().unwrap_or_else(|e| e.into_inner());
-            (s.text_epoch, s.tr_epoch)
-        };
+        // `epochs` are the pass's that chose the clock: a change of either
+        // from then, while the lock is taken and the lights opened, in the
+        // warm-up or after, cuts the frame (implementation review, 4; its
+        // verify, 4).
         // The time taken (the anchor, the wall clock then, its offset): from
         // then a step or an offset change cuts the frame (implementation
         // review, 2).
@@ -1000,9 +1000,9 @@ impl<P: Platform> Core<P> {
                     let ms = w.rem_euclid(1000) as u32;
                     let bytes = super::clock_payload(&l, ms)?;
                     failed.set(None);
-                    let ws0 = w0.div_euclid(1000);
-                    let off0 = platform.local(ws0).map(|l0| clk::utc_offset_s(&l0, ws0))?;
-                    taken.set(Some((anchor, w0, off0)));
+                    // The baseline is the payload's own conversion: any later
+                    // one that disagrees cuts the frame (verify, 1).
+                    taken.set(Some((anchor, w0, clk::utc_offset_s(&l, ws))));
                     *described.borrow_mut() = format!(
                         "lockchan: sent clock {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03} (latency {:+} ms)",
                         l.year, l.month, l.day, l.hour, l.minute, l.second, ms, latency
@@ -1025,6 +1025,14 @@ impl<P: Platform> Core<P> {
             Outcome::Sent if credited => {
                 self.seq = self.seq.wrapping_add(1);
                 self.clock.sent(done);
+                // The clock the frame carried is the scheduler's reference
+                // now: a step before its time was taken is not seen again as
+                // a reason to resend (verify, note).
+                if let Some(w) = self.platform.wall_ms_at(done) {
+                    if let Some(l) = self.platform.local(w.div_euclid(1000)) {
+                        self.clock.rebase(done, w, clk::utc_offset_s(&l, w.div_euclid(1000)));
+                    }
+                }
                 let line = described.borrow().clone();
                 self.publish(h, |st| {
                     st.clock_frames += 1;
@@ -1215,6 +1223,12 @@ mod tests {
         wall: Option<(Instant, i64)>,
         offset_s: i64,
         offset_change: Option<(i64, i64)>,
+        /// `local` calls so far, and an offset that takes effect from a
+        /// given call on (a zone change between two conversions).
+        local_calls: usize,
+        offset_from_call: Option<(usize, i64)>,
+        /// Called at each open (a change while the lights are opened).
+        open_hook: Option<Box<dyn FnMut()>>,
     }
 
     struct Lights {
@@ -1274,6 +1288,11 @@ mod tests {
         type Lights = Lights;
         fn open(&mut self) -> Result<Option<Lights>, String> {
             self.opens += 1;
+            let hook = self.kb.borrow_mut().open_hook.take();
+            if let Some(mut f) = hook {
+                f();
+                self.kb.borrow_mut().open_hook = Some(f);
+            }
             if self.open_stuck {
                 return Err("query: Stuck".into());
             }
@@ -1293,7 +1312,14 @@ mod tests {
             Some(w0 + at.duration_since(t0).as_millis() as i64)
         }
         fn local(&self, unix_s: i64) -> Option<LocalTime> {
-            let k = self.kb.borrow();
+            let mut k = self.kb.borrow_mut();
+            k.local_calls += 1;
+            if let Some((n, o)) = k.offset_from_call {
+                if k.local_calls >= n {
+                    k.offset_s = o;
+                    k.offset_from_call = None;
+                }
+            }
             let off = match k.offset_change {
                 Some((at, o)) if unix_s >= at => o,
                 _ => k.offset_s,
@@ -2079,7 +2105,7 @@ mod tests {
         let mut r = clock_rig(Some(38));
         r.h.usb_clock_synced(r.t.now() - Duration::from_secs(100));
         let t0 = granted(&mut r, title("A"));
-        let open = t0 + Duration::from_secs(500) + clk::OWNER_MARGIN;
+        let open = t0 - Duration::from_secs(100) + clk::OWNER_FLOOR;
         run_until(&mut r, open - Duration::from_secs(1));
         assert!(sent(&r, &title("A"), 0), "the media does not wait");
         assert_eq!(r.h.status().clock_frames, 0);
@@ -2308,6 +2334,92 @@ mod tests {
         run_until(&mut r, t0 + Duration::from_secs(24));
         assert_eq!(r.kb.borrow().writes.len(), n, "no attempt inside the retry");
         assert_eq!(r.h.status().clock_frames, 0);
+    }
+
+    #[test]
+    fn a_zone_change_between_the_builders_conversions_cuts_the_frame() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        // At the anchor's write (the warm-up's 2, the preamble's 3rd), the
+        // zone changes from the builder's third conversion on: after the
+        // payload's two (its time and SPAN on).
+        in_clock(&r, 4, |_, kb| {
+            let mut k = kb.borrow_mut();
+            k.offset_from_call = Some((k.local_calls + 3, -5 * 3600));
+        });
+        run_until(&mut r, t0 + Duration::from_secs(30));
+        assert_eq!(r.h.status().clock_frames, 1);
+        let new = clock_frames(&r, 38);
+        assert_eq!(new.len(), 1, "one frame whole, on the new zone");
+        assert_eq!(new[0].1[4], 16);
+        r.kb.borrow_mut().offset_s = -6 * 3600;
+        assert!(clock_frames(&r, 38).is_empty(), "the old zone's frame never finished");
+    }
+
+    #[test]
+    fn a_wake_in_the_pass_of_a_grant_still_waits_the_delay() {
+        let mut r = clock_rig(Some(38));
+        let t0 = r.t.now();
+        r.h.set_text(title("A"), t0);
+        // Idle and armed, not granted.
+        r.input.set(Some((1000, 1000 + 61_000)));
+        assert_eq!(r.core.step(&r.h, &*r.t), Next::Wait);
+        // A key, and the grant (its handover long past), in one pass.
+        r.input.set(Some((70_000, 70_000)));
+        r.h.grant(Some(t0 - HANDOVER), t0);
+        r.core.step(&r.h, &*r.t);
+        assert!(r.core.clock.due().unwrap() >= t0 + WAKE_DELAY, "the acquisition kept the wake's delay");
+        // The media's acquisition sends the title at once (its own rule);
+        // the clock waits the wake's delay.
+        run_until(&mut r, t0 + Duration::from_secs(20));
+        assert_eq!(r.h.status().clock_frames, 1);
+        let f = clock_frames(&r, 38);
+        let (first, _) = r.kb.borrow().writes[f[0].0 - 4];
+        assert!(first >= t0 + WAKE_DELAY, "the clock frame began {:?} after the wake", first - t0);
+    }
+
+    #[test]
+    fn a_track_change_while_the_lights_open_goes_before_the_clock() {
+        let mut r = clock_rig(Some(38));
+        let t0 = granted(&mut r, title("A"));
+        // The title first; then, with the clock due next, the lights closed
+        // so its pass opens them, and the change lands in that open.
+        let mut fired = false;
+        for _ in 0..1000 {
+            // The title and its transport both sent: the clock is next.
+            let now = r.t.now();
+            let clock_next = r.core.clock.due().is_some_and(|d| d <= now)
+                && r.core.text.due().map_or(true, |d| d > now)
+                && r.core.tr.due().map_or(true, |d| d > now);
+            if !fired && clock_next && r.h.status().clock_frames == 0 {
+                r.core.lights = None;
+                let (h, t) = (r.h.clone(), r.t.clone());
+                let mut once = true;
+                r.kb.borrow_mut().open_hook = Some(Box::new(move || {
+                    if std::mem::take(&mut once) {
+                        h.set_text(title("Bravo"), t.now());
+                    }
+                }));
+                fired = true;
+            }
+            match r.core.step(&r.h, &*r.t) {
+                Next::WaitUntil(w) if w <= t0 + Duration::from_secs(30) => {
+                    r.t.sleep_until(w);
+                }
+                _ => break,
+            }
+        }
+        assert!(fired);
+        let w: Vec<u8> = r.kb.borrow().writes.iter().map(|x| x.1).collect();
+        let bravo_at = (0..=255u8)
+            .find_map(|seq| {
+                let e = crate::lockchan::encode(&title("Bravo").1, title("Bravo").0, seq, Profile::P0, 0).unwrap();
+                w.windows(e.len()).position(|x| x == &e[..])
+            })
+            .expect("Bravo");
+        let f = clock_frames(&r, 38);
+        assert_eq!(f.len(), 1);
+        assert!(bravo_at < f[0].0, "Bravo before the clock");
     }
 }
 

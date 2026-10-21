@@ -5,7 +5,7 @@
 //! Precedence (review, 11):
 //! - After an acquisition: past the media handover, and past the board's
 //!   own refusal window after this process's last USB clock sync
-//!   ([`BOARD_OWNER`] and a margin), whichever is later: a frame inside that
+//!   ([`OWNER_FLOOR`], the board's window and its slow sleep), whichever is later: a frame inside that
 //!   window is refused by the board and wastes ten minutes (review, 9).
 //! - Then every [`EVERY`] after the last frame sent whole.
 //! - At the wake guess, a frame after [`WAKE_DELAY`](super::sender::WAKE_DELAY),
@@ -38,10 +38,12 @@ pub const RETRY: Duration = Duration::from_secs(30);
 /// guess's arming, so a frame held back is always sent at its fire.
 pub const IDLE: Duration = Duration::from_secs(60);
 /// The board refuses a clock frame this long after raw HID set its clock
-/// (`LOCKCHAN_CLOCK_OWNER_S`), counted from the set; plus a margin for the
-/// board's whole seconds and this side's timing.
+/// (`LOCKCHAN_CLOCK_OWNER_S`), counted from the set in its own seconds,
+/// which run slow asleep (~13-16%) and take no credit for it
+/// (`rtc_stamp_age_s`): up to ~700 s of real time after a sleep. The first
+/// frame waits [`OWNER_FLOOR`] (codex, the clock's verify).
 pub const BOARD_OWNER: Duration = Duration::from_secs(600);
-pub const OWNER_MARGIN: Duration = Duration::from_secs(15);
+pub const OWNER_FLOOR: Duration = Duration::from_secs(735);
 /// A wall clock this far from where the monotonic one says it should be has
 /// stepped: between steps, and within a frame once its time is taken. Half a
 /// second: a clock frame is worth tens of milliseconds, and the two clocks
@@ -97,7 +99,7 @@ impl ClockSched {
     /// A new acquisition: the first frame after the handover (`not_before`)
     /// and the board's refusal window after `usb_clock_last`.
     pub fn acquired(&mut self, not_before: Instant, usb_clock_last: Option<Instant>) {
-        let owner_end = usb_clock_last.map(|t| t + BOARD_OWNER + OWNER_MARGIN);
+        let owner_end = usb_clock_last.map(|t| t + OWNER_FLOOR);
         let floor = owner_end.map_or(not_before, |e| e.max(not_before));
         self.floor = Some(floor);
         self.due = Some(floor);
@@ -138,6 +140,13 @@ impl ClockSched {
             return true;
         }
         false
+    }
+
+    /// The host's clock as a frame just carried it: the reference for the
+    /// next step check, with nothing scheduled.
+    pub fn rebase(&mut self, now: Instant, wall_ms: i64, offset_s: i64) {
+        self.wall_ref = Some((now, wall_ms));
+        self.offset = Some(offset_s);
     }
 
     /// Sent whole at `done`.
@@ -194,7 +203,7 @@ mod tests {
         assert_eq!(c.due(), Some(t0 + s(12)));
         // A USB sync 100 s before: the board refuses until 600 s after it.
         c.acquired(t0 + s(12), Some(t0 - s(100)));
-        assert_eq!(c.due(), Some(t0 + s(500) + OWNER_MARGIN));
+        assert_eq!(c.due(), Some(t0 - s(100) + OWNER_FLOOR));
         // One long ago: the handover alone.
         c.acquired(t0 + s(12), Some(t0 - s(3600)));
         assert_eq!(c.due(), Some(t0 + s(12)));
@@ -206,7 +215,7 @@ mod tests {
         let w0 = 1_792_540_799_000;
         let mut c = ClockSched::default();
         c.acquired(t0 + s(12), Some(t0));
-        let floor = t0 + BOARD_OWNER + OWNER_MARGIN;
+        let floor = t0 + OWNER_FLOOR;
         c.woke(t0 + s(40));
         assert_eq!(c.due(), Some(floor), "a wake");
         c.observe(t0 + s(50), w0, 0);
