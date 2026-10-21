@@ -1,0 +1,17 @@
+Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md.
+
+Review a combined dev build before it is flashed and made the mainline: qmk_firmware-ak820pro, branch mac/lockchan-pm-rtc, commit 7ae8575c1a, 13 commits on 5df4e0e3b7 (`git -C qmk_firmware-ak820pro log 5df4e0e3b7..7ae8575c1a`). Artifact: ak820pro-builds/out/via-dev-7ae8575c1a-20261020-213245.{bin,elf,json} (token 0x350912aa); daily: via-daily-7ae8575c1a-20261020-213312.*.
+
+What is already reviewed and on JD's board: 5df4e0e3b7..dd8391c28d (the lock-LED handler, play times, the readout's lease and title, the stray diagnostic, the clock-flash fix), flashed as dd8391c28d at 20:30 10-20, cleared step by step (plans/review-codex-lockchan-playback-fixes-2026-10-20.md, review-codex-lockchan-lease-2026-10-20.md, review-codex-stray-diag-2026-10-20.md, review-codex-stray-diag-verify-2026-10-20.md, review-codex-clock-flash-2026-10-20.md).
+
+New in this build:
+- Gremlin's RTC fixes, three commits (270c23d9b6, bd381c1e61, 16333b3403), cherry-picked from 76af5c12 on gremlin/rtc-clock-fixes-5df4; keyboards/a_jazz/ak820pro/rtc/ is byte-identical to 76af5c12. Codex cleared them on 5df4e0e3b7 alone for an attended bench test (plans/review-codex-rtc-clock-fixes-verify2-2026-10-20.md; earlier rounds review-codex-rtc-clock-fixes-2026-10-20.md and -verify-2026-10-20.md). Host test: scripts/rtc_pcf_sync_test.c.
+- 7ae8575c1a: the clock-flash review's P3 1, a host word on the readout (pb_repaint) painted on the next housekeeping tick.
+
+Check:
+1. The RTC fixes in this combination: anything the review on 5df4e0e3b7 alone could not see. In particular sleep.c's deep sleep (the PCF read at the wake, wake_coarse, the slept seconds, REF_PCF_LEGACY, the stray diagnostic's loop), the power modes' ladder, the lock-LED handler, the Mac daemon's USB clock syncs (rtc_set_time_ms; a PCF write at each data-on, which the overnight soak cuts and restores every cycle), the UART-latency build's unlocked PCF transfer with the row ISR's IRQ held off, the stalls (no pass >= 25 ms), and the PCF-stale flag on health page 4 [24].
+2. 7ae8575c1a: that pb_repaint cannot paint over an overlay, the Fn+D page, the boot or wake animation or a deep sleep's repaint hold where clock_force_repaint would not, that it cannot spin housekeeping into a draw every tick, and that raw HID's playback poll (every ~3 s) costs only a diff.
+3. RAM: the dev heap gap is now 48 B (64 before the RTC fixes); ds_deep_wfi is still in SRAM at 0x2000150c. Whether anything allocates from the heap, the stack's growth, and whether 48 B is safe.
+4. Fitness to become ak820pro-jdlien (fast-forwarded) and deps.lock's pin tonight, flashed as JD's daily-use dev build, then an overnight unattended soak on BT (scripts/deep_cycles.py: 100+ deep sleeps woken by the bench relay's key, then an hour asleep; the cable's USB data cut and restored by uhubctl each cycle; the daemon running normally with --clock --radio --lockchan). Say what the soak must check to sign off the RTC fixes, beyond deep_cycles' own pass criteria.
+
+Findings ranked P1 (must fix before the flash), P2, P3, each with a failure scenario and fix, then a one-line verdict.
