@@ -86,7 +86,7 @@ the board is awake, and without refreshes the title would expire mid-track.
 **Only the clock frame (type 4, being designed) is held while input is idle
 past 60 s,** with one sent at the wake guess instead.
 
-## The clock flashes for ~3 s at every title frame over the lock lights (2026-10-20) -- both fixes built (`dd8391c28d`), awaiting codex and the flash
+## The clock flashes for ~3 s at every title frame over the lock lights (2026-10-20) -- FIXED, flashed 20:30 10-20 (`dd8391c28d`); codex's repaint P3 for the next build
 
 Seen by JD on the first supervised play-times run over BT (`6fda6cd1c2`, the
 daemon `v0.1.1-715`): the clock showed for a moment on returning to the
