@@ -1,0 +1,7 @@
+Read only files inside /Users/jdlien/code/ak820-pro; do not search or list anything outside it, and there is no AGENTS.md.
+
+A short verify of your review plans/review-codex-stray-diag-2026-10-20.md (read it): qmk_firmware-ak820pro, branch mac/lockchan-pm, commit 6fda6cd1c2 on a5a176bef4 (`git -C qmk_firmware-ak820pro show 6fda6cd1c2`). Artifacts: ak820pro-builds/out/via-dev-6fda6cd1c2-20261020-180718.{bin,elf,json} (token 0xa647bcb6) and via-daily-6fda6cd1c2-20261020-180742.*.
+- P2 1: display_set_text_line and display_set_text_icon call playback_title_gone() whenever they leave the slot absent.
+- P2 2: lockchan_media_commit rechecks display_text_lease_left() after display_set_text_icon and rejects before any playback.
+- P3: stray_diag_t now holds ISPR and ICSR at the first stray and at the latest, flags for IE or RIS & IE outside each port's wake mask and for an NVIC enabled set other than the wake set, and the counts; scripts/deep_cycles.py's stray_diag() reads it.
+Check the three, that stray_note stays read-only and safe in the asleep loop (it now runs every stray, not only the first), its cost per stray, the struct against the reader, and RAM and ds_deep_wfi in the dev ELF. Findings ranked P1 (must fix before the attended dev bench flash), P2, P3, then a one-line verdict.

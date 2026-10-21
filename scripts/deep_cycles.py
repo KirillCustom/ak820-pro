@@ -78,7 +78,9 @@ def stray_diag(h):
     outside the wake masks had IE (or RIS & IE), whether the NVIC's enabled
     set was the wake set, how many strays came within that counted second, and
     the pending state at the latest stray (plans/BACKLOG.md, "A stray-wake
-    storm"). None on a build that answers slot 8 as unhandled."""
+    storm"). Only on a build from 6fda6cd1c2, checked by its token: an
+    older build exits in cm.xfer (unhandled), and a5a176bef4's slot 8 had
+    another layout this cannot tell apart (codex, the verify, P3)."""
     r = cm.xfer(h, [cm.SET_VALUE, cm.HEALTH_CH, cm.HC_DEVHOOK, 24, 8] + [0] * 27)
     if len(r) < 32 or r[3] != 24:
         return None
