@@ -85,6 +85,44 @@ int main(void) {
     pcf_sync_gave_up(&s, 10);
     CHECK(!s.stale && !pcf_sync_retry_due(&s, 1000));
 
-    printf(fails ? "%d FAILED\n" : "rtc_pcf_sync: all passed\n", fails);
+    /* The verify's must-fix 1: the writer takes the newer generation only once
+     * its re-plan holds it. Until then the run stays superseded, so the older
+     * snapshot is never written and certified for it. */
+    s = (pcf_sync_t){0};
+    pcf_sync_host_accepted(&s);
+    pcf_sync_request(&s);
+    pcf_sync_run_start(&s);
+    pcf_sync_host_accepted(&s);
+    pcf_sync_request(&s);            /* a newer correction mid-run */
+    /* ps_plan() fails this pass: run_start is not called */
+    CHECK(pcf_sync_superseded(&s));  /* the next pass re-plans, not writes */
+    pcf_sync_run_start(&s);          /* the plan held */
+    CHECK(!pcf_sync_superseded(&s));
+    CHECK(!pcf_sync_run_ok(&s) && !s.stale);
+
+    /* The verify's should-fix 1: a SKIP_PCF correction leaves the PCF no
+     * reference (stale), asks for no write of its own, and supersedes a
+     * running write so it re-plans. */
+    s = (pcf_sync_t){0};
+    pcf_sync_host_skipped(&s);
+    CHECK(s.stale && !s.pending);
+    CHECK(!pcf_sync_retry_due(&s, 99999));   /* never asked for unprompted */
+    s = (pcf_sync_t){0};
+    pcf_sync_request(&s);
+    pcf_sync_run_start(&s);
+    pcf_sync_host_skipped(&s);       /* mid-run */
+    CHECK(pcf_sync_superseded(&s));
+    CHECK(pcf_sync_run_ok(&s));      /* the older run certifies nothing */
+    CHECK(s.stale);
+    pcf_sync_run_start(&s);          /* re-planned from the corrected clock */
+    CHECK(!pcf_sync_run_ok(&s) && !s.stale && !s.no_retry);
+    /* A skip on top of an owed retry keeps the retry. */
+    s = (pcf_sync_t){0};
+    pcf_sync_host_accepted(&s);
+    pcf_sync_gave_up(&s, 0);
+    pcf_sync_host_skipped(&s);
+    CHECK(pcf_sync_retry_due(&s, PCF_SYNC_RETRY_S));
+
+    printf(fails ?"%d FAILED\n" : "rtc_pcf_sync: all passed\n", fails);
     return fails != 0;
 }
